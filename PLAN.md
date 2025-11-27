@@ -243,11 +243,11 @@ fn parse_composition() { ... }
 
 ### Release Gate 2
 
-- [ ] All expression forms from LANG.txt parse correctly
-- [ ] Operator precedence matches specification exactly
-- [ ] Partial application (`_ + 1`) produces Function AST
-- [ ] All expect_test snapshots pass
-- [ ] `cargo clippy` clean
+- [x] All expression forms from LANG.txt parse correctly
+- [x] Operator precedence matches specification exactly
+- [x] Partial application (`_ + 1`) produces Function AST
+- [x] All expect_test snapshots pass
+- [x] `cargo clippy` clean
 
 ---
 
@@ -329,13 +329,13 @@ fn parse_trailing_lambda() { ... }
 
 ### Release Gate 3
 
-- [ ] All statement forms parse correctly
-- [ ] Destructuring patterns work (including nested, rest)
-- [ ] Match expressions with guards parse correctly
-- [ ] AOC sections (`input:`, `part_one:`, `part_two:`, `test:`) parse
-- [ ] Trailing lambda syntax works
-- [ ] All expect_test snapshots pass
-- [ ] `cargo clippy` clean
+- [x] All statement forms parse correctly
+- [x] Destructuring patterns work (including nested, rest)
+- [x] Match expressions with guards parse correctly
+- [x] AOC sections (`input:`, `part_one:`, `part_two:`, `test:`) parse
+- [x] Trailing lambda syntax works
+- [x] All expect_test snapshots pass
+- [x] `cargo clippy` clean
 
 ---
 

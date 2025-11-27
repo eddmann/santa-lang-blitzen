@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-im = { git = "ssh://git@github.com/eddmann/im-rs.git" }
+im-rc = { git = "https://github.com/eddmann/im-rs.git", features = ["pool"] }
 ordered-float = "5.0"
 unicode-segmentation = "1.12"
 regex = "1.11"
