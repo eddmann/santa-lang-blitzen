@@ -1831,6 +1831,29 @@ mod runtime_tests {
     }
 
     #[test]
+    fn eval_single_element_set() {
+        // Single-element sets require trailing comma per LANG.txt spec
+        let result = eval("{42,}").unwrap();
+        match result {
+            Value::Set(s) => {
+                assert_eq!(s.len(), 1);
+                assert!(s.contains(&Value::Integer(42)));
+            }
+            _ => panic!("Expected set, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn eval_single_element_set_vs_block() {
+        // {42,} is a set, {42} is a block
+        let set_result = eval("{42,}").unwrap();
+        let block_result = eval("{42}").unwrap();
+
+        assert!(matches!(set_result, Value::Set(_)));
+        assert_eq!(block_result, Value::Integer(42));
+    }
+
+    #[test]
     fn eval_set_union() {
         let result = eval("{1, 2} + {2, 3}").unwrap();
         match result {

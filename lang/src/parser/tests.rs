@@ -393,6 +393,29 @@ fn parse_empty_set() {
 }
 
 #[test]
+fn parse_single_element_set() {
+    // According to LANG.txt spec, single-element sets require trailing comma
+    check("{2,}", expect!["{2}"]);
+}
+
+#[test]
+fn parse_single_element_set_vs_block() {
+    // {2,} is a single-element set
+    // {2} is a block returning 2
+    check("{2}", expect!["{ 2 }"]);
+}
+
+#[test]
+fn parse_single_element_set_with_string() {
+    check(r#"{"hello",}"#, expect![[r#"{"hello"}"#]]);
+}
+
+#[test]
+fn parse_single_element_set_with_expression() {
+    check("{1 + 2,}", expect!["{(1 + 2)}"]);
+}
+
+#[test]
 fn parse_dict_literal() {
     check(r#"#{"a": 1, "b": 2}"#, expect![[r#"#{"a": 1, "b": 2}"#]]);
 }
