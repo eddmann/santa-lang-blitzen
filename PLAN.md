@@ -1448,9 +1448,9 @@ harness = false
 
 ### Release Gate 19
 
-- [ ] Benchmarks cover all major components
-- [ ] Performance meets or exceeds tree-walking interpreter
-- [ ] Reports generated with `cargo bench`
+- [x] Benchmarks cover all major components
+- [x] Performance meets or exceeds tree-walking interpreter
+- [x] Reports generated with `cargo bench`
 - [ ] No performance regressions in CI
 
 ---
