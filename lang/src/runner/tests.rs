@@ -11,6 +11,10 @@ fn parse(source: &str) -> Program {
     parser.parse_program().unwrap()
 }
 
+fn vm_factory() -> VM {
+    VM::new()
+}
+
 #[test]
 fn runner_simple_solution() {
     let source = r#"
@@ -30,7 +34,8 @@ fn runner_simple_solution() {
     let program = parse(source);
     let runner = AocRunner::new(program);
 
-    let result = runner.run_solution().unwrap();
+    let mut vm = VM::new();
+    let result = runner.run_solution(&mut vm).unwrap();
 
     assert!(result.part_one.is_some());
     assert!(result.part_two.is_some());
@@ -63,7 +68,7 @@ fn runner_with_tests() {
     let program = parse(source);
     let runner = AocRunner::new(program);
 
-    let test_results = runner.run_tests().unwrap();
+    let test_results = runner.run_tests(&vm_factory).unwrap();
 
     assert_eq!(test_results.len(), 2);
     assert_eq!(test_results[0].part_one_passed, Some(true));
@@ -83,7 +88,8 @@ fn runner_script_mode() {
 
     assert!(runner.is_script_mode());
 
-    let result = runner.run_script().unwrap();
+    let mut vm = VM::new();
+    let result = runner.run_script(&mut vm).unwrap();
     assert_eq!(result, Value::Integer(30));
 }
 
@@ -99,7 +105,8 @@ fn runner_duplicate_input_error() {
     let program = parse(source);
     let runner = AocRunner::new(program);
 
-    let result = runner.run_solution();
+    let mut vm = VM::new();
+    let result = runner.run_solution(&mut vm);
     assert!(result.is_err());
 
     let err = result.unwrap_err();
@@ -116,7 +123,8 @@ fn runner_duplicate_part_one_error() {
     let program = parse(source);
     let runner = AocRunner::new(program);
 
-    let result = runner.run_solution();
+    let mut vm = VM::new();
+    let result = runner.run_solution(&mut vm);
     assert!(result.is_err());
 
     let err = result.unwrap_err();
@@ -133,7 +141,8 @@ fn runner_duplicate_part_two_error() {
     let program = parse(source);
     let runner = AocRunner::new(program);
 
-    let result = runner.run_solution();
+    let mut vm = VM::new();
+    let result = runner.run_solution(&mut vm);
     assert!(result.is_err());
 
     let err = result.unwrap_err();
@@ -156,7 +165,8 @@ fn runner_with_top_level_definitions() {
     let program = parse(source);
     let runner = AocRunner::new(program);
 
-    let result = runner.run_solution().unwrap();
+    let mut vm = VM::new();
+    let result = runner.run_solution(&mut vm).unwrap();
     let (part_one_value, _) = result.part_one.unwrap();
 
     assert_eq!(part_one_value, Value::Integer(10));
@@ -172,7 +182,8 @@ fn runner_timing_collected() {
     let program = parse(source);
     let runner = AocRunner::new(program);
 
-    let result = runner.run_solution().unwrap();
+    let mut vm = VM::new();
+    let result = runner.run_solution(&mut vm).unwrap();
 
     assert!(result.part_one.is_some());
     assert!(result.part_two.is_some());
@@ -202,7 +213,7 @@ fn runner_test_with_part_two() {
     let program = parse(source);
     let runner = AocRunner::new(program);
 
-    let test_results = runner.run_tests().unwrap();
+    let test_results = runner.run_tests(&vm_factory).unwrap();
 
     assert_eq!(test_results.len(), 1);
     assert_eq!(test_results[0].part_one_passed, Some(true));
@@ -225,7 +236,7 @@ fn runner_test_failure() {
     let program = parse(source);
     let runner = AocRunner::new(program);
 
-    let test_results = runner.run_tests().unwrap();
+    let test_results = runner.run_tests(&vm_factory).unwrap();
 
     assert_eq!(test_results.len(), 1);
     assert_eq!(test_results[0].part_one_passed, Some(false));
@@ -243,7 +254,8 @@ fn runner_no_input_section() {
     let program = parse(source);
     let runner = AocRunner::new(program);
 
-    let result = runner.run_solution().unwrap();
+    let mut vm = VM::new();
+    let result = runner.run_solution(&mut vm).unwrap();
 
     assert!(result.part_one.is_some());
     assert!(result.part_two.is_some());
@@ -265,7 +277,8 @@ fn runner_only_part_one() {
     let program = parse(source);
     let runner = AocRunner::new(program);
 
-    let result = runner.run_solution().unwrap();
+    let mut vm = VM::new();
+    let result = runner.run_solution(&mut vm).unwrap();
 
     assert!(result.part_one.is_some());
     assert!(result.part_two.is_none());
@@ -330,7 +343,8 @@ fn runner_complex_example() {
     let runner = AocRunner::new(program);
 
     // Test solution execution
-    let result = runner.run_solution().unwrap();
+    let mut vm = VM::new();
+    let result = runner.run_solution(&mut vm).unwrap();
 
     assert!(result.part_one.is_some());
     assert!(result.part_two.is_some());
@@ -342,7 +356,7 @@ fn runner_complex_example() {
     assert_eq!(part_two_value, Value::Integer(45000));
 
     // Test the test execution
-    let test_results = runner.run_tests().unwrap();
+    let test_results = runner.run_tests(&vm_factory).unwrap();
 
     assert_eq!(test_results.len(), 1);
     assert_eq!(test_results[0].part_one_passed, Some(true));

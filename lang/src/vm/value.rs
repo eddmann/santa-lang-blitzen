@@ -48,6 +48,10 @@ pub enum Value {
         inclusive: bool,
     },
 
+    /// External function (e.g., puts, read, env) - not part of LANG.txt spec
+    /// but needed for CLI runtime (Phase 18)
+    ExternalFunction(String),
+
     // TODO: Add MemoizedFunction variant for memoize builtin (Phase 14+)
     // See PLAN.md "Future Work: memoize Implementation" for details
     // Will require:
@@ -136,9 +140,10 @@ impl Value {
             Value::List(v) => !v.is_empty(),
             Value::Set(s) => !s.is_empty(),
             Value::Dict(d) => !d.is_empty(),
-            // Functions and LazySequences are always truthy
+            // Functions, LazySequences, and ExternalFunctions are always truthy
             Value::Function(_) => true,
             Value::LazySequence(_) => true,
+            Value::ExternalFunction(_) => true,
             Value::Range { .. } => true,
         }
     }
@@ -157,6 +162,7 @@ impl Value {
             Value::Function(_) => "Function",
             Value::LazySequence(_) => "LazySequence",
             Value::Range { .. } => "Range",
+            Value::ExternalFunction(_) => "ExternalFunction",
         }
     }
 
@@ -167,8 +173,8 @@ impl Value {
             Value::String(_) => true,
             Value::List(elements) => elements.iter().all(|e| e.is_hashable()),
             Value::Set(_) => true,
-            // Dict, LazySequence, Function are NOT hashable
-            Value::Dict(_) | Value::LazySequence(_) | Value::Function(_) => false,
+            // Dict, LazySequence, Function, ExternalFunction are NOT hashable
+            Value::Dict(_) | Value::LazySequence(_) | Value::Function(_) | Value::ExternalFunction(_) => false,
             // Ranges are hashable (they're just data)
             Value::Range { .. } => true,
         }
@@ -204,6 +210,8 @@ impl PartialEq for Value {
             (Value::Function(a), Value::Function(b)) => Rc::ptr_eq(a, b),
             // LazySequences compare by identity
             (Value::LazySequence(a), Value::LazySequence(b)) => Rc::ptr_eq(a, b),
+            // External functions compare by name
+            (Value::ExternalFunction(a), Value::ExternalFunction(b)) => a == b,
             // Different types are never equal
             _ => false,
         }
@@ -259,6 +267,9 @@ impl Hash for Value {
             Value::LazySequence(s) => {
                 std::ptr::hash(Rc::as_ptr(s), state);
             }
+            Value::ExternalFunction(name) => {
+                name.hash(state);
+            }
         }
     }
 }
@@ -310,6 +321,7 @@ impl fmt::Display for Value {
             }
             Value::Function(_) => write!(f, "<function>"),
             Value::LazySequence(_) => write!(f, "<lazy-sequence>"),
+            Value::ExternalFunction(name) => write!(f, "<external-function:{}>", name),
             Value::Range {
                 start,
                 end,

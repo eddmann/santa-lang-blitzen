@@ -1,0 +1,14 @@
+[package]
+name = "santa-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lang = { path = "../../lang" }
+rustyline = "14.0"
+ureq = { version = "2.10", features = ["json"] }
+dirs = "5.0"
+
+[[bin]]
+name = "santa-cli"
+path = "src/main.rs"

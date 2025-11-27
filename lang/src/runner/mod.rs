@@ -34,25 +34,24 @@ impl AocRunner {
         Self { program }
     }
 
-    pub fn run_solution(&self) -> Result<SolutionResult, RuntimeError> {
-        let mut vm = VM::new();
+    pub fn run_solution(&self, vm: &mut VM) -> Result<SolutionResult, RuntimeError> {
 
         // Check for duplicate sections
         self.check_duplicate_sections()?;
 
         // Execute top-level statements (all together to preserve globals)
         if !self.program.statements.is_empty() {
-            self.compile_and_execute_stmts(&mut vm, &self.program.statements)?;
+            self.compile_and_execute_stmts(vm, &self.program.statements)?;
         }
 
         // Get input section if present
-        let input_value = self.get_input_section(&mut vm)?;
+        let input_value = self.get_input_section(vm)?;
 
         // Execute part_one
-        let part_one = self.execute_part(&mut vm, "part_one", input_value.clone())?;
+        let part_one = self.execute_part(vm, "part_one", input_value.clone())?;
 
         // Execute part_two
-        let part_two = self.execute_part(&mut vm, "part_two", input_value)?;
+        let part_two = self.execute_part(vm, "part_two", input_value)?;
 
         Ok(SolutionResult {
             part_one,
@@ -60,7 +59,7 @@ impl AocRunner {
         })
     }
 
-    pub fn run_tests(&self) -> Result<Vec<TestResult>, RuntimeError> {
+    pub fn run_tests(&self, vm_factory: &dyn Fn() -> VM) -> Result<Vec<TestResult>, RuntimeError> {
         let mut results = Vec::new();
 
         // Check for duplicate sections
@@ -79,6 +78,7 @@ impl AocRunner {
         // Run each test
         for (index, (test_input_expr, expected_part_one, expected_part_two)) in test_sections.iter().enumerate() {
             let result = self.run_single_test(
+                vm_factory,
                 index,
                 test_input_expr,
                 expected_part_one.as_ref(),
@@ -90,14 +90,13 @@ impl AocRunner {
         Ok(results)
     }
 
-    pub fn run_script(&self) -> Result<Value, RuntimeError> {
-        let mut vm = VM::new();
+    pub fn run_script(&self, vm: &mut VM) -> Result<Value, RuntimeError> {
 
         // Execute all statements and return the last value
         if self.program.statements.is_empty() {
             Ok(Value::Nil)
         } else {
-            self.compile_and_execute_stmts(&mut vm, &self.program.statements)
+            self.compile_and_execute_stmts(vm, &self.program.statements)
         }
     }
 
@@ -174,13 +173,14 @@ impl AocRunner {
 
     fn run_single_test(
         &self,
+        vm_factory: &dyn Fn() -> VM,
         test_index: usize,
         test_input_expr: &SpannedExpr,
         expected_part_one: Option<&SpannedExpr>,
         expected_part_two: Option<&SpannedExpr>,
     ) -> Result<TestResult, RuntimeError> {
         // Create fresh VM for test
-        let mut vm = VM::new();
+        let mut vm = vm_factory();
 
         // Execute top-level statements (all together to preserve globals)
         if !self.program.statements.is_empty() {

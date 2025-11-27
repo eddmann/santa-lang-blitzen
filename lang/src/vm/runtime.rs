@@ -110,6 +110,9 @@ impl CallFrame {
     }
 }
 
+/// External function type - closures that can access the VM
+pub type ExternalFn = Box<dyn Fn(&[Value], &VM) -> Result<Value, RuntimeError>>;
+
 /// The santa-lang virtual machine
 pub struct VM {
     /// Value stack
@@ -120,6 +123,8 @@ pub struct VM {
     globals: StdHashMap<String, Value>,
     /// Open upvalues (keyed by stack slot)
     open_upvalues: Vec<Rc<RefCell<Upvalue>>>,
+    /// External functions (e.g., puts, read, env)
+    externals: StdHashMap<String, Rc<ExternalFn>>,
 }
 
 impl VM {
@@ -130,9 +135,24 @@ impl VM {
             frames: Vec::with_capacity(64),
             globals: StdHashMap::new(),
             open_upvalues: Vec::new(),
+            externals: StdHashMap::new(),
         };
         vm.register_operator_functions();
         vm
+    }
+
+    /// Register an external function (e.g., puts, read, env)
+    /// External functions can access the VM state (for env() to read globals)
+    pub fn register_external<F>(&mut self, name: &str, func: F)
+    where
+        F: Fn(&[Value], &VM) -> Result<Value, RuntimeError> + 'static,
+    {
+        self.externals.insert(name.to_string(), Rc::new(Box::new(func)));
+    }
+
+    /// Get a reference to the globals map (for external functions like env())
+    pub fn globals(&self) -> &StdHashMap<String, Value> {
+        &self.globals
     }
 
     /// Register operator functions as globals
@@ -256,11 +276,14 @@ impl VM {
                 Ok(OpCode::GetGlobal) => {
                     let idx = self.read_byte() as usize;
                     let name = self.get_constant_string(idx)?;
-                    let value = self
-                        .globals
-                        .get(&name)
-                        .cloned()
-                        .ok_or_else(|| self.error(format!("Undefined variable '{}'", name)))?;
+                    let value = if let Some(v) = self.globals.get(&name) {
+                        v.clone()
+                    } else if self.externals.contains_key(&name) {
+                        // External function - create a placeholder value
+                        Value::ExternalFunction(name.clone())
+                    } else {
+                        return Err(self.error(format!("Undefined variable '{}'", name)));
+                    };
                     self.push(value);
                 }
                 Ok(OpCode::SetGlobal) => {
@@ -1121,6 +1144,27 @@ impl VM {
         match callee {
             Value::Function(closure) => {
                 self.call_closure(closure, argc)?;
+            }
+            Value::ExternalFunction(name) => {
+                // Collect arguments from stack
+                let mut args = Vec::with_capacity(argc);
+                for i in 0..argc {
+                    args.push(self.peek(argc - 1 - i).clone());
+                }
+
+                // Call external function
+                let external = self.externals.get(&name).cloned()
+                    .ok_or_else(|| self.error(format!("External function '{}' not found", name)))?;
+
+                let result = external(&args, self)?;
+
+                // Pop arguments and function from stack
+                for _ in 0..=argc {
+                    self.pop();
+                }
+
+                // Push result
+                self.push(result);
             }
             _ => {
                 return Err(self.error(format!("Cannot call {}", callee.type_name())));
