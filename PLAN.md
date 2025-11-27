@@ -1109,6 +1109,11 @@ Generate bytecode for pattern matching:
 - List destructuring in let bindings
 - Nested destructuring
 - Mutable destructuring
+- **Function parameter destructuring**: `|[a, b]| a + b`, `|[x, y], z| ...`
+  - Add `ParamKind::Pattern(Pattern)` variant
+  - Update parser to handle patterns in lambda parameters
+  - Update compiler to emit destructuring code for pattern parameters
+  - Update `fold_s` test to use proper destructuring syntax: `|[a, b], _| [b, a + b]`
 
 ### 15.3 Tests
 
@@ -1129,6 +1134,8 @@ fn pattern_range() { ... }
 fn pattern_guard() { ... }
 #[test]
 fn destructuring_let() { ... }
+#[test]
+fn destructuring_param() { ... }  // |[a, b]| a + b
 ```
 
 ### Release Gate 15
@@ -1139,6 +1146,7 @@ fn destructuring_let() { ... }
 - [ ] Nested patterns work
 - [ ] Guards evaluate correctly
 - [ ] Match returns nil if no arm matches
+- [ ] Function parameter destructuring works (`|[a, b]| ...`)
 - [ ] All tests pass
 - [ ] `cargo clippy` clean
 
