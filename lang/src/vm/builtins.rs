@@ -90,6 +90,33 @@ pub enum BuiltinId {
 
     // Range Generation (§11.13)
     RangeFn = 120,
+
+    // String Functions (§11.14)
+    Lines = 130,
+    Split = 131,
+    RegexMatch = 132,
+    RegexMatchAll = 133,
+
+    // Math Functions (§11.15)
+    Abs = 140,
+    Signum = 141,
+    VecAdd = 142,
+
+    // Bitwise Functions (§4.5)
+    BitAnd = 150,
+    BitOr = 151,
+    BitXor = 152,
+    BitNot = 153,
+    BitShiftLeft = 154,
+    BitShiftRight = 155,
+
+    // Utility Functions (§11.16)
+    Id = 160,
+    Type = 161,
+    Memoize = 162,
+    Or = 163,
+    And = 164,
+    Evaluate = 165,
 }
 
 impl BuiltinId {
@@ -145,6 +172,25 @@ impl BuiltinId {
             BuiltinId::Iterate => "iterate",
             BuiltinId::Combinations => "combinations",
             BuiltinId::RangeFn => "range",
+            BuiltinId::Lines => "lines",
+            BuiltinId::Split => "split",
+            BuiltinId::RegexMatch => "regex_match",
+            BuiltinId::RegexMatchAll => "regex_match_all",
+            BuiltinId::Abs => "abs",
+            BuiltinId::Signum => "signum",
+            BuiltinId::VecAdd => "vec_add",
+            BuiltinId::BitAnd => "bit_and",
+            BuiltinId::BitOr => "bit_or",
+            BuiltinId::BitXor => "bit_xor",
+            BuiltinId::BitNot => "bit_not",
+            BuiltinId::BitShiftLeft => "bit_shift_left",
+            BuiltinId::BitShiftRight => "bit_shift_right",
+            BuiltinId::Id => "id",
+            BuiltinId::Type => "type",
+            BuiltinId::Memoize => "memoize",
+            BuiltinId::Or => "or",
+            BuiltinId::And => "and",
+            BuiltinId::Evaluate => "evaluate",
         }
     }
 
@@ -200,6 +246,25 @@ impl BuiltinId {
             "iterate" => Some(BuiltinId::Iterate),
             "combinations" => Some(BuiltinId::Combinations),
             "range" => Some(BuiltinId::RangeFn),
+            "lines" => Some(BuiltinId::Lines),
+            "split" => Some(BuiltinId::Split),
+            "regex_match" => Some(BuiltinId::RegexMatch),
+            "regex_match_all" => Some(BuiltinId::RegexMatchAll),
+            "abs" => Some(BuiltinId::Abs),
+            "signum" => Some(BuiltinId::Signum),
+            "vec_add" => Some(BuiltinId::VecAdd),
+            "bit_and" => Some(BuiltinId::BitAnd),
+            "bit_or" => Some(BuiltinId::BitOr),
+            "bit_xor" => Some(BuiltinId::BitXor),
+            "bit_not" => Some(BuiltinId::BitNot),
+            "bit_shift_left" => Some(BuiltinId::BitShiftLeft),
+            "bit_shift_right" => Some(BuiltinId::BitShiftRight),
+            "id" => Some(BuiltinId::Id),
+            "type" => Some(BuiltinId::Type),
+            "memoize" => Some(BuiltinId::Memoize),
+            "or" => Some(BuiltinId::Or),
+            "and" => Some(BuiltinId::And),
+            "evaluate" => Some(BuiltinId::Evaluate),
             _ => None,
         }
     }
@@ -223,7 +288,15 @@ impl BuiltinId {
             | BuiltinId::Sum
             | BuiltinId::Reverse
             | BuiltinId::Repeat
-            | BuiltinId::Cycle => (1, 1),
+            | BuiltinId::Cycle
+            | BuiltinId::Lines
+            | BuiltinId::Abs
+            | BuiltinId::Signum
+            | BuiltinId::BitNot
+            | BuiltinId::Id
+            | BuiltinId::Type
+            | BuiltinId::Memoize
+            | BuiltinId::Evaluate => (1, 1),
 
             // Two argument functions: (fn, collection) or (index, collection)
             BuiltinId::Get
@@ -247,7 +320,18 @@ impl BuiltinId {
             | BuiltinId::Any
             | BuiltinId::All
             | BuiltinId::Iterate
-            | BuiltinId::Combinations => (2, 2),
+            | BuiltinId::Combinations
+            | BuiltinId::Split
+            | BuiltinId::RegexMatch
+            | BuiltinId::RegexMatchAll
+            | BuiltinId::VecAdd
+            | BuiltinId::BitAnd
+            | BuiltinId::BitOr
+            | BuiltinId::BitXor
+            | BuiltinId::BitShiftLeft
+            | BuiltinId::BitShiftRight
+            | BuiltinId::Or
+            | BuiltinId::And => (2, 2),
 
             // Three argument functions
             BuiltinId::Assoc
@@ -296,6 +380,7 @@ impl BuiltinId {
                 | BuiltinId::Rest
                 | BuiltinId::Get
                 | BuiltinId::First
+                | BuiltinId::Memoize
         )
     }
 }
@@ -354,6 +439,25 @@ impl TryFrom<u16> for BuiltinId {
             113 => Ok(BuiltinId::Iterate),
             114 => Ok(BuiltinId::Combinations),
             120 => Ok(BuiltinId::RangeFn),
+            130 => Ok(BuiltinId::Lines),
+            131 => Ok(BuiltinId::Split),
+            132 => Ok(BuiltinId::RegexMatch),
+            133 => Ok(BuiltinId::RegexMatchAll),
+            140 => Ok(BuiltinId::Abs),
+            141 => Ok(BuiltinId::Signum),
+            142 => Ok(BuiltinId::VecAdd),
+            150 => Ok(BuiltinId::BitAnd),
+            151 => Ok(BuiltinId::BitOr),
+            152 => Ok(BuiltinId::BitXor),
+            153 => Ok(BuiltinId::BitNot),
+            154 => Ok(BuiltinId::BitShiftLeft),
+            155 => Ok(BuiltinId::BitShiftRight),
+            160 => Ok(BuiltinId::Id),
+            161 => Ok(BuiltinId::Type),
+            162 => Ok(BuiltinId::Memoize),
+            163 => Ok(BuiltinId::Or),
+            164 => Ok(BuiltinId::And),
+            165 => Ok(BuiltinId::Evaluate),
             _ => Err(value),
         }
     }
@@ -409,6 +513,28 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         BuiltinId::Cycle => builtin_cycle(&args[0], line),
         BuiltinId::Combinations => builtin_combinations(&args[0], &args[1], line),
         BuiltinId::RangeFn => builtin_range_fn(&args[0], &args[1], &args[2], line),
+        // Phase 13: String functions
+        BuiltinId::Lines => builtin_lines(&args[0], line),
+        BuiltinId::Split => builtin_split(&args[0], &args[1], line),
+        BuiltinId::RegexMatch => builtin_regex_match(&args[0], &args[1], line),
+        BuiltinId::RegexMatchAll => builtin_regex_match_all(&args[0], &args[1], line),
+        // Phase 13: Math functions
+        BuiltinId::Abs => builtin_abs(&args[0], line),
+        BuiltinId::Signum => builtin_signum(&args[0], line),
+        BuiltinId::VecAdd => builtin_vec_add(&args[0], &args[1], line),
+        // Phase 13: Bitwise functions
+        BuiltinId::BitAnd => builtin_bit_and(&args[0], &args[1], line),
+        BuiltinId::BitOr => builtin_bit_or(&args[0], &args[1], line),
+        BuiltinId::BitXor => builtin_bit_xor(&args[0], &args[1], line),
+        BuiltinId::BitNot => builtin_bit_not(&args[0], line),
+        BuiltinId::BitShiftLeft => builtin_bit_shift_left(&args[0], &args[1], line),
+        BuiltinId::BitShiftRight => builtin_bit_shift_right(&args[0], &args[1], line),
+        // Phase 13: Utility functions
+        BuiltinId::Id => builtin_id(&args[0], line),
+        BuiltinId::Type => builtin_type(&args[0], line),
+        BuiltinId::Or => builtin_or(&args[0], &args[1], line),
+        BuiltinId::And => builtin_and(&args[0], &args[1], line),
+        BuiltinId::Evaluate => builtin_evaluate(&args[0], line),
         // Callback-based builtins - handled specially in runtime
         BuiltinId::Get
         | BuiltinId::First
@@ -432,7 +558,8 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         | BuiltinId::Iterate
         | BuiltinId::Take
         | BuiltinId::Second
-        | BuiltinId::Rest => Err(RuntimeError::new(
+        | BuiltinId::Rest
+        | BuiltinId::Memoize => Err(RuntimeError::new(
             format!(
                 "{} requires callback support - should be handled by VM",
                 id.name()
@@ -2157,5 +2284,402 @@ fn lazy_seq_next_simple(seq: &mut LazySeq) -> Result<Option<Value>, RuntimeError
             }
             Ok(Some(Value::List(tuple)))
         }
+    }
+}
+
+
+// ============================================================================
+// String Functions (§11.14)
+// ============================================================================
+
+/// lines(string) → List[String]
+/// Split string on newline characters. Per LANG.txt §11.14
+fn builtin_lines(value: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match value {
+        Value::String(s) => {
+            let lines: Vector<Value> = s
+                .split('\n')
+                .map(|line| Value::String(Rc::new(line.to_string())))
+                .collect();
+            Ok(Value::List(lines))
+        }
+        _ => Err(RuntimeError::new(
+            format!("lines expects String, got {}", value.type_name()),
+            line,
+        )),
+    }
+}
+
+/// split(separator, string) → List[String]
+/// Split string by separator. Per LANG.txt §11.14
+fn builtin_split(separator: &Value, string: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match (separator, string) {
+        (Value::String(sep), Value::String(s)) => {
+            let parts: Vector<Value> = if sep.is_empty() {
+                // Split into grapheme clusters
+                s.graphemes(true)
+                    .map(|g| Value::String(Rc::new(g.to_string())))
+                    .collect()
+            } else {
+                s.split(sep.as_str())
+                    .map(|part| Value::String(Rc::new(part.to_string())))
+                    .collect()
+            };
+            Ok(Value::List(parts))
+        }
+        (Value::String(_), _) => Err(RuntimeError::new(
+            format!("split expects String as second argument, got {}", string.type_name()),
+            line,
+        )),
+        _ => Err(RuntimeError::new(
+            format!("split expects String as first argument, got {}", separator.type_name()),
+            line,
+        )),
+    }
+}
+
+/// regex_match(pattern, string) → List[String]
+/// Match and return capture groups only. Per LANG.txt §11.14
+fn builtin_regex_match(pattern: &Value, string: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match (pattern, string) {
+        (Value::String(pat), Value::String(s)) => {
+            let re = Regex::new(pat).map_err(|e| {
+                RuntimeError::new(format!("Invalid regex pattern: {}", e), line)
+            })?;
+            
+            let captures: Vector<Value> = match re.captures(s) {
+                Some(caps) => caps
+                    .iter()
+                    .skip(1) // Skip the full match (group 0)
+                    .filter_map(|m| m.map(|m| Value::String(Rc::new(m.as_str().to_string()))))
+                    .collect(),
+                None => Vector::new(),
+            };
+            
+            Ok(Value::List(captures))
+        }
+        (Value::String(_), _) => Err(RuntimeError::new(
+            format!("regex_match expects String as second argument, got {}", string.type_name()),
+            line,
+        )),
+        _ => Err(RuntimeError::new(
+            format!("regex_match expects String as first argument, got {}", pattern.type_name()),
+            line,
+        )),
+    }
+}
+
+/// regex_match_all(pattern, string) → List[String]
+/// Match all occurrences. Per LANG.txt §11.14
+fn builtin_regex_match_all(pattern: &Value, string: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match (pattern, string) {
+        (Value::String(pat), Value::String(s)) => {
+            let re = Regex::new(pat).map_err(|e| {
+                RuntimeError::new(format!("Invalid regex pattern: {}", e), line)
+            })?;
+            
+            let matches: Vector<Value> = re
+                .find_iter(s)
+                .map(|m| Value::String(Rc::new(m.as_str().to_string())))
+                .collect();
+            
+            Ok(Value::List(matches))
+        }
+        (Value::String(_), _) => Err(RuntimeError::new(
+            format!("regex_match_all expects String as second argument, got {}", string.type_name()),
+            line,
+        )),
+        _ => Err(RuntimeError::new(
+            format!("regex_match_all expects String as first argument, got {}", pattern.type_name()),
+            line,
+        )),
+    }
+}
+
+// ============================================================================
+// Math Functions (§11.15)
+// ============================================================================
+
+/// abs(value) → Integer | Decimal
+/// Return absolute value. Per LANG.txt §11.15
+fn builtin_abs(value: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match value {
+        Value::Integer(n) => Ok(Value::Integer(n.abs())),
+        Value::Decimal(d) => Ok(Value::Decimal(OrderedFloat(d.0.abs()))),
+        _ => Err(RuntimeError::new(
+            format!("abs expects Integer or Decimal, got {}", value.type_name()),
+            line,
+        )),
+    }
+}
+
+/// signum(value) → Integer
+/// Return sign of number: -1, 0, or 1. Per LANG.txt §11.15
+fn builtin_signum(value: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match value {
+        Value::Integer(n) => Ok(Value::Integer(n.signum())),
+        Value::Decimal(d) => {
+            let sign = if d.0 > 0.0 {
+                1
+            } else if d.0 < 0.0 {
+                -1
+            } else {
+                0
+            };
+            Ok(Value::Integer(sign))
+        }
+        _ => Err(RuntimeError::new(
+            format!("signum expects Integer or Decimal, got {}", value.type_name()),
+            line,
+        )),
+    }
+}
+
+/// vec_add(a, b) → List
+/// Element-wise vector addition. Per LANG.txt §11.15
+fn builtin_vec_add(a: &Value, b: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match (a, b) {
+        (Value::List(list_a), Value::List(list_b)) => {
+            let result: Vector<Value> = list_a
+                .iter()
+                .zip(list_b.iter())
+                .map(|(va, vb)| match (va, vb) {
+                    (Value::Integer(na), Value::Integer(nb)) => Value::Integer(na + nb),
+                    (Value::Integer(na), Value::Decimal(db)) => {
+                        Value::Decimal(OrderedFloat(*na as f64 + db.0))
+                    }
+                    (Value::Decimal(da), Value::Integer(nb)) => {
+                        Value::Decimal(OrderedFloat(da.0 + *nb as f64))
+                    }
+                    (Value::Decimal(da), Value::Decimal(db)) => {
+                        Value::Decimal(OrderedFloat(da.0 + db.0))
+                    }
+                    _ => Value::Nil, // Non-numeric values become nil
+                })
+                .collect();
+            Ok(Value::List(result))
+        }
+        (Value::List(_), _) => Err(RuntimeError::new(
+            format!("vec_add expects List as second argument, got {}", b.type_name()),
+            line,
+        )),
+        _ => Err(RuntimeError::new(
+            format!("vec_add expects List as first argument, got {}", a.type_name()),
+            line,
+        )),
+    }
+}
+
+// ============================================================================
+// Bitwise Functions (§4.5)
+// ============================================================================
+
+/// bit_and(a, b) → Integer
+/// Bitwise AND. Per LANG.txt §4.5
+fn builtin_bit_and(a: &Value, b: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match (a, b) {
+        (Value::Integer(na), Value::Integer(nb)) => Ok(Value::Integer(na & nb)),
+        (Value::Integer(_), _) => Err(RuntimeError::new(
+            format!("bit_and expects Integer as second argument, got {}", b.type_name()),
+            line,
+        )),
+        _ => Err(RuntimeError::new(
+            format!("bit_and expects Integer as first argument, got {}", a.type_name()),
+            line,
+        )),
+    }
+}
+
+/// bit_or(a, b) → Integer
+/// Bitwise OR. Per LANG.txt §4.5
+fn builtin_bit_or(a: &Value, b: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match (a, b) {
+        (Value::Integer(na), Value::Integer(nb)) => Ok(Value::Integer(na | nb)),
+        (Value::Integer(_), _) => Err(RuntimeError::new(
+            format!("bit_or expects Integer as second argument, got {}", b.type_name()),
+            line,
+        )),
+        _ => Err(RuntimeError::new(
+            format!("bit_or expects Integer as first argument, got {}", a.type_name()),
+            line,
+        )),
+    }
+}
+
+/// bit_xor(a, b) → Integer
+/// Bitwise XOR. Per LANG.txt §4.5
+fn builtin_bit_xor(a: &Value, b: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match (a, b) {
+        (Value::Integer(na), Value::Integer(nb)) => Ok(Value::Integer(na ^ nb)),
+        (Value::Integer(_), _) => Err(RuntimeError::new(
+            format!("bit_xor expects Integer as second argument, got {}", b.type_name()),
+            line,
+        )),
+        _ => Err(RuntimeError::new(
+            format!("bit_xor expects Integer as first argument, got {}", a.type_name()),
+            line,
+        )),
+    }
+}
+
+/// bit_not(value) → Integer
+/// Bitwise NOT (complement). Per LANG.txt §4.5
+fn builtin_bit_not(value: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match value {
+        Value::Integer(n) => Ok(Value::Integer(!n)),
+        _ => Err(RuntimeError::new(
+            format!("bit_not expects Integer, got {}", value.type_name()),
+            line,
+        )),
+    }
+}
+
+/// bit_shift_left(value, shift) → Integer
+/// Left shift. Per LANG.txt §4.5
+fn builtin_bit_shift_left(value: &Value, shift: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match (value, shift) {
+        (Value::Integer(n), Value::Integer(s)) => {
+            if *s < 0 {
+                Err(RuntimeError::new(
+                    "bit_shift_left shift amount must be non-negative".to_string(),
+                    line,
+                ))
+            } else if *s >= 64 {
+                Ok(Value::Integer(0)) // Shift more than width gives 0
+            } else {
+                Ok(Value::Integer(n << s))
+            }
+        }
+        (Value::Integer(_), _) => Err(RuntimeError::new(
+            format!("bit_shift_left expects Integer as second argument, got {}", shift.type_name()),
+            line,
+        )),
+        _ => Err(RuntimeError::new(
+            format!("bit_shift_left expects Integer as first argument, got {}", value.type_name()),
+            line,
+        )),
+    }
+}
+
+/// bit_shift_right(value, shift) → Integer
+/// Right shift (arithmetic). Per LANG.txt §4.5
+fn builtin_bit_shift_right(value: &Value, shift: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match (value, shift) {
+        (Value::Integer(n), Value::Integer(s)) => {
+            if *s < 0 {
+                Err(RuntimeError::new(
+                    "bit_shift_right shift amount must be non-negative".to_string(),
+                    line,
+                ))
+            } else if *s >= 64 {
+                // Arithmetic shift: preserve sign
+                Ok(Value::Integer(if *n < 0 { -1 } else { 0 }))
+            } else {
+                Ok(Value::Integer(n >> s))
+            }
+        }
+        (Value::Integer(_), _) => Err(RuntimeError::new(
+            format!("bit_shift_right expects Integer as second argument, got {}", shift.type_name()),
+            line,
+        )),
+        _ => Err(RuntimeError::new(
+            format!("bit_shift_right expects Integer as first argument, got {}", value.type_name()),
+            line,
+        )),
+    }
+}
+
+// ============================================================================
+// Utility Functions (§11.16)
+// ============================================================================
+
+/// id(value) → Value
+/// Identity function. Per LANG.txt §11.16
+fn builtin_id(value: &Value, _line: u32) -> Result<Value, RuntimeError> {
+    Ok(value.clone())
+}
+
+/// type(value) → String
+/// Get type name. Per LANG.txt §11.16
+fn builtin_type(value: &Value, _line: u32) -> Result<Value, RuntimeError> {
+    Ok(Value::String(Rc::new(value.type_name().to_string())))
+}
+
+/// or(a, b) → Value
+/// Logical OR as function. Per LANG.txt §11.16
+fn builtin_or(a: &Value, b: &Value, _line: u32) -> Result<Value, RuntimeError> {
+    if a.is_truthy() {
+        Ok(a.clone())
+    } else {
+        Ok(b.clone())
+    }
+}
+
+/// and(a, b) → Value
+/// Logical AND as function. Per LANG.txt §11.16
+fn builtin_and(a: &Value, b: &Value, _line: u32) -> Result<Value, RuntimeError> {
+    if !a.is_truthy() {
+        Ok(a.clone())
+    } else {
+        Ok(b.clone())
+    }
+}
+
+/// evaluate(source) → Value
+/// Evaluate string as Santa code. Per LANG.txt §11.16
+fn builtin_evaluate(source: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match source {
+        Value::String(code) => {
+            // Import required modules for evaluation
+            use crate::lexer::Lexer;
+            use crate::parser::Parser;
+            use crate::vm::compiler::Compiler;
+            use crate::vm::runtime::VM;
+            
+            // Lex the source
+            let mut lexer = Lexer::new(code);
+            let tokens = lexer.tokenize().map_err(|e| {
+                RuntimeError::new(format!("evaluate: lexer error: {}", e.message), line)
+            })?;
+
+            // Parse the tokens
+            let mut parser = Parser::new(tokens);
+            let program = parser.parse_program().map_err(|e| {
+                RuntimeError::new(format!("evaluate: parser error: {}", e.message), line)
+            })?;
+
+            // For now, just compile and run the first expression if there is one
+            // Full section support would need more infrastructure
+            if program.statements.is_empty() {
+                return Ok(Value::Nil);
+            }
+
+            // Try to get a single expression from the first statement
+            use crate::parser::ast::Stmt;
+            let expr = match &program.statements[0].node {
+                Stmt::Expr(e) => e,
+                _ => {
+                    return Err(RuntimeError::new(
+                        "evaluate: only expressions are supported".to_string(),
+                        line,
+                    ));
+                }
+            };
+
+            // Compile the expression
+            let func = Compiler::compile_expression(expr).map_err(|e| {
+                RuntimeError::new(format!("evaluate: compiler error: {}", e.message), line)
+            })?;
+
+            // Execute in sandboxed VM
+            let mut vm = VM::new();
+            vm.run(Rc::new(func)).map_err(|e| {
+                RuntimeError::new(format!("evaluate: runtime error: {}", e.message), line)
+            })
+        }
+        _ => Err(RuntimeError::new(
+            format!("evaluate expects String, got {}", source.type_name()),
+            line,
+        )),
     }
 }

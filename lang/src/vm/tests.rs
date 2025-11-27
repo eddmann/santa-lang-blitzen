@@ -3904,4 +3904,239 @@ mod runtime_tests {
             ].into_iter().collect()))
         );
     }
+
+    // ========================================================================
+    // Phase 13: String Functions Tests
+    // ========================================================================
+
+    #[test]
+    fn eval_builtin_lines() {
+        assert_eq!(
+            eval("lines(\"a\\nb\\nc\")"),
+            Ok(Value::List(vec![
+                Value::String(Rc::new("a".to_string())),
+                Value::String(Rc::new("b".to_string())),
+                Value::String(Rc::new("c".to_string()))
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_lines_single() {
+        assert_eq!(
+            eval("lines(\"single line\")"),
+            Ok(Value::List(vec![
+                Value::String(Rc::new("single line".to_string()))
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_split() {
+        assert_eq!(
+            eval("split(\",\", \"a,b,c\")"),
+            Ok(Value::List(vec![
+                Value::String(Rc::new("a".to_string())),
+                Value::String(Rc::new("b".to_string())),
+                Value::String(Rc::new("c".to_string()))
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_split_empty_separator() {
+        assert_eq!(
+            eval("split(\"\", \"abc\")"),
+            Ok(Value::List(vec![
+                Value::String(Rc::new("a".to_string())),
+                Value::String(Rc::new("b".to_string())),
+                Value::String(Rc::new("c".to_string()))
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_regex_match() {
+        assert_eq!(
+            eval("regex_match(\"(\\\\d+)\", \"abc123\")"),
+            Ok(Value::List(vec![
+                Value::String(Rc::new("123".to_string()))
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_regex_match_multiple_groups() {
+        assert_eq!(
+            eval("regex_match(\"(\\\\w+):(\\\\d+)\", \"port:8080\")"),
+            Ok(Value::List(vec![
+                Value::String(Rc::new("port".to_string())),
+                Value::String(Rc::new("8080".to_string()))
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_regex_match_no_match() {
+        assert_eq!(
+            eval("regex_match(\"(\\\\d+)\", \"no numbers\")"),
+            Ok(Value::List(Vector::new()))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_regex_match_all() {
+        assert_eq!(
+            eval("regex_match_all(\"\\\\d+\", \"a1b2c3\")"),
+            Ok(Value::List(vec![
+                Value::String(Rc::new("1".to_string())),
+                Value::String(Rc::new("2".to_string())),
+                Value::String(Rc::new("3".to_string()))
+            ].into_iter().collect()))
+        );
+    }
+
+    // ========================================================================
+    // Phase 13: Math Functions Tests
+    // ========================================================================
+
+    #[test]
+    fn eval_builtin_abs_integer() {
+        assert_eq!(eval("abs(-5)"), Ok(Value::Integer(5)));
+        assert_eq!(eval("abs(5)"), Ok(Value::Integer(5)));
+        assert_eq!(eval("abs(0)"), Ok(Value::Integer(0)));
+    }
+
+    #[test]
+    fn eval_builtin_abs_decimal() {
+        assert_eq!(eval("abs(-3.7)"), Ok(Value::Decimal(OrderedFloat(3.7))));
+        assert_eq!(eval("abs(3.7)"), Ok(Value::Decimal(OrderedFloat(3.7))));
+    }
+
+    #[test]
+    fn eval_builtin_signum_integer() {
+        assert_eq!(eval("signum(5)"), Ok(Value::Integer(1)));
+        assert_eq!(eval("signum(0)"), Ok(Value::Integer(0)));
+        assert_eq!(eval("signum(-3)"), Ok(Value::Integer(-1)));
+    }
+
+    #[test]
+    fn eval_builtin_signum_decimal() {
+        assert_eq!(eval("signum(5.5)"), Ok(Value::Integer(1)));
+        assert_eq!(eval("signum(-5.5)"), Ok(Value::Integer(-1)));
+        assert_eq!(eval("signum(0.0)"), Ok(Value::Integer(0)));
+    }
+
+    #[test]
+    fn eval_builtin_vec_add() {
+        assert_eq!(
+            eval("vec_add([1, 2], [3, 4])"),
+            Ok(Value::List(vec![
+                Value::Integer(4),
+                Value::Integer(6)
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_vec_add_shorter_list() {
+        assert_eq!(
+            eval("vec_add([1, 2, 3], [10, 20])"),
+            Ok(Value::List(vec![
+                Value::Integer(11),
+                Value::Integer(22)
+            ].into_iter().collect()))
+        );
+    }
+
+    // ========================================================================
+    // Phase 13: Bitwise Functions Tests
+    // ========================================================================
+
+    #[test]
+    fn eval_builtin_bit_and() {
+        assert_eq!(eval("bit_and(12, 10)"), Ok(Value::Integer(8)));
+    }
+
+    #[test]
+    fn eval_builtin_bit_or() {
+        assert_eq!(eval("bit_or(12, 10)"), Ok(Value::Integer(14)));
+    }
+
+    #[test]
+    fn eval_builtin_bit_xor() {
+        assert_eq!(eval("bit_xor(12, 10)"), Ok(Value::Integer(6)));
+    }
+
+    #[test]
+    fn eval_builtin_bit_not() {
+        assert_eq!(eval("bit_not(12)"), Ok(Value::Integer(-13)));
+    }
+
+    #[test]
+    fn eval_builtin_bit_shift_left() {
+        assert_eq!(eval("bit_shift_left(1, 3)"), Ok(Value::Integer(8)));
+    }
+
+    #[test]
+    fn eval_builtin_bit_shift_right() {
+        assert_eq!(eval("bit_shift_right(8, 2)"), Ok(Value::Integer(2)));
+    }
+
+    // ========================================================================
+    // Phase 13: Utility Functions Tests
+    // ========================================================================
+
+    #[test]
+    fn eval_builtin_id() {
+        assert_eq!(eval("id(42)"), Ok(Value::Integer(42)));
+        assert_eq!(eval("id(\"hello\")"), Ok(Value::String(Rc::new("hello".to_string()))));
+    }
+
+    #[test]
+    fn eval_builtin_type() {
+        assert_eq!(eval("type(nil)"), Ok(Value::String(Rc::new("Nil".to_string()))));
+        assert_eq!(eval("type(42)"), Ok(Value::String(Rc::new("Integer".to_string()))));
+        assert_eq!(eval("type(3.14)"), Ok(Value::String(Rc::new("Decimal".to_string()))));
+        assert_eq!(eval("type(true)"), Ok(Value::String(Rc::new("Boolean".to_string()))));
+        assert_eq!(eval("type(\"hello\")"), Ok(Value::String(Rc::new("String".to_string()))));
+        assert_eq!(eval("type([1, 2])"), Ok(Value::String(Rc::new("List".to_string()))));
+        assert_eq!(eval("type({1, 2})"), Ok(Value::String(Rc::new("Set".to_string()))));
+        assert_eq!(eval("type(#{\"a\": 1})"), Ok(Value::String(Rc::new("Dictionary".to_string()))));
+    }
+
+    #[test]
+    fn eval_builtin_or() {
+        assert_eq!(eval("or(true, false)"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("or(false, false)"), Ok(Value::Boolean(false)));
+        assert_eq!(eval("or(nil, 5)"), Ok(Value::Integer(5)));
+        assert_eq!(eval("or(0, 10)"), Ok(Value::Integer(10)));
+    }
+
+    #[test]
+    fn eval_builtin_and() {
+        assert_eq!(eval("and(true, true)"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("and(true, false)"), Ok(Value::Boolean(false)));
+        assert_eq!(eval("and(5, 10)"), Ok(Value::Integer(10)));
+        assert_eq!(eval("and(nil, 5)"), Ok(Value::Nil));
+    }
+
+    #[test]
+    fn eval_builtin_evaluate() {
+        assert_eq!(eval("evaluate(\"1 + 2\")"), Ok(Value::Integer(3)));
+        assert_eq!(
+            eval("evaluate(\"[1, 2, 3]\")"),
+            Ok(Value::List(vec![
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(3)
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_evaluate_complex() {
+        // evaluate currently only supports single expressions, not full statements with let
+        assert_eq!(eval("evaluate(\"10 * 2\")"), Ok(Value::Integer(20)));
+    }
 }
