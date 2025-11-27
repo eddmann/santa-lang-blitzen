@@ -592,9 +592,12 @@ impl Parser {
                 self.advance();
                 // Check for ..= (inclusive) was handled in tokenizer as DotDotEqual
                 // Check if there's a right operand (unbounded range has none)
+                // An unbounded range ends if followed by: end of input, statement terminator,
+                // closing delimiter, or an infix operator at same/lower precedence (like |>)
                 if self.is_at_end()
                     || self.check_statement_terminator()
                     || self.check_closing_delimiter()
+                    || self.check_infix_at_or_below_precedence(precedence)
                 {
                     let span = Span {
                         start: left.span.start,
@@ -1542,6 +1545,17 @@ impl Parser {
                 | Some(TokenKind::RightBrace)
                 | Some(TokenKind::Comma)
         )
+    }
+
+    fn check_infix_at_or_below_precedence(&self, min_precedence: Precedence) -> bool {
+        if let Some(token) = self.peek() {
+            let prec = self.get_infix_precedence(&token.kind);
+            // If it's an infix operator at same or lower precedence, we should stop
+            // This handles cases like `4.. |> find(...)` where |> has same precedence as ..
+            prec > Precedence::None && prec <= min_precedence
+        } else {
+            false
+        }
     }
 
     fn is_at_end(&self) -> bool {

@@ -4771,4 +4771,33 @@ mod runtime_tests {
             Ok(Value::Integer(6))
         );
     }
+
+    // ===== Unbounded Range with Pipeline Tests =====
+
+    #[test]
+    fn unbounded_range_with_pipeline() {
+        // Unbounded range followed by pipeline operator
+        assert_eq!(
+            eval("4.. |> find(|x| x > 5)"),
+            Ok(Value::Integer(6))
+        );
+    }
+
+    #[test]
+    fn unbounded_range_with_pipeline_multiline() {
+        // Multiline version
+        assert_eq!(
+            eval("0..\n    |> find(|x| x > 10)"),
+            Ok(Value::Integer(11))
+        );
+    }
+
+    #[test]
+    fn unbounded_range_in_block_with_pipeline() {
+        // Inside a block
+        assert_eq!(
+            eval("{ 1.. |> take(5) |> sum }"),
+            Ok(Value::Integer(15))  // 1+2+3+4+5
+        );
+    }
 }
