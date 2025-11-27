@@ -1125,7 +1125,32 @@ Generate bytecode for pattern matching:
   - Disambiguate `{expr}` vs `{expr, ...}` in parser
   - Single-element sets require trailing comma: `{2,}` or use `set([2])`
 
-### 15.4 Tests
+### 15.4 Validate Phase 14 TCO Implementation
+
+Once identifier patterns work, the Phase 14 TCO tests can be un-ignored and validated:
+
+- **Un-ignore all TCO tests** in `lang/src/vm/tests.rs` (currently 9 tests marked `#[ignore]`)
+- **Test upvalue handling in tail calls** - Add test for this edge case:
+  ```rust
+  #[test]
+  fn tco_with_captured_variables() {
+      // Test that upvalues are properly closed during tail calls
+      let code = r#"{
+          let f = |n| {
+              let captured = n;
+              let closure = || captured;
+              if n == 0 { closure() }
+              else { f(n - 1) }
+          };
+          f(5)
+      }"#;
+  }
+  ```
+- **Fix upvalue bug if needed**: In `lang/src/vm/runtime.rs` TailCall handler (line ~403),
+  add `self.close_upvalues(stack_base)` before reusing frame if test fails
+- **Verify deep recursion works**: Ensure `tco_deep_recursion` test passes with 100,000+ calls
+
+### 15.5 Tests
 
 ```rust
 #[test]
@@ -1163,6 +1188,8 @@ fn single_element_set() { ... }  // {2,} or set([2])
 - [ ] Function parameter destructuring works (`|[a, b]| ...`)
 - [ ] Operators as function references work (`reduce(+, ...)`)
 - [ ] Single-element sets parse correctly (`{2,}`)
+- [ ] **Phase 14 TCO tests un-ignored and passing** (9 tests)
+- [ ] **TCO upvalue handling validated** (may need fix)
 - [ ] All tests pass
 - [ ] `cargo clippy` clean
 
