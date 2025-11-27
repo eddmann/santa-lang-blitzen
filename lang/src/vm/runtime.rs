@@ -1793,18 +1793,19 @@ impl VM {
         closure.function.arity as usize
     }
 
-    /// Get the effective arity of a callable (function or partial application)
+    /// Get the effective arity of a callable (function, partial application, or memoized function)
     fn callable_arity(&self, callable: &Value) -> usize {
         match callable {
             Value::Function(c) => c.function.arity as usize,
             Value::PartialApplication { closure, args } => {
                 (closure.function.arity as usize).saturating_sub(args.len())
             }
+            Value::MemoizedFunction(m) => m.borrow().closure.function.arity as usize,
             _ => 0,
         }
     }
 
-    /// Call any callable value (Function or PartialApplication) with arguments
+    /// Call any callable value (Function, PartialApplication, or MemoizedFunction) with arguments
     fn call_callable_sync(
         &mut self,
         callable: &Value,
@@ -1817,6 +1818,27 @@ impl VM {
                 let mut all_args = partial_args.clone();
                 all_args.extend(args);
                 self.call_closure_sync(closure, all_args)
+            }
+            Value::MemoizedFunction(memoized_fn) => {
+                // Convert args to Vector for cache key
+                let args_key: im_rc::Vector<Value> = args.iter().cloned().collect();
+
+                // Check cache first
+                {
+                    let cache = &memoized_fn.borrow().cache;
+                    if let Some(cached_result) = cache.get(&args_key) {
+                        return Ok(cached_result.clone());
+                    }
+                }
+
+                // Not in cache - call the underlying function
+                let closure = memoized_fn.borrow().closure.clone();
+                let result = self.call_closure_sync(&closure, args)?;
+
+                // Store in cache
+                memoized_fn.borrow_mut().cache.insert(args_key, result.clone());
+
+                Ok(result)
             }
             _ => Err(self.error(format!("Cannot call {}", callable.type_name()))),
         }
@@ -3904,6 +3926,23 @@ impl VM {
                     line,
                 )),
             },
+            Value::LazySequence(seq) => {
+                let mut seq_clone = seq.borrow().clone();
+                let mut idx = 0;
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    let call_args = if arity >= 2 {
+                        vec![elem, Value::Integer(idx)]
+                    } else {
+                        vec![elem]
+                    };
+                    let result = self.call_closure_sync(&closure, call_args)?;
+                    if !result.is_truthy() {
+                        return Ok(Value::Boolean(false));
+                    }
+                    idx += 1;
+                }
+                Ok(Value::Boolean(true))
+            }
             _ => Err(RuntimeError::new(
                 format!("all? does not support {}", collection.type_name()),
                 line,
@@ -3922,7 +3961,10 @@ impl VM {
         let initial = &args[1];
 
         // Validate generator is callable
-        if !matches!(generator, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !matches!(
+            generator,
+            Value::Function(_) | Value::PartialApplication { .. } | Value::MemoizedFunction(_)
+        ) {
             return Err(RuntimeError::new(
                 format!(
                     "iterate expects Function as first argument, got {}",
