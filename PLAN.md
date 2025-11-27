@@ -974,13 +974,13 @@ fn lazy_combinations() { ... }
 
 ### Release Gate 12
 
-- [ ] Unbounded ranges work with take/find
-- [ ] iterate generates correct sequences
-- [ ] Lazy map/filter compose correctly
-- [ ] break works in reduce/fold/each on infinite sequences
-- [ ] combinations generates correct subsets
-- [ ] All tests pass
-- [ ] `cargo clippy` clean
+- [x] Unbounded ranges work with take/find
+- [x] iterate generates correct sequences
+- [x] Lazy map/filter compose correctly
+- [x] break works in reduce/fold/each on infinite sequences
+- [x] combinations generates correct subsets
+- [x] All tests pass
+- [x] `cargo clippy` clean
 
 ---
 

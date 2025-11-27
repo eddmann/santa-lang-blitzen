@@ -14,6 +14,10 @@ use super::value::{Closure, LazySeq, Upvalue, Value};
 pub struct RuntimeError {
     pub message: String,
     pub line: u32,
+    /// True if this is a break exception (for iteration control flow)
+    pub is_break: bool,
+    /// The value returned by break
+    pub break_value: Option<Value>,
 }
 
 impl RuntimeError {
@@ -21,6 +25,18 @@ impl RuntimeError {
         Self {
             message: message.into(),
             line,
+            is_break: false,
+            break_value: None,
+        }
+    }
+
+    /// Create a break exception with a value
+    pub fn break_with(value: Value, line: u32) -> Self {
+        Self {
+            message: "break".to_string(),
+            line,
+            is_break: true,
+            break_value: Some(value),
         }
     }
 }
@@ -483,8 +499,10 @@ impl VM {
 
                 // Special
                 Ok(OpCode::Break) => {
-                    // TODO: Implement break handling in Phase 12
-                    return Err(self.error("Break not yet implemented"));
+                    // Break pops a value from the stack and propagates it up
+                    let value = self.pop();
+                    let line = self.current_frame().current_line();
+                    return Err(RuntimeError::break_with(value, line));
                 }
                 Ok(OpCode::Spread) => {
                     // TODO: Implement spread in Phase 12
@@ -1081,8 +1099,20 @@ impl VM {
     }
 
     // =========================================================================
-    // Callback-based Built-in Functions (Phase 10)
+    // Callback-based Built-in Functions
     // =========================================================================
+    //
+    // These builtins live in runtime.rs (not builtins.rs) because they need to:
+    // 1. Call closures during execution (e.g., map's mapper function)
+    // 2. Iterate LazySequence variants that contain closures (Map, Filter, Iterate)
+    //
+    // Pure builtins in builtins.rs operate only on data without invoking closures.
+    // Callback builtins here require VM context via `&mut self` to execute closures.
+    //
+    // Examples:
+    // - map/filter/reduce: invoke user-provided functions on each element
+    // - get/first on LazySequence: may need to evaluate Map/Filter closures
+    // - take on LazySequence: iterates sequences that may contain closures
 
     /// Execute a callback-based builtin function
     fn call_callback_builtin(
@@ -1109,6 +1139,12 @@ impl VM {
             BuiltinId::Sort => self.builtin_sort(args, line),
             BuiltinId::Any => self.builtin_any(args, line),
             BuiltinId::All => self.builtin_all(args, line),
+            BuiltinId::Iterate => self.builtin_iterate(args, line),
+            BuiltinId::Take => self.builtin_take(args, line),
+            BuiltinId::Second => self.builtin_second(args, line),
+            BuiltinId::Rest => self.builtin_rest(args, line),
+            BuiltinId::Get => self.builtin_get(args, line),
+            BuiltinId::First => self.builtin_first(args, line),
             _ => Err(RuntimeError::new(
                 format!("{} is not a callback builtin", id.name()),
                 line,
@@ -1161,6 +1197,157 @@ impl VM {
     /// Get the arity of a closure
     fn closure_arity(&self, closure: &Rc<Closure>) -> usize {
         closure.function.arity as usize
+    }
+
+    /// Get the next element from a lazy sequence, handling callbacks
+    fn lazy_seq_next_with_callback(
+        &mut self,
+        seq: &mut LazySeq,
+    ) -> Result<Option<Value>, RuntimeError> {
+        match seq {
+            LazySeq::Range {
+                current,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    // Determine direction based on start vs end
+                    let ascending = *current <= *e;
+                    let actual_end = if ascending {
+                        if *inclusive { *e } else { *e - 1 }
+                    } else if *inclusive {
+                        *e
+                    } else {
+                        *e + 1
+                    };
+
+                    if ascending {
+                        if *current > actual_end {
+                            return Ok(None);
+                        }
+                        let value = Value::Integer(*current);
+                        *current += 1;
+                        Ok(Some(value))
+                    } else {
+                        if *current < actual_end {
+                            return Ok(None);
+                        }
+                        let value = Value::Integer(*current);
+                        *current -= 1;
+                        Ok(Some(value))
+                    }
+                }
+                None => {
+                    // Unbounded (always ascending)
+                    let value = Value::Integer(*current);
+                    *current += 1;
+                    Ok(Some(value))
+                }
+            },
+            LazySeq::RangeStep { current, end, step } => {
+                if *step > 0 && *current >= *end {
+                    return Ok(None);
+                }
+                if *step < 0 && *current <= *end {
+                    return Ok(None);
+                }
+                let value = Value::Integer(*current);
+                *current += *step;
+                Ok(Some(value))
+            }
+            LazySeq::Repeat { value } => Ok(Some(value.clone())),
+            LazySeq::Cycle { source, index } => {
+                if source.is_empty() {
+                    return Ok(None);
+                }
+                let value = source[*index % source.len()].clone();
+                *index += 1;
+                Ok(Some(value))
+            }
+            LazySeq::Iterate { generator, current } => {
+                let result = current.clone();
+                let next = self.call_closure_sync(generator, vec![current.clone()])?;
+                *current = next;
+                Ok(Some(result))
+            }
+            LazySeq::Combinations {
+                source,
+                size,
+                indices,
+            } => {
+                if indices.is_empty() || source.is_empty() || *size == 0 {
+                    return Ok(None);
+                }
+
+                if indices[0] > source.len() - *size {
+                    return Ok(None);
+                }
+
+                let combination: Vector<Value> =
+                    indices.iter().map(|&i| source[i].clone()).collect();
+
+                // Advance indices
+                let n = source.len();
+                let mut i = *size;
+                while i > 0 {
+                    i -= 1;
+                    if indices[i] < n - *size + i {
+                        indices[i] += 1;
+                        for j in (i + 1)..*size {
+                            indices[j] = indices[j - 1] + 1;
+                        }
+                        break;
+                    }
+                    if i == 0 {
+                        indices[0] = n;
+                    }
+                }
+
+                Ok(Some(Value::List(combination)))
+            }
+            LazySeq::Map { source, mapper } => {
+                match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
+                    Some(value) => {
+                        let mapped = self.call_closure_sync(mapper, vec![value])?;
+                        Ok(Some(mapped))
+                    }
+                    None => Ok(None),
+                }
+            }
+            LazySeq::Filter { source, predicate } => {
+                loop {
+                    match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
+                        Some(value) => {
+                            let result = self.call_closure_sync(predicate, vec![value.clone()])?;
+                            if result.is_truthy() {
+                                return Ok(Some(value));
+                            }
+                        }
+                        None => return Ok(None),
+                    }
+                }
+            }
+            LazySeq::Skip { source, remaining } => {
+                while *remaining > 0 {
+                    match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
+                        Some(_) => *remaining -= 1,
+                        None => return Ok(None),
+                    }
+                }
+                self.lazy_seq_next_with_callback(&mut source.borrow_mut())
+            }
+            LazySeq::Zip { sources } => {
+                let mut tuple = Vector::new();
+                for source in sources {
+                    match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
+                        Some(value) => tuple.push_back(value),
+                        None => return Ok(None),
+                    }
+                }
+                Ok(Some(Value::List(tuple)))
+            }
+            LazySeq::Empty => Ok(None),
+        }
     }
 
     // =========================================================================
@@ -1293,6 +1480,13 @@ impl VM {
                     }
                 }
             }
+            Value::LazySequence(lazy_seq) => {
+                // Wrap in LazySeq::Map for lazy composition
+                Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Map {
+                    source: lazy_seq.clone(),
+                    mapper: closure,
+                }))))
+            }
             _ => Err(RuntimeError::new(
                 format!("map does not support {}", collection.type_name()),
                 line,
@@ -1413,6 +1607,13 @@ impl VM {
                     }
                 }
             }
+            Value::LazySequence(lazy_seq) => {
+                // Wrap in LazySeq::Filter for lazy composition
+                Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Filter {
+                    source: lazy_seq.clone(),
+                    predicate: closure,
+                }))))
+            }
             _ => Err(RuntimeError::new(
                 format!("filter does not support {}", collection.type_name()),
                 line,
@@ -1472,6 +1673,49 @@ impl VM {
                                 _ => result.push_back(mapped),
                             }
                         }
+                    }
+                }
+            }
+            Value::LazySequence(seq) => {
+                let mut seq_clone = seq.borrow().clone();
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    let mapped = self.call_closure_sync(&closure, vec![elem])?;
+                    match mapped {
+                        Value::List(inner) => {
+                            for item in inner.iter() {
+                                result.push_back(item.clone());
+                            }
+                        }
+                        _ => result.push_back(mapped),
+                    }
+                }
+            }
+            Value::Range { start, end, inclusive } => {
+                match end {
+                    Some(e) => {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        let range_iter: Box<dyn Iterator<Item = i64>> = if start <= &actual_end {
+                            Box::new(*start..=actual_end)
+                        } else {
+                            Box::new((actual_end..=*start).rev())
+                        };
+                        for i in range_iter {
+                            let mapped = self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            match mapped {
+                                Value::List(inner) => {
+                                    for item in inner.iter() {
+                                        result.push_back(item.clone());
+                                    }
+                                }
+                                _ => result.push_back(mapped),
+                            }
+                        }
+                    }
+                    None => {
+                        return Err(RuntimeError::new(
+                            "flat_map on unbounded range not supported",
+                            line,
+                        ));
                     }
                 }
             }
@@ -1569,6 +1813,43 @@ impl VM {
                 }
                 Ok(Value::List(result))
             }
+            Value::Range { start, end, inclusive } => {
+                let mut result = Vector::new();
+                match end {
+                    Some(e) => {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        let range_iter: Box<dyn Iterator<Item = i64>> = if start <= &actual_end {
+                            Box::new(*start..=actual_end)
+                        } else {
+                            Box::new((actual_end..=*start).rev())
+                        };
+                        for i in range_iter {
+                            let mapped = self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            if mapped.is_truthy() {
+                                result.push_back(mapped);
+                            }
+                        }
+                    }
+                    None => {
+                        return Err(RuntimeError::new(
+                            "filter_map on unbounded range not supported",
+                            line,
+                        ));
+                    }
+                }
+                Ok(Value::List(result))
+            }
+            Value::LazySequence(seq) => {
+                let mut result = Vector::new();
+                let mut seq_clone = seq.borrow().clone();
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    let mapped = self.call_closure_sync(&closure, vec![elem])?;
+                    if mapped.is_truthy() {
+                        result.push_back(mapped);
+                    }
+                }
+                Ok(Value::List(result))
+            }
             _ => Err(RuntimeError::new(
                 format!("filter_map does not support {}", collection.type_name()),
                 line,
@@ -1648,6 +1929,50 @@ impl VM {
                     }
                 }
                 Ok(Value::Nil)
+            }
+            Value::Range { start, end, inclusive } => {
+                match end {
+                    Some(e) => {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        let range_iter: Box<dyn Iterator<Item = i64>> = if start <= &actual_end {
+                            Box::new(*start..=actual_end)
+                        } else {
+                            Box::new((actual_end..=*start).rev())
+                        };
+                        for i in range_iter {
+                            let mapped = self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            if mapped.is_truthy() {
+                                return Ok(mapped);
+                            }
+                        }
+                        Ok(Value::Nil)
+                    }
+                    None => {
+                        // Unbounded range - keep searching until found
+                        let mut i = *start;
+                        loop {
+                            let mapped = self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            if mapped.is_truthy() {
+                                return Ok(mapped);
+                            }
+                            i += 1;
+                        }
+                    }
+                }
+            }
+            Value::LazySequence(seq) => {
+                let mut seq_clone = seq.borrow().clone();
+                loop {
+                    match self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                        Some(elem) => {
+                            let mapped = self.call_closure_sync(&closure, vec![elem])?;
+                            if mapped.is_truthy() {
+                                return Ok(mapped);
+                            }
+                        }
+                        None => return Ok(Value::Nil),
+                    }
+                }
             }
             _ => Err(RuntimeError::new(
                 format!("find_map does not support {}", collection.type_name()),
@@ -1748,15 +2073,58 @@ impl VM {
                     }
                     let mut acc = Value::Integer(*start);
                     for i in (start + 1)..=actual_end {
-                        acc = self.call_closure_sync(&closure, vec![acc, Value::Integer(i)])?;
+                        match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)]) {
+                            Ok(v) => acc = v,
+                            Err(e) if e.is_break => {
+                                return Ok(e.break_value.unwrap_or(Value::Nil));
+                            }
+                            Err(e) => return Err(e),
+                        }
                     }
                     Ok(acc)
                 }
-                None => Err(RuntimeError::new(
-                    "reduce on unbounded range requires break",
-                    line,
-                )),
+                None => {
+                    // Unbounded range - must use break to terminate
+                    let mut acc = Value::Integer(*start);
+                    let mut i = *start + 1;
+                    loop {
+                        match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)]) {
+                            Ok(v) => acc = v,
+                            Err(e) if e.is_break => {
+                                return Ok(e.break_value.unwrap_or(Value::Nil));
+                            }
+                            Err(e) => return Err(e),
+                        }
+                        i += 1;
+                    }
+                }
             },
+            Value::LazySequence(seq) => {
+                // Get first element as initial accumulator
+                let mut seq_clone = seq.borrow().clone();
+                let first = self.lazy_seq_next_with_callback(&mut seq_clone)?;
+                let mut acc = match first {
+                    Some(v) => v,
+                    None => return Err(RuntimeError::new("reduce on empty LazySequence", line)),
+                };
+
+                loop {
+                    let next = self.lazy_seq_next_with_callback(&mut seq_clone)?;
+                    match next {
+                        Some(elem) => {
+                            match self.call_closure_sync(&closure, vec![acc.clone(), elem]) {
+                                Ok(v) => acc = v,
+                                Err(e) if e.is_break => {
+                                    return Ok(e.break_value.unwrap_or(Value::Nil));
+                                }
+                                Err(e) => return Err(e),
+                            }
+                        }
+                        None => break,
+                    }
+                }
+                Ok(acc)
+            }
             _ => Err(RuntimeError::new(
                 format!("reduce does not support {}", collection.type_name()),
                 line,
@@ -1837,25 +2205,58 @@ impl VM {
                         let actual_end = if *inclusive { *e } else { e - 1 };
                         if start <= &actual_end {
                             for i in *start..=actual_end {
-                                acc =
-                                    self.call_closure_sync(&closure, vec![acc, Value::Integer(i)])?;
+                                match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)]) {
+                                    Ok(v) => acc = v,
+                                    Err(e) if e.is_break => {
+                                        return Ok(e.break_value.unwrap_or(Value::Nil));
+                                    }
+                                    Err(e) => return Err(e),
+                                }
                             }
                         } else {
                             // Descending range
                             let mut i = *start;
                             while i >= actual_end {
-                                acc =
-                                    self.call_closure_sync(&closure, vec![acc, Value::Integer(i)])?;
+                                match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)]) {
+                                    Ok(v) => acc = v,
+                                    Err(e) if e.is_break => {
+                                        return Ok(e.break_value.unwrap_or(Value::Nil));
+                                    }
+                                    Err(e) => return Err(e),
+                                }
                                 i -= 1;
                             }
                         }
                         Ok(acc)
                     }
-                    None => Err(RuntimeError::new(
-                        "fold on unbounded range requires break",
-                        line,
-                    )),
+                    None => {
+                        // Unbounded range - must use break to terminate
+                        let mut i = *start;
+                        loop {
+                            match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)]) {
+                                Ok(v) => acc = v,
+                                Err(e) if e.is_break => {
+                                    return Ok(e.break_value.unwrap_or(Value::Nil));
+                                }
+                                Err(e) => return Err(e),
+                            }
+                            i += 1;
+                        }
+                    }
                 }
+            }
+            Value::LazySequence(seq) => {
+                let mut seq_clone = seq.borrow().clone();
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    match self.call_closure_sync(&closure, vec![acc.clone(), elem]) {
+                        Ok(v) => acc = v,
+                        Err(e) if e.is_break => {
+                            return Ok(e.break_value.unwrap_or(Value::Nil));
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+                Ok(acc)
             }
             _ => Err(RuntimeError::new(
                 format!("fold does not support {}", collection.type_name()),
@@ -1912,6 +2313,12 @@ impl VM {
                     ));
                 }
             },
+            Value::LazySequence(seq) => {
+                let mut seq_clone = seq.borrow().clone();
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    acc = self.call_closure_sync(&closure, vec![acc, elem])?;
+                }
+            }
             _ => {
                 return Err(RuntimeError::new(
                     format!("fold_s does not support {}", collection.type_name()),
@@ -2094,22 +2501,46 @@ impl VM {
                         let actual_end = if *inclusive { *e } else { e - 1 };
                         if start <= &actual_end {
                             for i in *start..=actual_end {
-                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                match self.call_closure_sync(&closure, vec![Value::Integer(i)]) {
+                                    Ok(_) => {}
+                                    Err(e) if e.is_break => return Ok(Value::Nil),
+                                    Err(e) => return Err(e),
+                                }
                             }
                         } else {
                             // Descending range
                             let mut i = *start;
                             while i >= actual_end {
-                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                match self.call_closure_sync(&closure, vec![Value::Integer(i)]) {
+                                    Ok(_) => {}
+                                    Err(e) if e.is_break => return Ok(Value::Nil),
+                                    Err(e) => return Err(e),
+                                }
                                 i -= 1;
                             }
                         }
                     }
                     None => {
-                        return Err(RuntimeError::new(
-                            "each on unbounded range requires break",
-                            line,
-                        ));
+                        // Unbounded range - must use break to terminate
+                        let mut i = *start;
+                        loop {
+                            match self.call_closure_sync(&closure, vec![Value::Integer(i)]) {
+                                Ok(_) => {}
+                                Err(e) if e.is_break => return Ok(Value::Nil),
+                                Err(e) => return Err(e),
+                            }
+                            i += 1;
+                        }
+                    }
+                }
+            }
+            Value::LazySequence(seq) => {
+                let mut seq_clone = seq.borrow().clone();
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    match self.call_closure_sync(&closure, vec![elem]) {
+                        Ok(_) => {}
+                        Err(e) if e.is_break => return Ok(Value::Nil),
+                        Err(e) => return Err(e),
                     }
                 }
             }
@@ -2317,11 +2748,33 @@ impl VM {
                     }
                     Ok(Value::Nil)
                 }
-                None => Err(RuntimeError::new(
-                    "find on unbounded range may not terminate",
-                    line,
-                )),
+                None => {
+                    // Allow find on unbounded range - will find first match
+                    let mut i = *start;
+                    loop {
+                        let elem = Value::Integer(i);
+                        let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                        if result.is_truthy() {
+                            return Ok(elem);
+                        }
+                        i += 1;
+                    }
+                }
             },
+            Value::LazySequence(seq) => {
+                let mut seq_clone = seq.borrow().clone();
+                loop {
+                    match self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                        Some(elem) => {
+                            let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                            if result.is_truthy() {
+                                return Ok(elem);
+                            }
+                        }
+                        None => return Ok(Value::Nil),
+                    }
+                }
+            }
             _ => Err(RuntimeError::new(
                 format!("find does not support {}", collection.type_name()),
                 line,
@@ -2602,6 +3055,20 @@ impl VM {
                     line,
                 )),
             },
+            Value::LazySequence(seq) => {
+                let mut seq_clone = seq.borrow().clone();
+                loop {
+                    match self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                        Some(elem) => {
+                            let result = self.call_closure_sync(&closure, vec![elem])?;
+                            if result.is_truthy() {
+                                return Ok(Value::Boolean(true));
+                            }
+                        }
+                        None => return Ok(Value::Boolean(false)),
+                    }
+                }
+            }
             _ => Err(RuntimeError::new(
                 format!("any? does not support {}", collection.type_name()),
                 line,
@@ -2702,6 +3169,392 @@ impl VM {
             },
             _ => Err(RuntimeError::new(
                 format!("all? does not support {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    // =========================================================================
+    // Lazy Sequence Generation (§11.12)
+    // =========================================================================
+
+    /// iterate(generator, initial) → LazySequence
+    /// Generate a lazy sequence by repeatedly applying generator to previous result.
+    fn builtin_iterate(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let generator = &args[0];
+        let initial = &args[1];
+
+        let closure = match generator {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "iterate expects Function as first argument, got {}",
+                        generator.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        Ok(Value::LazySequence(Rc::new(RefCell::new(
+            LazySeq::Iterate {
+                generator: closure,
+                current: initial.clone(),
+            },
+        ))))
+    }
+
+    // =========================================================================
+    // Collection Operations (§11.9)
+    // =========================================================================
+
+    /// take(n, collection) → List
+    /// Take n elements from collection, with callback support for lazy sequences.
+    fn builtin_take(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let total = &args[0];
+        let collection = &args[1];
+
+        let n = match total {
+            Value::Integer(n) => *n as usize,
+            _ => {
+                return Err(RuntimeError::new(
+                    format!("take expects Integer, got {}", total.type_name()),
+                    line,
+                ))
+            }
+        };
+
+        match collection {
+            Value::List(list) => {
+                let count = n.min(list.len());
+                Ok(Value::List(list.clone().slice(0..count)))
+            }
+            Value::Set(set) => Ok(Value::List(set.iter().take(n).cloned().collect())),
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                let mut result = Vector::new();
+                let step = match end {
+                    Some(e) if e < start => -1,
+                    _ => 1,
+                };
+
+                let actual_end = end.map(|e| if *inclusive { e } else { e - step });
+
+                for i in 0..n {
+                    let val = start + (i as i64) * step;
+                    if let Some(e) = actual_end
+                        && ((step > 0 && val > e) || (step < 0 && val < e))
+                    {
+                        break;
+                    }
+                    result.push_back(Value::Integer(val));
+                }
+                Ok(Value::List(result))
+            }
+            Value::LazySequence(seq) => {
+                let mut result = Vector::new();
+                let mut seq_clone = seq.borrow().clone();
+
+                for _ in 0..n {
+                    match self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                        Some(value) => result.push_back(value),
+                        None => break,
+                    }
+                }
+
+                Ok(Value::List(result))
+            }
+            _ => Err(RuntimeError::new(
+                format!("take does not support {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// get(index, collection) → Value | Nil
+    /// Get element at index. Returns nil if not found.
+    fn builtin_get(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let index = &args[0];
+        let collection = &args[1];
+
+        match collection {
+            Value::List(list) => match index {
+                Value::Integer(idx) => {
+                    let len = list.len() as i64;
+                    let actual_idx = if *idx < 0 { len + idx } else { *idx };
+                    if actual_idx < 0 || actual_idx >= len {
+                        Ok(Value::Nil)
+                    } else {
+                        Ok(list[actual_idx as usize].clone())
+                    }
+                }
+                _ => Err(RuntimeError::new(
+                    format!("List index must be Integer, got {}", index.type_name()),
+                    line,
+                )),
+            },
+            Value::Set(set) => {
+                if set.contains(index) {
+                    Ok(index.clone())
+                } else {
+                    Ok(Value::Nil)
+                }
+            }
+            Value::Dict(dict) => Ok(dict.get(index).cloned().unwrap_or(Value::Nil)),
+            Value::String(s) => match index {
+                Value::Integer(idx) => {
+                    let graphemes: Vec<&str> = s.graphemes(true).collect();
+                    let len = graphemes.len() as i64;
+                    let actual_idx = if *idx < 0 { len + idx } else { *idx };
+                    if actual_idx < 0 || actual_idx >= len {
+                        Ok(Value::Nil)
+                    } else {
+                        Ok(Value::String(Rc::new(
+                            graphemes[actual_idx as usize].to_string(),
+                        )))
+                    }
+                }
+                _ => Err(RuntimeError::new(
+                    format!("String index must be Integer, got {}", index.type_name()),
+                    line,
+                )),
+            },
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match index {
+                Value::Integer(idx) => {
+                    if *idx < 0 {
+                        match end {
+                            Some(e) => {
+                                let len = if *inclusive {
+                                    (e - start).abs() + 1
+                                } else {
+                                    (e - start).abs()
+                                };
+                                let actual_idx = len + idx;
+                                if actual_idx < 0 {
+                                    Ok(Value::Nil)
+                                } else {
+                                    let step = if start <= e { 1 } else { -1 };
+                                    Ok(Value::Integer(start + actual_idx * step))
+                                }
+                            }
+                            None => Err(RuntimeError::new(
+                                "Cannot use negative index on unbounded range",
+                                line,
+                            )),
+                        }
+                    } else {
+                        if let Some(e) = end {
+                            let len = if *inclusive {
+                                (e - start).abs() + 1
+                            } else {
+                                (e - start).abs()
+                            };
+                            if *idx >= len {
+                                return Ok(Value::Nil);
+                            }
+                        }
+                        let step = match end {
+                            Some(e) if e < start => -1,
+                            _ => 1,
+                        };
+                        Ok(Value::Integer(start + idx * step))
+                    }
+                }
+                _ => Err(RuntimeError::new(
+                    format!("Range index must be Integer, got {}", index.type_name()),
+                    line,
+                )),
+            },
+            Value::LazySequence(seq) => match index {
+                Value::Integer(idx) => {
+                    if *idx < 0 {
+                        return Err(RuntimeError::new(
+                            "Cannot use negative index on lazy sequence",
+                            line,
+                        ));
+                    }
+                    // Consume idx elements to get to the requested index
+                    let mut seq_clone = seq.borrow().clone();
+                    for _ in 0..*idx {
+                        if self.lazy_seq_next_with_callback(&mut seq_clone)?.is_none() {
+                            return Ok(Value::Nil);
+                        }
+                    }
+                    // Return the element at idx
+                    match self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                        Some(value) => Ok(value),
+                        None => Ok(Value::Nil),
+                    }
+                }
+                _ => Err(RuntimeError::new(
+                    format!("LazySequence index must be Integer, got {}", index.type_name()),
+                    line,
+                )),
+            },
+            _ => Err(RuntimeError::new(
+                format!("get not supported for {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// first(collection) → Value | Nil
+    /// Get first element. Returns nil if collection is empty.
+    fn builtin_first(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let collection = &args[0];
+
+        match collection {
+            Value::List(v) => Ok(v.front().cloned().unwrap_or(Value::Nil)),
+            Value::Set(s) => Ok(s.iter().next().cloned().unwrap_or(Value::Nil)),
+            Value::String(s) => Ok(s
+                .graphemes(true)
+                .next()
+                .map(|g| Value::String(Rc::new(g.to_string())))
+                .unwrap_or(Value::Nil)),
+            Value::Range { start, .. } => Ok(Value::Integer(*start)),
+            Value::LazySequence(seq) => {
+                // Use callback-based iteration to support all LazySeq variants
+                let mut seq_clone = seq.borrow().clone();
+                match self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    Some(value) => Ok(value),
+                    None => Ok(Value::Nil),
+                }
+            }
+            _ => Err(RuntimeError::new(
+                format!("first not supported for {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// second(collection) → Value | Nil
+    /// Get second element. Returns nil if collection has fewer than 2 elements.
+    fn builtin_second(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let collection = &args[0];
+
+        match collection {
+            Value::List(v) => Ok(v.get(1).cloned().unwrap_or(Value::Nil)),
+            Value::Set(s) => Ok(s.iter().nth(1).cloned().unwrap_or(Value::Nil)),
+            Value::String(s) => Ok(s
+                .graphemes(true)
+                .nth(1)
+                .map(|g| Value::String(Rc::new(g.to_string())))
+                .unwrap_or(Value::Nil)),
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                let step = match end {
+                    Some(e) if *e < *start => -1,
+                    _ => 1,
+                };
+                let second = start + step;
+                if let Some(e) = end {
+                    let in_range = if *inclusive {
+                        (step > 0 && second <= *e) || (step < 0 && second >= *e)
+                    } else {
+                        (step > 0 && second < *e) || (step < 0 && second > *e)
+                    };
+                    if !in_range {
+                        return Ok(Value::Nil);
+                    }
+                }
+                Ok(Value::Integer(second))
+            }
+            Value::LazySequence(seq) => {
+                // Consume two elements, return the second
+                let mut seq_clone = seq.borrow().clone();
+                // Skip first element
+                self.lazy_seq_next_with_callback(&mut seq_clone)?;
+                // Return second element (or nil if not available)
+                match self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    Some(value) => Ok(value),
+                    None => Ok(Value::Nil),
+                }
+            }
+            _ => Err(RuntimeError::new(
+                format!("second not supported for {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// rest(collection) → Collection
+    /// Get all but first element. Returns empty collection if input has ≤1 element.
+    fn builtin_rest(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let collection = &args[0];
+
+        match collection {
+            Value::List(v) => {
+                if v.is_empty() {
+                    Ok(Value::List(Vector::new()))
+                } else {
+                    Ok(Value::List(v.clone().slice(1..)))
+                }
+            }
+            Value::Set(s) => {
+                let mut iter = s.iter();
+                iter.next(); // Skip first
+                Ok(Value::Set(iter.cloned().collect()))
+            }
+            Value::String(s) => {
+                let mut graphemes = s.graphemes(true);
+                graphemes.next(); // Skip first
+                Ok(Value::String(Rc::new(graphemes.collect())))
+            }
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                let step = match end {
+                    Some(e) if *e < *start => -1,
+                    _ => 1,
+                };
+                let new_start = start + step;
+
+                if let Some(e) = end {
+                    let still_valid = if *inclusive {
+                        (step > 0 && new_start <= *e) || (step < 0 && new_start >= *e)
+                    } else {
+                        (step > 0 && new_start < *e) || (step < 0 && new_start > *e)
+                    };
+                    if !still_valid {
+                        return Ok(Value::List(Vector::new()));
+                    }
+                }
+
+                match end {
+                    Some(e) => Ok(Value::Range {
+                        start: new_start,
+                        end: Some(*e),
+                        inclusive: *inclusive,
+                    }),
+                    None => Ok(Value::Range {
+                        start: new_start,
+                        end: None,
+                        inclusive: *inclusive,
+                    }),
+                }
+            }
+            Value::LazySequence(seq) => {
+                // Return a Skip(1) lazy sequence to maintain laziness
+                Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Skip {
+                    source: seq.clone(),
+                    remaining: 1,
+                }))))
+            }
+            _ => Err(RuntimeError::new(
+                format!("rest not supported for {}", collection.type_name()),
                 line,
             )),
         }

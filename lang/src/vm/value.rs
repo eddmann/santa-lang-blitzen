@@ -107,6 +107,12 @@ pub enum LazySeq {
         size: usize,
         indices: Vec<usize>,
     },
+    /// range(from, to, step) - custom step range
+    RangeStep {
+        current: i64,
+        end: i64,
+        step: i64,
+    },
     /// Exhausted sequence
     Empty,
 }

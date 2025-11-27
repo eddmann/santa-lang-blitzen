@@ -80,6 +80,16 @@ pub enum BuiltinId {
     Excludes = 101,
     Any = 102,
     All = 103,
+
+    // Lazy Sequence Generation (§11.12)
+    Zip = 110,
+    Repeat = 111,
+    Cycle = 112,
+    Iterate = 113,
+    Combinations = 114,
+
+    // Range Generation (§11.13)
+    RangeFn = 120,
 }
 
 impl BuiltinId {
@@ -129,6 +139,12 @@ impl BuiltinId {
             BuiltinId::Excludes => "excludes?",
             BuiltinId::Any => "any?",
             BuiltinId::All => "all?",
+            BuiltinId::Zip => "zip",
+            BuiltinId::Repeat => "repeat",
+            BuiltinId::Cycle => "cycle",
+            BuiltinId::Iterate => "iterate",
+            BuiltinId::Combinations => "combinations",
+            BuiltinId::RangeFn => "range",
         }
     }
 
@@ -178,6 +194,12 @@ impl BuiltinId {
             "excludes?" => Some(BuiltinId::Excludes),
             "any?" => Some(BuiltinId::Any),
             "all?" => Some(BuiltinId::All),
+            "zip" => Some(BuiltinId::Zip),
+            "repeat" => Some(BuiltinId::Repeat),
+            "cycle" => Some(BuiltinId::Cycle),
+            "iterate" => Some(BuiltinId::Iterate),
+            "combinations" => Some(BuiltinId::Combinations),
+            "range" => Some(BuiltinId::RangeFn),
             _ => None,
         }
     }
@@ -199,7 +221,9 @@ impl BuiltinId {
             | BuiltinId::Keys
             | BuiltinId::Values
             | BuiltinId::Sum
-            | BuiltinId::Reverse => (1, 1),
+            | BuiltinId::Reverse
+            | BuiltinId::Repeat
+            | BuiltinId::Cycle => (1, 1),
 
             // Two argument functions: (fn, collection) or (index, collection)
             BuiltinId::Get
@@ -221,20 +245,27 @@ impl BuiltinId {
             | BuiltinId::Includes
             | BuiltinId::Excludes
             | BuiltinId::Any
-            | BuiltinId::All => (2, 2),
+            | BuiltinId::All
+            | BuiltinId::Iterate
+            | BuiltinId::Combinations => (2, 2),
 
             // Three argument functions
             BuiltinId::Assoc
             | BuiltinId::Update
             | BuiltinId::Fold
             | BuiltinId::FoldS
-            | BuiltinId::Scan => (3, 3),
+            | BuiltinId::Scan
+            | BuiltinId::RangeFn => (3, 3),
 
             // Four argument functions
             BuiltinId::UpdateD => (4, 4),
 
             // Variadic functions
-            BuiltinId::Max | BuiltinId::Min | BuiltinId::Union | BuiltinId::Intersection => (1, 255),
+            BuiltinId::Max
+            | BuiltinId::Min
+            | BuiltinId::Union
+            | BuiltinId::Intersection
+            | BuiltinId::Zip => (1, 255),
         }
     }
 
@@ -259,6 +290,12 @@ impl BuiltinId {
                 | BuiltinId::Sort
                 | BuiltinId::Any
                 | BuiltinId::All
+                | BuiltinId::Iterate
+                | BuiltinId::Take
+                | BuiltinId::Second
+                | BuiltinId::Rest
+                | BuiltinId::Get
+                | BuiltinId::First
         )
     }
 }
@@ -311,6 +348,12 @@ impl TryFrom<u16> for BuiltinId {
             101 => Ok(BuiltinId::Excludes),
             102 => Ok(BuiltinId::Any),
             103 => Ok(BuiltinId::All),
+            110 => Ok(BuiltinId::Zip),
+            111 => Ok(BuiltinId::Repeat),
+            112 => Ok(BuiltinId::Cycle),
+            113 => Ok(BuiltinId::Iterate),
+            114 => Ok(BuiltinId::Combinations),
+            120 => Ok(BuiltinId::RangeFn),
             _ => Err(value),
         }
     }
@@ -342,11 +385,8 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         BuiltinId::List => builtin_list(&args[0], line),
         BuiltinId::Set => builtin_set(&args[0], line),
         BuiltinId::Dict => builtin_dict(&args[0], line),
-        BuiltinId::Get => builtin_get(&args[0], &args[1], line),
         BuiltinId::Size => builtin_size(&args[0], line),
-        BuiltinId::First => builtin_first(&args[0], line),
-        BuiltinId::Second => builtin_second(&args[0], line),
-        BuiltinId::Rest => builtin_rest(&args[0], line),
+        // Get, First, Second, Rest are callback builtins for LazySequence support
         BuiltinId::Keys => builtin_keys(&args[0], line),
         BuiltinId::Values => builtin_values(&args[0], line),
         BuiltinId::Push => builtin_push(&args[0], &args[1], line),
@@ -356,7 +396,6 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         BuiltinId::Max => builtin_max(args, line),
         BuiltinId::Min => builtin_min(args, line),
         BuiltinId::Skip => builtin_skip(&args[0], &args[1], line),
-        BuiltinId::Take => builtin_take(&args[0], &args[1], line),
         BuiltinId::Reverse => builtin_reverse(&args[0], line),
         BuiltinId::Rotate => builtin_rotate(&args[0], &args[1], line),
         BuiltinId::Chunk => builtin_chunk(&args[0], &args[1], line),
@@ -364,8 +403,16 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         BuiltinId::Intersection => builtin_intersection(args, line),
         BuiltinId::Includes => builtin_includes(&args[0], &args[1], line),
         BuiltinId::Excludes => builtin_excludes(&args[0], &args[1], line),
+        // Phase 12: Lazy sequence generators
+        BuiltinId::Zip => builtin_zip(args, line),
+        BuiltinId::Repeat => builtin_repeat(&args[0], line),
+        BuiltinId::Cycle => builtin_cycle(&args[0], line),
+        BuiltinId::Combinations => builtin_combinations(&args[0], &args[1], line),
+        BuiltinId::RangeFn => builtin_range_fn(&args[0], &args[1], &args[2], line),
         // Callback-based builtins - handled specially in runtime
-        BuiltinId::Update
+        BuiltinId::Get
+        | BuiltinId::First
+        | BuiltinId::Update
         | BuiltinId::UpdateD
         | BuiltinId::Map
         | BuiltinId::Filter
@@ -381,7 +428,11 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         | BuiltinId::Count
         | BuiltinId::Sort
         | BuiltinId::Any
-        | BuiltinId::All => Err(RuntimeError::new(
+        | BuiltinId::All
+        | BuiltinId::Iterate
+        | BuiltinId::Take
+        | BuiltinId::Second
+        | BuiltinId::Rest => Err(RuntimeError::new(
             format!(
                 "{} requires callback support - should be handled by VM",
                 id.name()
@@ -645,120 +696,8 @@ fn builtin_dict(value: &Value, line: u32) -> Result<Value, RuntimeError> {
 // Collection Access Functions (§11.2)
 // ============================================================================
 
-/// get(index, collection) → Value | Nil
-/// Get element at index. Returns nil if not found.
-/// Per LANG.txt §11.2
-fn builtin_get(index: &Value, collection: &Value, line: u32) -> Result<Value, RuntimeError> {
-    match collection {
-        // List
-        Value::List(list) => match index {
-            Value::Integer(idx) => {
-                let len = list.len() as i64;
-                let actual_idx = if *idx < 0 { len + idx } else { *idx };
-                if actual_idx < 0 || actual_idx >= len {
-                    Ok(Value::Nil)
-                } else {
-                    Ok(list[actual_idx as usize].clone())
-                }
-            }
-            _ => Err(RuntimeError::new(
-                format!("List index must be Integer, got {}", index.type_name()),
-                line,
-            )),
-        },
-
-        // Set (membership check - returns value or nil)
-        Value::Set(set) => {
-            if set.contains(index) {
-                Ok(index.clone())
-            } else {
-                Ok(Value::Nil)
-            }
-        }
-
-        // Dictionary
-        Value::Dict(dict) => Ok(dict.get(index).cloned().unwrap_or(Value::Nil)),
-
-        // String
-        Value::String(s) => match index {
-            Value::Integer(idx) => {
-                let graphemes: Vec<&str> = s.graphemes(true).collect();
-                let len = graphemes.len() as i64;
-                let actual_idx = if *idx < 0 { len + idx } else { *idx };
-                if actual_idx < 0 || actual_idx >= len {
-                    Ok(Value::Nil)
-                } else {
-                    Ok(Value::String(Rc::new(
-                        graphemes[actual_idx as usize].to_string(),
-                    )))
-                }
-            }
-            _ => Err(RuntimeError::new(
-                format!("String index must be Integer, got {}", index.type_name()),
-                line,
-            )),
-        },
-
-        // Range
-        Value::Range {
-            start,
-            end,
-            inclusive,
-        } => match index {
-            Value::Integer(idx) => {
-                if *idx < 0 {
-                    // Negative indices for ranges need the length
-                    match end {
-                        Some(e) => {
-                            let len = if *inclusive {
-                                (e - start).abs() + 1
-                            } else {
-                                (e - start).abs()
-                            };
-                            let actual_idx = len + idx;
-                            if actual_idx < 0 {
-                                Ok(Value::Nil)
-                            } else {
-                                let step = if start <= e { 1 } else { -1 };
-                                Ok(Value::Integer(start + actual_idx * step))
-                            }
-                        }
-                        None => Err(RuntimeError::new(
-                            "Cannot use negative index on unbounded range",
-                            line,
-                        )),
-                    }
-                } else {
-                    // Check bounds for bounded ranges
-                    if let Some(e) = end {
-                        let len = if *inclusive {
-                            (e - start).abs() + 1
-                        } else {
-                            (e - start).abs()
-                        };
-                        if *idx >= len {
-                            return Ok(Value::Nil);
-                        }
-                    }
-                    let step = match end {
-                        Some(e) if e < start => -1,
-                        _ => 1,
-                    };
-                    Ok(Value::Integer(start + idx * step))
-                }
-            }
-            _ => Err(RuntimeError::new(
-                format!("Range index must be Integer, got {}", index.type_name()),
-                line,
-            )),
-        },
-
-        _ => Err(RuntimeError::new(
-            format!("get not supported for {}", collection.type_name()),
-            line,
-        )),
-    }
-}
+// get() and first() are now callback builtins in runtime.rs
+// to support LazySequence with callbacks (iterate, map, filter)
 
 /// size(collection) → Integer
 /// Get number of elements in a collection
@@ -795,136 +734,8 @@ fn builtin_size(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
     Ok(Value::Integer(size))
 }
 
-/// first(collection) → Value | Nil
-/// Get first element. Returns nil if collection is empty.
-/// Per LANG.txt §11.2
-fn builtin_first(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
-    match collection {
-        Value::List(v) => Ok(v.front().cloned().unwrap_or(Value::Nil)),
-        Value::Set(s) => Ok(s.iter().next().cloned().unwrap_or(Value::Nil)),
-        Value::String(s) => Ok(s
-            .graphemes(true)
-            .next()
-            .map(|g| Value::String(Rc::new(g.to_string())))
-            .unwrap_or(Value::Nil)),
-        Value::Range { start, .. } => Ok(Value::Integer(*start)),
-        // LazySequence will need special handling in runtime
-        _ => Err(RuntimeError::new(
-            format!("first not supported for {}", collection.type_name()),
-            line,
-        )),
-    }
-}
-
-/// second(collection) → Value | Nil
-/// Get second element. Returns nil if collection has fewer than 2 elements.
-/// Per LANG.txt §11.2
-fn builtin_second(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
-    match collection {
-        Value::List(v) => Ok(v.get(1).cloned().unwrap_or(Value::Nil)),
-        Value::Set(s) => Ok(s.iter().nth(1).cloned().unwrap_or(Value::Nil)),
-        Value::String(s) => Ok(s
-            .graphemes(true)
-            .nth(1)
-            .map(|g| Value::String(Rc::new(g.to_string())))
-            .unwrap_or(Value::Nil)),
-        Value::Range {
-            start,
-            end,
-            inclusive,
-        } => {
-            let step = match end {
-                Some(e) if *e < *start => -1,
-                _ => 1,
-            };
-            // Check if there's a second element
-            let second = start + step;
-            if let Some(e) = end {
-                let in_range = if *inclusive {
-                    (step > 0 && second <= *e) || (step < 0 && second >= *e)
-                } else {
-                    (step > 0 && second < *e) || (step < 0 && second > *e)
-                };
-                if !in_range {
-                    return Ok(Value::Nil);
-                }
-            }
-            Ok(Value::Integer(second))
-        }
-        _ => Err(RuntimeError::new(
-            format!("second not supported for {}", collection.type_name()),
-            line,
-        )),
-    }
-}
-
-/// rest(collection) → Collection
-/// Get all but first element. Returns empty collection if input has ≤1 element.
-/// Per LANG.txt §11.2
-fn builtin_rest(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
-    match collection {
-        Value::List(v) => {
-            if v.is_empty() {
-                Ok(Value::List(Vector::new()))
-            } else {
-                Ok(Value::List(v.clone().slice(1..)))
-            }
-        }
-        Value::Set(s) => {
-            let mut iter = s.iter();
-            iter.next(); // Skip first
-            Ok(Value::Set(iter.cloned().collect()))
-        }
-        Value::String(s) => {
-            let mut graphemes = s.graphemes(true);
-            graphemes.next(); // Skip first
-            Ok(Value::String(Rc::new(graphemes.collect())))
-        }
-        Value::Range {
-            start,
-            end,
-            inclusive,
-        } => {
-            let step = match end {
-                Some(e) if *e < *start => -1,
-                _ => 1,
-            };
-            let new_start = start + step;
-
-            // For bounded range, check if new_start is still valid
-            if let Some(e) = end {
-                let still_valid = if *inclusive {
-                    (step > 0 && new_start <= *e) || (step < 0 && new_start >= *e)
-                } else {
-                    (step > 0 && new_start < *e) || (step < 0 && new_start > *e)
-                };
-                if !still_valid {
-                    // Return empty list for exhausted range
-                    return Ok(Value::List(Vector::new()));
-                }
-            }
-
-            // For unbounded or continuing ranges, return a new range
-            // (Will need LazySequence support for proper unbounded handling)
-            match end {
-                Some(e) => Ok(Value::Range {
-                    start: new_start,
-                    end: Some(*e),
-                    inclusive: *inclusive,
-                }),
-                None => Ok(Value::Range {
-                    start: new_start,
-                    end: None,
-                    inclusive: *inclusive,
-                }),
-            }
-        }
-        _ => Err(RuntimeError::new(
-            format!("rest not supported for {}", collection.type_name()),
-            line,
-        )),
-    }
-}
+// first(), second() and rest() are now callback builtins in runtime.rs
+// to support LazySequence with callbacks (iterate, map, filter)
 
 /// keys(dictionary) → List
 /// Get dictionary keys as a List
@@ -1194,6 +1005,10 @@ fn builtin_sum(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
                 line,
             )),
         },
+        Value::LazySequence(_) => Err(RuntimeError::new(
+            "Cannot sum lazy sequence; use take() to create a finite list first",
+            line,
+        )),
         _ => Err(RuntimeError::new(
             format!("sum does not support {}", collection.type_name()),
             line,
@@ -1283,6 +1098,10 @@ fn max_of_collection(collection: &Value, line: u32) -> Result<Value, RuntimeErro
                 line,
             )),
         },
+        Value::LazySequence(_) => Err(RuntimeError::new(
+            "Cannot find max of lazy sequence; use take() to create a finite list first",
+            line,
+        )),
         _ => Err(RuntimeError::new(
             format!("max does not support {}", collection.type_name()),
             line,
@@ -1369,6 +1188,10 @@ fn min_of_collection(collection: &Value, line: u32) -> Result<Value, RuntimeErro
             }
             None => Ok(Value::Integer(*start)),
         },
+        Value::LazySequence(_) => Err(RuntimeError::new(
+            "Cannot find min of lazy sequence; use take() to create a finite list first",
+            line,
+        )),
         _ => Err(RuntimeError::new(
             format!("min does not support {}", collection.type_name()),
             line,
@@ -1490,58 +1313,15 @@ fn builtin_skip(total: &Value, collection: &Value, line: u32) -> Result<Value, R
                 })
             }
         },
+        Value::LazySequence(lazy_seq) => {
+            // Wrap in LazySeq::Skip for lazy composition
+            Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Skip {
+                source: lazy_seq.clone(),
+                remaining: n,
+            }))))
+        }
         _ => Err(RuntimeError::new(
             format!("skip does not support {}", collection.type_name()),
-            line,
-        )),
-    }
-}
-
-/// take(n, collection) → List
-/// Take n elements. Per LANG.txt §11.9
-fn builtin_take(total: &Value, collection: &Value, line: u32) -> Result<Value, RuntimeError> {
-    let n = match total {
-        Value::Integer(n) => *n as usize,
-        _ => {
-            return Err(RuntimeError::new(
-                format!("take expects Integer, got {}", total.type_name()),
-                line,
-            ))
-        }
-    };
-
-    match collection {
-        Value::List(list) => {
-            let count = n.min(list.len());
-            Ok(Value::List(list.clone().slice(0..count)))
-        }
-        Value::Set(set) => Ok(Value::List(set.iter().take(n).cloned().collect())),
-        Value::Range {
-            start,
-            end,
-            inclusive,
-        } => {
-            let mut result = Vector::new();
-            let step = match end {
-                Some(e) if e < start => -1,
-                _ => 1,
-            };
-
-            let actual_end = end.map(|e| if *inclusive { e } else { e - step });
-
-            for i in 0..n {
-                let val = start + (i as i64) * step;
-                if let Some(e) = actual_end
-                    && ((step > 0 && val > e) || (step < 0 && val < e))
-                {
-                    break;
-                }
-                result.push_back(Value::Integer(val));
-            }
-            Ok(Value::List(result))
-        }
-        _ => Err(RuntimeError::new(
-            format!("take does not support {}", collection.type_name()),
             line,
         )),
     }
@@ -1827,6 +1607,12 @@ fn builtin_includes(collection: &Value, value: &Value, line: u32) -> Result<Valu
                 false
             }
         }
+        Value::LazySequence(_) => {
+            return Err(RuntimeError::new(
+                "Cannot check includes? on lazy sequence; may not terminate for infinite sequences",
+                line,
+            ))
+        }
         _ => {
             return Err(RuntimeError::new(
                 format!("includes? does not support {}", collection.type_name()),
@@ -1845,5 +1631,531 @@ fn builtin_excludes(collection: &Value, value: &Value, line: u32) -> Result<Valu
     match includes {
         Value::Boolean(b) => Ok(Value::Boolean(!b)),
         _ => Ok(Value::Boolean(true)), // Should not happen
+    }
+}
+
+// ============================================================================
+// Lazy Sequence Generation (§11.12)
+// ============================================================================
+
+use super::value::LazySeq;
+use std::cell::RefCell;
+
+/// repeat(value) → LazySequence
+/// Generate a lazy sequence that repeats value indefinitely.
+/// Per LANG.txt §11.12
+fn builtin_repeat(value: &Value, _line: u32) -> Result<Value, RuntimeError> {
+    Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Repeat {
+        value: value.clone(),
+    }))))
+}
+
+/// cycle(collection) → LazySequence
+/// Generate a lazy sequence that cycles through elements indefinitely.
+/// Per LANG.txt §11.12
+fn builtin_cycle(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
+    let elements: Vector<Value> = match collection {
+        Value::List(list) => {
+            if list.is_empty() {
+                return Err(RuntimeError::new("cycle on empty list", line));
+            }
+            list.clone()
+        }
+        Value::String(s) => {
+            use unicode_segmentation::UnicodeSegmentation;
+            let graphemes: Vec<&str> = s.graphemes(true).collect();
+            if graphemes.is_empty() {
+                return Err(RuntimeError::new("cycle on empty string", line));
+            }
+            graphemes
+                .into_iter()
+                .map(|g| Value::String(Rc::new(g.to_string())))
+                .collect()
+        }
+        _ => {
+            return Err(RuntimeError::new(
+                format!("cycle expects List or String, got {}", collection.type_name()),
+                line,
+            ))
+        }
+    };
+
+    Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Cycle {
+        source: elements,
+        index: 0,
+    }))))
+}
+
+/// zip(collection, ..collections) → List | LazySequence
+/// Aggregate multiple collections into tuples.
+/// Per LANG.txt §11.12
+fn builtin_zip(args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+    if args.is_empty() {
+        return Err(RuntimeError::new("zip requires at least one argument", line));
+    }
+
+    // Per LANG.txt §11.12:
+    // - If ANY collection has finite size → returns List
+    // - If ALL collections are infinite → returns LazySequence
+    let all_infinite = args.iter().all(|arg| {
+        matches!(arg, Value::Range { end: None, .. } | Value::LazySequence(_))
+    });
+
+    if all_infinite {
+        // Create lazy sequence only when ALL are infinite
+        let mut sources: Vec<Rc<RefCell<LazySeq>>> = Vec::new();
+        for arg in args {
+            let lazy = value_to_lazy_seq_for_zip(arg, line)?;
+            sources.push(Rc::new(RefCell::new(lazy)));
+        }
+        Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Zip {
+            sources,
+        }))))
+    } else {
+        // At least one collection is finite - materialize to List
+        // First, find the minimum length from finite collections
+        let min_len = args
+            .iter()
+            .filter_map(collection_finite_len)
+            .min()
+            .unwrap_or(0);
+
+        // Now collect elements up to min_len from each collection
+        let mut collections: Vec<Vec<Value>> = Vec::new();
+        for arg in args {
+            let elements = collection_take_n(arg, min_len, line)?;
+            collections.push(elements);
+        }
+
+        let mut result = Vector::new();
+        for i in 0..min_len {
+            let mut tuple = Vector::new();
+            for collection in &collections {
+                tuple.push_back(collection[i].clone());
+            }
+            result.push_back(Value::List(tuple));
+        }
+
+        Ok(Value::List(result))
+    }
+}
+/// Get the finite length of a collection, or None if infinite
+fn collection_finite_len(value: &Value) -> Option<usize> {
+    match value {
+        Value::List(list) => Some(list.len()),
+        Value::String(s) => {
+            use unicode_segmentation::UnicodeSegmentation;
+            Some(s.graphemes(true).count())
+        }
+        Value::Set(set) => Some(set.len()),
+        Value::Range {
+            start,
+            end,
+            inclusive,
+        } => match end {
+            Some(e) => {
+                let actual_end = if *inclusive { *e } else { e - 1 };
+                if start <= &actual_end {
+                    Some((actual_end - start + 1) as usize)
+                } else {
+                    Some((start - actual_end + 1) as usize)
+                }
+            }
+            None => None, // Unbounded range is infinite
+        },
+        Value::LazySequence(_) => None, // Lazy sequences are considered infinite
+        _ => Some(0),
+    }
+}
+
+/// Take n elements from a collection (works for both finite and infinite)
+fn collection_take_n(value: &Value, n: usize, line: u32) -> Result<Vec<Value>, RuntimeError> {
+    match value {
+        Value::List(list) => Ok(list.iter().take(n).cloned().collect()),
+        Value::String(s) => Ok(s
+            .graphemes(true)
+            .take(n)
+            .map(|g| Value::String(Rc::new(g.to_string())))
+            .collect()),
+        Value::Set(set) => Ok(set.iter().take(n).cloned().collect()),
+        Value::Range {
+            start,
+            end,
+            inclusive,
+        } => {
+            let mut result = Vec::new();
+            match end {
+                Some(e) => {
+                    let actual_end = if *inclusive { *e } else { e - 1 };
+                    if start <= &actual_end {
+                        for i in (*start..=actual_end).take(n) {
+                            result.push(Value::Integer(i));
+                        }
+                    } else {
+                        let mut i = *start;
+                        let mut count = 0;
+                        while i >= actual_end && count < n {
+                            result.push(Value::Integer(i));
+                            i -= 1;
+                            count += 1;
+                        }
+                    }
+                }
+                None => {
+                    // Unbounded range - take n from start
+                    for i in 0..n {
+                        result.push(Value::Integer(start + i as i64));
+                    }
+                }
+            }
+            Ok(result)
+        }
+        Value::LazySequence(lazy_seq) => {
+            // For lazy sequences, we need to consume n elements
+            // Note: This only works for non-callback sequences (Repeat, Cycle, Range)
+            let mut result = Vec::new();
+            let mut seq = lazy_seq.borrow_mut();
+            for _ in 0..n {
+                match lazy_seq_next_simple(&mut seq)? {
+                    Some(val) => result.push(val),
+                    None => break,
+                }
+            }
+            Ok(result)
+        }
+        _ => Err(RuntimeError::new(
+            format!("Cannot take from {}", value.type_name()),
+            line,
+        )),
+    }
+}
+
+/// Convert a value to LazySeq for zip (handles the infinite cases)
+fn value_to_lazy_seq_for_zip(value: &Value, line: u32) -> Result<LazySeq, RuntimeError> {
+    match value {
+        Value::Range {
+            start,
+            end,
+            inclusive,
+        } => Ok(LazySeq::Range {
+            current: *start,
+            end: *end,
+            inclusive: *inclusive,
+        }),
+        Value::LazySequence(seq) => Ok(seq.borrow().clone()),
+        _ => Err(RuntimeError::new(
+            format!("Unexpected value type for lazy zip: {}", value.type_name()),
+            line,
+        )),
+    }
+}
+
+/// combinations(size, collection) → LazySequence
+/// Generate all combinations of given size from collection.
+/// Per LANG.txt §11.12
+fn builtin_combinations(size_val: &Value, collection: &Value, line: u32) -> Result<Value, RuntimeError> {
+    let size = match size_val {
+        Value::Integer(n) if *n >= 0 => *n as usize,
+        _ => {
+            return Err(RuntimeError::new(
+                "combinations expects non-negative Integer as first argument",
+                line,
+            ))
+        }
+    };
+
+    let elements: Vec<Value> = match collection {
+        Value::List(list) => list.iter().cloned().collect(),
+        _ => {
+            return Err(RuntimeError::new(
+                format!("combinations expects List, got {}", collection.type_name()),
+                line,
+            ))
+        }
+    };
+
+    if size > elements.len() {
+        // No combinations possible - return empty lazy sequence
+        return Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Empty))));
+    }
+
+    if size == 0 {
+        // Special case: single empty combination
+        let mut result = Vector::new();
+        result.push_back(Value::List(Vector::new()));
+        return Ok(Value::List(result));
+    }
+
+    // Initialize indices: [0, 1, 2, ..., size-1]
+    let indices: Vec<usize> = (0..size).collect();
+
+    Ok(Value::LazySequence(Rc::new(RefCell::new(
+        LazySeq::Combinations {
+            source: elements,
+            size,
+            indices,
+        },
+    ))))
+}
+
+// ============================================================================
+// Range Generation (§11.13)
+// ============================================================================
+
+/// range(from, to, step) → LazySequence
+/// Generate a range with custom step value.
+/// Per LANG.txt §11.13
+fn builtin_range_fn(from: &Value, to: &Value, step: &Value, line: u32) -> Result<Value, RuntimeError> {
+    let from_val = match from {
+        Value::Integer(n) => *n,
+        _ => {
+            return Err(RuntimeError::new(
+                format!("range expects Integer as first argument, got {}", from.type_name()),
+                line,
+            ))
+        }
+    };
+
+    let to_val = match to {
+        Value::Integer(n) => *n,
+        _ => {
+            return Err(RuntimeError::new(
+                format!("range expects Integer as second argument, got {}", to.type_name()),
+                line,
+            ))
+        }
+    };
+
+    let step_val = match step {
+        Value::Integer(n) => *n,
+        _ => {
+            return Err(RuntimeError::new(
+                format!("range expects Integer as third argument, got {}", step.type_name()),
+                line,
+            ))
+        }
+    };
+
+    // Validate step
+    if step_val == 0 {
+        return Err(RuntimeError::new("range: step cannot be zero", line));
+    }
+
+    // Validate step direction matches from->to direction
+    if (from_val < to_val && step_val < 0) || (from_val > to_val && step_val > 0) {
+        return Err(RuntimeError::new("range: step direction mismatch", line));
+    }
+
+    Ok(Value::LazySequence(Rc::new(RefCell::new(
+        LazySeq::RangeStep {
+            current: from_val,
+            end: to_val,
+            step: step_val,
+        },
+    ))))
+}
+
+// ============================================================================
+// Clone implementation for LazySeq
+// ============================================================================
+
+impl Clone for LazySeq {
+    fn clone(&self) -> Self {
+        match self {
+            LazySeq::Range {
+                current,
+                end,
+                inclusive,
+            } => LazySeq::Range {
+                current: *current,
+                end: *end,
+                inclusive: *inclusive,
+            },
+            LazySeq::RangeStep { current, end, step } => LazySeq::RangeStep {
+                current: *current,
+                end: *end,
+                step: *step,
+            },
+            LazySeq::Repeat { value } => LazySeq::Repeat {
+                value: value.clone(),
+            },
+            LazySeq::Cycle { source, index } => LazySeq::Cycle {
+                source: source.clone(),
+                index: *index,
+            },
+            LazySeq::Iterate { generator, current } => LazySeq::Iterate {
+                generator: generator.clone(),
+                current: current.clone(),
+            },
+            LazySeq::Map { source, mapper } => LazySeq::Map {
+                source: Rc::new(RefCell::new(source.borrow().clone())),
+                mapper: mapper.clone(),
+            },
+            LazySeq::Filter { source, predicate } => LazySeq::Filter {
+                source: Rc::new(RefCell::new(source.borrow().clone())),
+                predicate: predicate.clone(),
+            },
+            LazySeq::Skip { source, remaining } => LazySeq::Skip {
+                source: Rc::new(RefCell::new(source.borrow().clone())),
+                remaining: *remaining,
+            },
+            LazySeq::Zip { sources } => LazySeq::Zip {
+                sources: sources
+                    .iter()
+                    .map(|s| Rc::new(RefCell::new(s.borrow().clone())))
+                    .collect(),
+            },
+            LazySeq::Combinations {
+                source,
+                size,
+                indices,
+            } => LazySeq::Combinations {
+                source: source.clone(),
+                size: *size,
+                indices: indices.clone(),
+            },
+            LazySeq::Empty => LazySeq::Empty,
+        }
+    }
+}
+
+/// Simple lazy sequence iteration for non-callback sequences
+/// Returns Ok(Some(value)) for next element, Ok(None) if exhausted,
+/// Err if sequence requires callbacks (Iterate, Map, Filter)
+fn lazy_seq_next_simple(seq: &mut LazySeq) -> Result<Option<Value>, RuntimeError> {
+    match seq {
+        LazySeq::Range {
+            current,
+            end,
+            inclusive,
+        } => {
+            if let Some(e) = end {
+                let actual_end = if *inclusive { *e } else { *e - 1 };
+                if *current <= actual_end {
+                    let val = *current;
+                    *current += 1;
+                    Ok(Some(Value::Integer(val)))
+                } else if *current > actual_end && *current >= *e {
+                    // Descending range
+                    let val = *current;
+                    *current -= 1;
+                    if val >= actual_end {
+                        Ok(Some(Value::Integer(val)))
+                    } else {
+                        Ok(None)
+                    }
+                } else {
+                    Ok(None)
+                }
+            } else {
+                // Unbounded range
+                let val = *current;
+                *current += 1;
+                Ok(Some(Value::Integer(val)))
+            }
+        }
+        LazySeq::RangeStep { current, end, step } => {
+            if *step > 0 {
+                if current < end {
+                    let val = *current;
+                    *current += *step;
+                    Ok(Some(Value::Integer(val)))
+                } else {
+                    Ok(None)
+                }
+            } else if *step < 0 {
+                if current > end {
+                    let val = *current;
+                    *current += *step;
+                    Ok(Some(Value::Integer(val)))
+                } else {
+                    Ok(None)
+                }
+            } else {
+                Ok(None) // step == 0, shouldn't happen
+            }
+        }
+        LazySeq::Repeat { value } => Ok(Some(value.clone())),
+        LazySeq::Cycle { source, index } => {
+            if source.is_empty() {
+                Ok(None)
+            } else {
+                let val = source[*index % source.len()].clone();
+                *index += 1;
+                Ok(Some(val))
+            }
+        }
+        LazySeq::Combinations {
+            source,
+            size,
+            indices,
+        } => {
+            if *size == 0 || *size > source.len() {
+                return Ok(None);
+            }
+            if indices.is_empty() {
+                // Initialize indices for first combination
+                *indices = (0..*size).collect();
+            } else {
+                // Find next combination
+                let n = source.len();
+                let mut i = *size;
+                while i > 0 {
+                    i -= 1;
+                    if indices[i] < n - *size + i {
+                        indices[i] += 1;
+                        for j in (i + 1)..*size {
+                            indices[j] = indices[j - 1] + 1;
+                        }
+                        break;
+                    }
+                    if i == 0 {
+                        *seq = LazySeq::Empty;
+                        return Ok(None);
+                    }
+                }
+            }
+            let combo: Vector<Value> = indices.iter().map(|&i| source[i].clone()).collect();
+            Ok(Some(Value::List(combo)))
+        }
+        LazySeq::Empty => Ok(None),
+        // Callback-requiring sequences cannot be iterated without VM
+        LazySeq::Iterate { .. } | LazySeq::Map { .. } | LazySeq::Filter { .. } => {
+            Err(RuntimeError::new(
+                "Cannot iterate callback-based lazy sequence in this context",
+                0,
+            ))
+        }
+        LazySeq::Skip { source, remaining } => {
+            // Skip remaining elements first
+            while *remaining > 0 {
+                let inner_result = {
+                    let mut inner = source.borrow_mut();
+                    lazy_seq_next_simple(&mut inner)?
+                };
+                if inner_result.is_none() {
+                    *seq = LazySeq::Empty;
+                    return Ok(None);
+                }
+                *remaining -= 1;
+            }
+            // Then return from source
+            let mut inner = source.borrow_mut();
+            lazy_seq_next_simple(&mut inner)
+        }
+        LazySeq::Zip { sources } => {
+            let mut tuple = Vector::new();
+            for src in sources.iter() {
+                let result = {
+                    let mut inner = src.borrow_mut();
+                    lazy_seq_next_simple(&mut inner)?
+                };
+                match result {
+                    Some(val) => tuple.push_back(val),
+                    None => return Ok(None),
+                }
+            }
+            Ok(Some(Value::List(tuple)))
+        }
     }
 }

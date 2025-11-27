@@ -3573,4 +3573,335 @@ mod runtime_tests {
             Ok(Value::Boolean(true))
         );
     }
+
+    // =========================================================================
+    // Phase 12: Lazy Sequences (§11.12, §11.13)
+    // =========================================================================
+
+    #[test]
+    fn eval_repeat_take() {
+        // take(5, repeat(1)) => [1, 1, 1, 1, 1]
+        assert_eq!(
+            eval("take(5, repeat(1))"),
+            Ok(Value::List(Vector::from(vec![
+                Value::Integer(1),
+                Value::Integer(1),
+                Value::Integer(1),
+                Value::Integer(1),
+                Value::Integer(1)
+            ])))
+        );
+    }
+
+    #[test]
+    fn eval_repeat_first() {
+        // first(repeat("x")) => "x"
+        assert_eq!(
+            eval("first(repeat(\"x\"))"),
+            Ok(Value::String(Rc::new("x".to_string())))
+        );
+    }
+
+    #[test]
+    fn eval_cycle_take() {
+        // take(7, cycle([1, 2, 3])) => [1, 2, 3, 1, 2, 3, 1]
+        assert_eq!(
+            eval("take(7, cycle([1, 2, 3]))"),
+            Ok(Value::List(Vector::from(vec![
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(3),
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(3),
+                Value::Integer(1)
+            ])))
+        );
+    }
+
+    #[test]
+    fn eval_iterate_take() {
+        // take(5, iterate(|x| x * 2, 1)) => [1, 2, 4, 8, 16]
+        assert_eq!(
+            eval("take(5, iterate(|x| x * 2, 1))"),
+            Ok(Value::List(Vector::from(vec![
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(4),
+                Value::Integer(8),
+                Value::Integer(16)
+            ])))
+        );
+    }
+
+    #[test]
+    fn eval_unbounded_range_take() {
+        // take(5, 1..) => [1, 2, 3, 4, 5]
+        assert_eq!(
+            eval("take(5, 1..)"),
+            Ok(Value::List(Vector::from(vec![
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(3),
+                Value::Integer(4),
+                Value::Integer(5)
+            ])))
+        );
+    }
+
+    #[test]
+    fn eval_unbounded_range_find() {
+        // find(|x| x > 10, 1..) => 11
+        assert_eq!(eval("find(|x| x > 10, 1..)"), Ok(Value::Integer(11)));
+    }
+
+    #[test]
+    fn eval_combinations_basic() {
+        // combinations(2, [1, 2, 3]) => [[1, 2], [1, 3], [2, 3]]
+        // (as lazy sequence, materialize with take)
+        let result = eval("list(take(3, combinations(2, [1, 2, 3])))");
+        match result {
+            Ok(Value::List(list)) => {
+                assert_eq!(list.len(), 3);
+                // First combination should be [1, 2]
+                assert_eq!(
+                    list[0],
+                    Value::List(Vector::from(vec![Value::Integer(1), Value::Integer(2)]))
+                );
+            }
+            other => panic!("Expected list, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn eval_zip_finite() {
+        // zip([1, 2], ["a", "b"]) => [[1, "a"], [2, "b"]]
+        let result = eval("zip([1, 2], [\"a\", \"b\"])");
+        match result {
+            Ok(Value::List(list)) => {
+                assert_eq!(list.len(), 2);
+            }
+            other => panic!("Expected list, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn eval_zip_mixed_finite_infinite() {
+        // zip(0.., ["a", "b", "c"]) => List (because one is finite)
+        // Per LANG.txt: If ANY collection has finite size → returns List
+        let result = eval("zip(0.., [\"a\", \"b\", \"c\"])");
+        match result {
+            Ok(Value::List(list)) => {
+                assert_eq!(list.len(), 3);
+                // Check first element is [0, "a"]
+                match &list[0] {
+                    Value::List(inner) => {
+                        assert_eq!(inner[0], Value::Integer(0));
+                    }
+                    _ => panic!("Expected inner list"),
+                }
+            }
+            other => panic!("Expected List, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn eval_zip_all_infinite() {
+        // zip(0.., 1..) with two infinite ranges returns LazySequence
+        // Per LANG.txt: If ALL collections are infinite → returns LazySequence
+        let result = eval("take(3, zip(0.., 1..))");
+        match result {
+            Ok(Value::List(list)) => {
+                assert_eq!(list.len(), 3);
+            }
+            other => panic!("Expected list from take, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn eval_range_function() {
+        // range(0, 10, 2) => [0, 2, 4, 6, 8]
+        assert_eq!(
+            eval("take(5, range(0, 10, 2))"),
+            Ok(Value::List(Vector::from(vec![
+                Value::Integer(0),
+                Value::Integer(2),
+                Value::Integer(4),
+                Value::Integer(6),
+                Value::Integer(8)
+            ])))
+        );
+    }
+
+    #[test]
+    fn eval_fold_unbounded_break() {
+        // fold(0, |acc, x| if x > 5 { break acc } else { acc + x }, 1..) => 15 (1+2+3+4+5)
+        assert_eq!(
+            eval("fold(0, |acc, x| if x > 5 { break acc } else { acc + x }, 1..)"),
+            Ok(Value::Integer(15))
+        );
+    }
+
+    #[test]
+    fn eval_each_bounded_range() {
+        // Tests that each works on bounded range and returns nil
+        assert_eq!(
+            eval("each(|x| x, 1..5)"),
+            Ok(Value::Nil)
+        );
+    }
+
+    #[test]
+    fn eval_lazy_first_iterate() {
+        // first(iterate(|x| x + 1, 0)) => 0
+        assert_eq!(eval("first(iterate(|x| x + 1, 0))"), Ok(Value::Integer(0)));
+    }
+
+    #[test]
+    fn eval_reduce_lazy_sequence() {
+        // reduce(|a, b| a + b, take(5, repeat(1))) => 5
+        // First converts lazy to list with take, then reduces
+        assert_eq!(
+            eval("reduce(|a, b| a + b, take(5, repeat(1)))"),
+            Ok(Value::Integer(5))
+        );
+    }
+
+    #[test]
+    fn eval_fold_lazy_sequence() {
+        // fold(0, |acc, x| acc + x, take(5, cycle([1, 2, 3])))
+        assert_eq!(
+            eval("fold(0, |acc, x| acc + x, take(5, cycle([1, 2, 3])))"),
+            Ok(Value::Integer(9)) // 1+2+3+1+2 = 9
+        );
+    }
+
+    #[test]
+    fn eval_find_lazy_sequence() {
+        // find(|x| x > 5, iterate(|x| x + 1, 1)) => 6
+        assert_eq!(
+            eval("find(|x| x > 5, iterate(|x| x + 1, 1))"),
+            Ok(Value::Integer(6))
+        );
+    }
+
+    // Lazy composition tests - map/filter/skip should work on LazySequence
+    #[test]
+    fn eval_map_on_lazy_sequence() {
+        // map on lazy sequence returns lazy sequence
+        // take(3, map(|x| x * 2, repeat(5))) => [10, 10, 10]
+        assert_eq!(
+            eval("take(3, map(|x| x * 2, repeat(5)))"),
+            Ok(Value::List(vec![
+                Value::Integer(10),
+                Value::Integer(10),
+                Value::Integer(10)
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_map_chain_lazy() {
+        // Chained maps on lazy sequence
+        // take(3, map(|x| x + 1, map(|x| x * 2, 1..))) => [3, 5, 7]
+        assert_eq!(
+            eval("take(3, map(|x| x + 1, map(|x| x * 2, 1..)))"),
+            Ok(Value::List(vec![
+                Value::Integer(3),  // 1*2+1 = 3
+                Value::Integer(5),  // 2*2+1 = 5
+                Value::Integer(7)   // 3*2+1 = 7
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_filter_on_lazy_sequence() {
+        // filter on lazy sequence returns lazy sequence
+        // take(3, filter(|x| x % 2 == 0, iterate(|x| x + 1, 1))) => [2, 4, 6]
+        assert_eq!(
+            eval("take(3, filter(|x| x % 2 == 0, iterate(|x| x + 1, 1)))"),
+            Ok(Value::List(vec![
+                Value::Integer(2),
+                Value::Integer(4),
+                Value::Integer(6)
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_filter_map_chain_lazy() {
+        // filter then map on lazy sequence
+        // take(3, map(|x| x * 10, filter(|x| x % 2 == 0, 1..))) => [20, 40, 60]
+        assert_eq!(
+            eval("take(3, map(|x| x * 10, filter(|x| x % 2 == 0, 1..)))"),
+            Ok(Value::List(vec![
+                Value::Integer(20),
+                Value::Integer(40),
+                Value::Integer(60)
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_skip_on_lazy_sequence() {
+        // skip on lazy sequence returns lazy sequence
+        // take(3, skip(2, repeat(7))) => [7, 7, 7]
+        assert_eq!(
+            eval("take(3, skip(2, repeat(7)))"),
+            Ok(Value::List(vec![
+                Value::Integer(7),
+                Value::Integer(7),
+                Value::Integer(7)
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_skip_on_iterate() {
+        // skip on iterate lazy sequence
+        // take(3, skip(5, iterate(|x| x + 1, 0))) => [5, 6, 7]
+        assert_eq!(
+            eval("take(3, skip(5, iterate(|x| x + 1, 0)))"),
+            Ok(Value::List(vec![
+                Value::Integer(5),
+                Value::Integer(6),
+                Value::Integer(7)
+            ].into_iter().collect()))
+        );
+    }
+
+    // second() and rest() on LazySequence
+    #[test]
+    fn eval_second_lazy_sequence() {
+        // second(repeat(5)) => 5
+        assert_eq!(eval("second(repeat(5))"), Ok(Value::Integer(5)));
+        // second(iterate(|x| x + 1, 0)) => 1
+        assert_eq!(eval("second(iterate(|x| x + 1, 0))"), Ok(Value::Integer(1)));
+    }
+
+    #[test]
+    fn eval_rest_lazy_sequence() {
+        // rest(repeat(5)) should return a lazy sequence, take 3 from it
+        assert_eq!(
+            eval("take(3, rest(repeat(5)))"),
+            Ok(Value::List(vec![
+                Value::Integer(5),
+                Value::Integer(5),
+                Value::Integer(5)
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn eval_rest_iterate() {
+        // rest(iterate(|x| x + 1, 0)) skips first, take 3 => [1, 2, 3]
+        assert_eq!(
+            eval("take(3, rest(iterate(|x| x + 1, 0)))"),
+            Ok(Value::List(vec![
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(3)
+            ].into_iter().collect()))
+        );
+    }
 }
