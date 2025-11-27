@@ -401,8 +401,39 @@ impl VM {
                     self.call_value(argc)?;
                 }
                 Ok(OpCode::TailCall) => {
-                    // TODO: Implement tail call optimization in Phase 14
                     let argc = self.read_byte() as usize;
+                    let callee = self.peek(argc).clone();
+
+                    // Check if this is self-recursion (same closure)
+                    if let Value::Function(ref new_closure) = callee {
+                        let current_closure = &self.current_frame().closure;
+
+                        // Check if same function (compare Rc pointers)
+                        if Rc::ptr_eq(&new_closure.function, &current_closure.function) {
+                            // Self-recursive tail call - reuse frame
+                            let frame_idx = self.frames.len() - 1;
+                            let stack_base = self.frames[frame_idx].stack_base;
+
+                            // Pop the function value
+                            let func_pos = self.stack.len() - argc - 1;
+                            self.stack.remove(func_pos);
+
+                            // Move arguments to replace old locals
+                            for i in 0..argc {
+                                self.stack[stack_base + i] = self.stack[func_pos + i].clone();
+                            }
+
+                            // Truncate stack to remove extra args
+                            self.stack.truncate(stack_base + argc);
+
+                            // Reset instruction pointer to beginning of function
+                            self.frames[frame_idx].ip = 0;
+
+                            continue; // Skip incrementing IP, jump to start
+                        }
+                    }
+
+                    // Not self-recursion, do normal call
                     self.call_value(argc)?;
                 }
                 Ok(OpCode::Return) => {

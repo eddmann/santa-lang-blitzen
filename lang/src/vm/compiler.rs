@@ -59,6 +59,8 @@ pub struct Compiler {
     enclosing: Option<Box<Compiler>>,
     /// Current line for error reporting
     current_line: u32,
+    /// Whether we're currently in tail position
+    in_tail_position: bool,
 }
 
 impl Compiler {
@@ -70,6 +72,7 @@ impl Compiler {
             scope_depth: 0,
             enclosing: None,
             current_line: 1,
+            in_tail_position: false,
         }
     }
 
@@ -82,6 +85,7 @@ impl Compiler {
             scope_depth: 0,
             enclosing: Some(Box::new(enclosing)),
             current_line,
+            in_tail_position: false,
         }
     }
 
@@ -339,15 +343,25 @@ impl Compiler {
                 then_branch,
                 else_branch,
             } => {
+                // Save and clear tail position for condition
+                let in_tail = self.in_tail_position;
+                self.in_tail_position = false;
+
                 self.expression(condition)?;
                 let then_jump = self.emit_jump(OpCode::JumpIfFalse);
                 self.emit(OpCode::Pop); // Pop condition if truthy
+
+                // Restore tail position for then branch
+                self.in_tail_position = in_tail;
                 self.expression(then_branch)?;
 
                 if let Some(else_expr) = else_branch {
                     let else_jump = self.emit_jump(OpCode::Jump);
                     self.patch_jump(then_jump);
                     self.emit(OpCode::Pop); // Pop condition if falsy
+
+                    // Restore tail position for else branch
+                    self.in_tail_position = in_tail;
                     self.expression(else_expr)?;
                     self.patch_jump(else_jump);
                 } else {
@@ -357,6 +371,9 @@ impl Compiler {
                     self.emit(OpCode::Nil); // if without else returns nil
                     self.patch_jump(else_jump);
                 }
+
+                // Clear tail position after if
+                self.in_tail_position = false;
             }
 
             // Block expression
@@ -926,7 +943,8 @@ impl Compiler {
             });
         }
 
-        // Compile body
+        // Compile body in tail position
+        self.in_tail_position = true;
         self.expression(body)?;
         self.emit(OpCode::Return);
 
@@ -976,6 +994,10 @@ impl Compiler {
         }
 
         // Regular function call
+        // Save tail position flag and clear it for arguments
+        let in_tail = self.in_tail_position;
+        self.in_tail_position = false;
+
         // Compile function expression
         self.expression(function)?;
 
@@ -984,7 +1006,9 @@ impl Compiler {
             self.expression(arg)?;
         }
 
-        self.emit_with_operand(OpCode::Call, args.len() as u8);
+        // Emit TailCall if in tail position, otherwise Call
+        let opcode = if in_tail { OpCode::TailCall } else { OpCode::Call };
+        self.emit_with_operand(opcode, args.len() as u8);
         Ok(())
     }
 
@@ -1102,13 +1126,21 @@ impl Compiler {
 
     /// Compile a block of statements
     fn compile_block(&mut self, stmts: &[SpannedStmt], _span: Span) -> Result<(), CompileError> {
+        // Save tail position
+        let in_tail = self.in_tail_position;
+
         self.begin_scope();
 
         for (i, stmt) in stmts.iter().enumerate() {
+            let is_last = i == stmts.len() - 1;
+
+            // Only the last statement is in tail position
+            self.in_tail_position = is_last && in_tail;
+
             self.statement(stmt)?;
 
             // Pop non-final expression statements
-            if i < stmts.len() - 1 && matches!(&stmt.node, Stmt::Expr(_)) {
+            if !is_last && matches!(&stmt.node, Stmt::Expr(_)) {
                 self.emit(OpCode::Pop);
             }
         }
@@ -1120,6 +1152,9 @@ impl Compiler {
 
         // The last statement's value stays on stack
         self.end_scope();
+
+        // Clear tail position after block
+        self.in_tail_position = false;
         Ok(())
     }
 
@@ -1287,6 +1322,10 @@ impl Compiler {
         arms: &[MatchArm],
         _span: Span,
     ) -> Result<(), CompileError> {
+        // Save and clear tail position for subject
+        let in_tail = self.in_tail_position;
+        self.in_tail_position = false;
+
         // Compile the subject - it stays on stack for pattern matching
         self.expression(subject)?;
 
@@ -1300,8 +1339,9 @@ impl Compiler {
             let locals_before = self.locals.len();
             let next_arm_jump = self.compile_pattern_test(&arm.pattern, arm.span)?;
 
-            // Compile guard if present
+            // Compile guard if present (not in tail position)
             let guard_jump = if let Some(guard) = &arm.guard {
+                self.in_tail_position = false;
                 self.expression(guard)?;
                 Some(self.emit_jump(OpCode::JumpIfFalse))
             } else {
@@ -1311,7 +1351,8 @@ impl Compiler {
             // Pop the subject (pattern matched, we're committed to this arm)
             self.emit(OpCode::Pop);
 
-            // Compile arm body
+            // Compile arm body (restore tail position)
+            self.in_tail_position = in_tail;
             self.expression(&arm.body)?;
 
             // Clean up any locals bound by the pattern
@@ -1344,6 +1385,9 @@ impl Compiler {
         for jump in end_jumps {
             self.patch_jump(jump);
         }
+
+        // Clear tail position after match
+        self.in_tail_position = false;
 
         Ok(())
     }

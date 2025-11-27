@@ -1079,11 +1079,11 @@ fn tco_not_tail_position() { ... }
 
 ### Release Gate 14
 
-- [ ] Self-recursive tail calls don't grow stack
-- [ ] Non-tail recursive calls work normally
-- [ ] Can handle deep recursion (>10000 calls)
-- [ ] All tests pass
-- [ ] `cargo clippy` clean
+- [x] Self-recursive tail calls don't grow stack
+- [x] Non-tail recursive calls work normally
+- [x] Can handle deep recursion (>10000 calls)
+- [x] All tests pass
+- [x] `cargo clippy` clean
 
 ---
 

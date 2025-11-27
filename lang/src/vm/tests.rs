@@ -4157,4 +4157,140 @@ mod runtime_tests {
             Ok(Value::Integer(12))
         );
     }
+
+    // §8.9 Tail-Call Optimization Tests (Phase 14)
+
+    #[test]
+    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
+    fn tco_simple_factorial() {
+        // Tail-recursive factorial - should not overflow stack
+        let code = r#"{
+            let factorial = |n| {
+                let recur = |acc, n| {
+                    if n == 0 { acc }
+                    else { recur(acc * n, n - 1) }
+                };
+                recur(1, n)
+            };
+            factorial(10)
+        }"#;
+        assert_eq!(eval(code), Ok(Value::Integer(3628800)));
+    }
+
+    #[test]
+    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
+    fn tco_deep_recursion() {
+        // Test that deep tail recursion doesn't overflow
+        // This would overflow without TCO (typically ~1000-10000 calls max)
+        let code = r#"{
+            let count_down = |n| {
+                if n == 0 { "done" }
+                else { count_down(n - 1) }
+            };
+            count_down(100000)
+        }"#;
+        assert_eq!(eval(code), Ok(Value::String("done".to_string().into())));
+    }
+
+    #[test]
+    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
+    fn tco_sum_tail_recursive() {
+        // Tail-recursive sum using accumulator
+        let code = r#"{
+            let sum = |n| {
+                let recur = |acc, n| {
+                    if n == 0 { acc }
+                    else { recur(acc + n, n - 1) }
+                };
+                recur(0, n)
+            };
+            sum(1000)
+        }"#;
+        // Sum from 1 to 1000 = 1000 * 1001 / 2 = 500500
+        assert_eq!(eval(code), Ok(Value::Integer(500500)));
+    }
+
+    #[test]
+    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
+    fn tco_not_tail_position() {
+        // Non-tail recursive call (operation after the call)
+        // This should NOT be optimized and may overflow for large inputs
+        let code = r#"{
+            let factorial = |n| {
+                if n == 0 { 1 }
+                else { n * factorial(n - 1) }
+            };
+            factorial(5)
+        }"#;
+        assert_eq!(eval(code), Ok(Value::Integer(120)));
+    }
+
+    #[test]
+    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
+    fn tco_tail_call_in_if_branches() {
+        // Tail calls in both if branches
+        let code = r#"{
+            let is_even = |n| {
+                if n == 0 { true }
+                else if n == 1 { false }
+                else { is_even(n - 2) }
+            };
+            is_even(10000)
+        }"#;
+        assert_eq!(eval(code), Ok(Value::Boolean(true)));
+    }
+
+    #[test]
+    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
+    fn tco_tail_call_in_match() {
+        // Tail call in match expression
+        let code = r#"{
+            let count_down = |n| {
+                match n {
+                    0 { "done" }
+                    1 { "done" }
+                    _ { count_down(n - 1) }
+                }
+            };
+            count_down(10000)
+        }"#;
+        assert_eq!(eval(code), Ok(Value::String("done".to_string().into())));
+    }
+
+    #[test]
+    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
+    fn tco_mutual_recursion_not_optimized() {
+        // Mutual recursion should NOT be optimized (per spec)
+        // but should still work for small inputs
+        let code = r#"{
+            let is_even = |n| {
+                if n == 0 { true }
+                else { is_odd(n - 1) }
+            };
+            let is_odd = |n| {
+                if n == 0 { false }
+                else { is_even(n - 1) }
+            };
+            is_even(6)
+        }"#;
+        assert_eq!(eval(code), Ok(Value::Boolean(true)));
+    }
+
+    #[test]
+    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
+    fn tco_fibonacci_accumulator() {
+        // Tail-recursive fibonacci with accumulators
+        let code = r#"{
+            let fib = |n| {
+                let recur = |a, b, n| {
+                    if n == 0 { a }
+                    else { recur(b, a + b, n - 1) }
+                };
+                recur(0, 1, n)
+            };
+            fib(20)
+        }"#;
+        // 20th fibonacci number
+        assert_eq!(eval(code), Ok(Value::Integer(6765)));
+    }
 }
