@@ -471,3 +471,644 @@ mod bytecode_tests {
         assert!(disasm.contains("42"));
     }
 }
+
+#[cfg(test)]
+mod compiler_tests {
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
+    use crate::vm::bytecode::OpCode;
+    use crate::vm::compiler::Compiler;
+    use expect_test::{expect, Expect};
+
+    fn check_bytecode(source: &str, expected: Expect) {
+        let tokens = Lexer::new(source).tokenize().expect("Should tokenize");
+        let program = Parser::new(tokens).parse_program().expect("Should parse");
+
+        // Get first statement expression
+        let expr = match &program.statements[0].node {
+            crate::parser::ast::Stmt::Expr(e) => e,
+            _ => panic!("Expected expression statement"),
+        };
+
+        let compiled = Compiler::compile_expression(expr).expect("Should compile");
+        let disasm = compiled.chunk.disassemble("test");
+        expected.assert_eq(&disasm);
+    }
+
+    fn compile_expr(source: &str) -> crate::vm::bytecode::CompiledFunction {
+        let tokens = Lexer::new(source).tokenize().expect("Should tokenize");
+        let program = Parser::new(tokens).parse_program().expect("Should parse");
+
+        let expr = match &program.statements[0].node {
+            crate::parser::ast::Stmt::Expr(e) => e,
+            _ => panic!("Expected expression statement"),
+        };
+
+        Compiler::compile_expression(expr).expect("Should compile")
+    }
+
+    // §2.5 Literal compilation tests
+    #[test]
+    fn compile_integer_literal() {
+        check_bytecode(
+            "42",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (42)
+                0002 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_decimal_literal() {
+        check_bytecode(
+            "3.14",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (3.14)
+                0002 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_string_literal() {
+        check_bytecode(
+            r#""hello""#,
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 ("hello")
+                0002 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_boolean_literals() {
+        check_bytecode(
+            "true",
+            expect![[r#"
+                == test ==
+                0000 [   1] True
+                0001 [   1] Return
+            "#]],
+        );
+
+        check_bytecode(
+            "false",
+            expect![[r#"
+                == test ==
+                0000 [   1] False
+                0001 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_nil_literal() {
+        check_bytecode(
+            "nil",
+            expect![[r#"
+                == test ==
+                0000 [   1] Nil
+                0001 [   1] Return
+            "#]],
+        );
+    }
+
+    // §4 Binary expression tests
+    #[test]
+    fn compile_binary_add() {
+        check_bytecode(
+            "1 + 2",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] Add
+                0005 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_binary_sub() {
+        check_bytecode(
+            "10 - 3",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (10)
+                0002 [   1] Constant 1 (3)
+                0004 [   1] Sub
+                0005 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_binary_mul() {
+        check_bytecode(
+            "4 * 5",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (4)
+                0002 [   1] Constant 1 (5)
+                0004 [   1] Mul
+                0005 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_binary_div() {
+        check_bytecode(
+            "20 / 4",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (20)
+                0002 [   1] Constant 1 (4)
+                0004 [   1] Div
+                0005 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_binary_mod() {
+        check_bytecode(
+            "17 % 5",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (17)
+                0002 [   1] Constant 1 (5)
+                0004 [   1] Mod
+                0005 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_nested_expression() {
+        // Test operator precedence: 1 + 2 * 3 should be 1 + (2 * 3)
+        check_bytecode(
+            "1 + 2 * 3",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] Constant 2 (3)
+                0006 [   1] Mul
+                0007 [   1] Add
+                0008 [   1] Return
+            "#]],
+        );
+    }
+
+    // Comparison operators
+    #[test]
+    fn compile_comparison_operators() {
+        check_bytecode(
+            "1 == 2",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] Eq
+                0005 [   1] Return
+            "#]],
+        );
+
+        check_bytecode(
+            "1 != 2",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] Ne
+                0005 [   1] Return
+            "#]],
+        );
+
+        check_bytecode(
+            "1 < 2",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] Lt
+                0005 [   1] Return
+            "#]],
+        );
+
+        check_bytecode(
+            "1 <= 2",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] Le
+                0005 [   1] Return
+            "#]],
+        );
+
+        check_bytecode(
+            "1 > 2",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] Gt
+                0005 [   1] Return
+            "#]],
+        );
+
+        check_bytecode(
+            "1 >= 2",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] Ge
+                0005 [   1] Return
+            "#]],
+        );
+    }
+
+    // Prefix operators
+    #[test]
+    fn compile_negation() {
+        check_bytecode(
+            "-42",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (42)
+                0002 [   1] Neg
+                0003 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_not() {
+        check_bytecode(
+            "!true",
+            expect![[r#"
+                == test ==
+                0000 [   1] True
+                0001 [   1] Not
+                0002 [   1] Return
+            "#]],
+        );
+    }
+
+    // §4.4 Short-circuit logical operators
+    #[test]
+    fn compile_and_short_circuit() {
+        check_bytecode(
+            "true && false",
+            expect![[r#"
+                == test ==
+                0000 [   1] True
+                0001 [   1] PopJumpIfFalse -> 5
+                0004 [   1] False
+                0005 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_or_short_circuit() {
+        check_bytecode(
+            "false || true",
+            expect![[r#"
+                == test ==
+                0000 [   1] False
+                0001 [   1] PopJumpIfTrue -> 5
+                0004 [   1] True
+                0005 [   1] Return
+            "#]],
+        );
+    }
+
+    // §10 Collection compilation
+    #[test]
+    fn compile_empty_list() {
+        check_bytecode(
+            "[]",
+            expect![[r#"
+                == test ==
+                0000 [   1] MakeList 0
+                0002 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_list_with_elements() {
+        check_bytecode(
+            "[1, 2, 3]",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] Constant 2 (3)
+                0006 [   1] MakeList 3
+                0008 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_empty_set() {
+        check_bytecode(
+            "{}",
+            expect![[r#"
+                == test ==
+                0000 [   1] MakeSet 0
+                0002 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_set_with_elements() {
+        check_bytecode(
+            "{1, 2, 3}",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] Constant 2 (3)
+                0006 [   1] MakeSet 3
+                0008 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_empty_dict() {
+        check_bytecode(
+            "#{}",
+            expect![[r#"
+                == test ==
+                0000 [   1] MakeDict 0
+                0002 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_dict_with_entries() {
+        check_bytecode(
+            r#"#{"a": 1, "b": 2}"#,
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 ("a")
+                0002 [   1] Constant 1 (1)
+                0004 [   1] Constant 2 ("b")
+                0006 [   1] Constant 3 (2)
+                0008 [   1] MakeDict 2
+                0010 [   1] Return
+            "#]],
+        );
+    }
+
+    // §3.4 Range compilation
+    #[test]
+    fn compile_exclusive_range() {
+        check_bytecode(
+            "1..10",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (10)
+                0004 [   1] False
+                0005 [   1] MakeRange
+                0006 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_inclusive_range() {
+        check_bytecode(
+            "1..=10",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (10)
+                0004 [   1] True
+                0005 [   1] MakeRange
+                0006 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_unbounded_range() {
+        check_bytecode(
+            "1..",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Nil
+                0003 [   1] False
+                0004 [   1] MakeRange
+                0005 [   1] Return
+            "#]],
+        );
+    }
+
+    // §4.6 Index operation
+    #[test]
+    fn compile_index() {
+        check_bytecode(
+            "[1, 2, 3][1]",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] Constant 2 (3)
+                0006 [   1] MakeList 3
+                0008 [   1] Constant 3 (1)
+                0010 [   1] Index
+                0011 [   1] Return
+            "#]],
+        );
+    }
+
+    // §8.1 Function expressions
+    #[test]
+    fn compile_function() {
+        let compiled = compile_expr("|x| x + 1");
+        // The outer chunk should have a MakeClosure instruction
+        assert_eq!(compiled.chunk.code[0], OpCode::MakeClosure as u8);
+        // And there should be one function in the functions list
+        assert_eq!(compiled.chunk.functions.len(), 1);
+    }
+
+    #[test]
+    fn compile_function_body() {
+        let compiled = compile_expr("|x| x + 1");
+        // Get the inner function
+        let inner_fn = &compiled.chunk.functions[0];
+        assert_eq!(inner_fn.arity, 1);
+
+        // The body should have: GetLocal 0, Constant, Add, Return
+        let disasm = inner_fn.chunk.disassemble("inner");
+        assert!(disasm.contains("GetLocal"));
+        assert!(disasm.contains("Add"));
+        assert!(disasm.contains("Return"));
+    }
+
+    #[test]
+    fn compile_function_multiple_params() {
+        let compiled = compile_expr("|a, b, c| a + b + c");
+        let inner_fn = &compiled.chunk.functions[0];
+        assert_eq!(inner_fn.arity, 3);
+    }
+
+    // §8.4 Partial application
+    #[test]
+    fn compile_partial_add_right() {
+        // _ + 1 should compile to a function with one parameter
+        let compiled = compile_expr("_ + 1");
+        assert_eq!(compiled.chunk.code[0], OpCode::MakeClosure as u8);
+        let inner_fn = &compiled.chunk.functions[0];
+        assert_eq!(inner_fn.arity, 1);
+    }
+
+    #[test]
+    fn compile_partial_add_left() {
+        // 10 - _ should compile to a function with one parameter
+        let compiled = compile_expr("10 - _");
+        let inner_fn = &compiled.chunk.functions[0];
+        assert_eq!(inner_fn.arity, 1);
+    }
+
+    #[test]
+    fn compile_partial_both() {
+        // _ / _ should compile to a function with two parameters
+        let compiled = compile_expr("_ / _");
+        let inner_fn = &compiled.chunk.functions[0];
+        assert_eq!(inner_fn.arity, 2);
+    }
+
+    // §8.2 Function calls
+    #[test]
+    fn compile_function_call() {
+        check_bytecode(
+            "f(1, 2)",
+            expect![[r#"
+                == test ==
+                0000 [   1] GetGlobal 0 ("f")
+                0002 [   1] Constant 1 (1)
+                0004 [   1] Constant 2 (2)
+                0006 [   1] Call 2
+                0008 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_function_call_no_args() {
+        check_bytecode(
+            "f()",
+            expect![[r#"
+                == test ==
+                0000 [   1] GetGlobal 0 ("f")
+                0002 [   1] Call 0
+                0004 [   1] Return
+            "#]],
+        );
+    }
+
+    // §4.7 Pipeline operator
+    #[test]
+    fn compile_pipeline_simple() {
+        // x |> f compiles to f(x)
+        check_bytecode(
+            "5 |> double",
+            expect![[r#"
+                == test ==
+                0000 [   1] GetGlobal 0 ("double")
+                0002 [   1] Constant 1 (5)
+                0004 [   1] Call 1
+                0006 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_pipeline_with_args() {
+        // x |> f(a) compiles to f(a, x)
+        check_bytecode(
+            "5 |> add(10)",
+            expect![[r#"
+                == test ==
+                0000 [   1] GetGlobal 0 ("add")
+                0002 [   1] Constant 1 (10)
+                0004 [   1] Constant 2 (5)
+                0006 [   1] Call 2
+                0008 [   1] Return
+            "#]],
+        );
+    }
+
+    // §7.1 If expression
+    #[test]
+    fn compile_if_else() {
+        check_bytecode(
+            "if true { 1 } else { 2 }",
+            expect![[r#"
+                == test ==
+                0000 [   1] True
+                0001 [   1] JumpIfFalse -> 10
+                0004 [   1] Pop
+                0005 [   1] Constant 0 (1)
+                0007 [   1] Jump -> 13
+                0010 [   1] Pop
+                0011 [   1] Constant 1 (2)
+                0013 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_if_without_else() {
+        check_bytecode(
+            "if false { 1 }",
+            expect![[r#"
+                == test ==
+                0000 [   1] False
+                0001 [   1] JumpIfFalse -> 10
+                0004 [   1] Pop
+                0005 [   1] Constant 0 (1)
+                0007 [   1] Jump -> 12
+                0010 [   1] Pop
+                0011 [   1] Nil
+                0012 [   1] Return
+            "#]],
+        );
+    }
+
+    // §6.5 Infix function call
+    #[test]
+    fn compile_infix_call() {
+        check_bytecode(
+            r#"[1, 2, 3] `contains?` 2"#,
+            expect![[r#"
+                == test ==
+                0000 [   1] GetGlobal 0 ("contains?")
+                0002 [   1] Constant 1 (1)
+                0004 [   1] Constant 2 (2)
+                0006 [   1] Constant 3 (3)
+                0008 [   1] MakeList 3
+                0010 [   1] Constant 4 (2)
+                0012 [   1] Call 2
+                0014 [   1] Return
+            "#]],
+        );
+    }
+}

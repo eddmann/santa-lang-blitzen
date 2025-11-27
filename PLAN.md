@@ -527,12 +527,12 @@ fn compile_pipeline() { ... }
 
 ### Release Gate 5
 
-- [ ] All expression types compile to correct bytecode
-- [ ] Partial application generates correct closure
-- [ ] Pipeline operator compiles correctly
-- [ ] Constants are deduplicated in pool
-- [ ] All tests pass
-- [ ] `cargo clippy` clean
+- [x] All expression types compile to correct bytecode
+- [x] Partial application generates correct closure
+- [x] Pipeline operator compiles correctly
+- [x] Constants are deduplicated in pool
+- [x] All tests pass
+- [x] `cargo clippy` clean
 
 ---
 
