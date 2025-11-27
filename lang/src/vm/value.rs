@@ -59,11 +59,16 @@ pub enum Value {
         args: Vec<Value>,
     },
 
-    // TODO: Add MemoizedFunction variant for memoize builtin (Phase 14+)
-    // See PLAN.md "Future Work: memoize Implementation" for details
-    // Will require:
-    //   MemoizedFunction(Rc<RefCell<MemoizedFunction>>),
-    // Where MemoizedFunction contains: function + HashMap<Vec<Value>, Value> cache
+    /// Memoized function - wraps a function with a cache for memoization
+    /// Per LANG.txt §11.16, memoize returns a cached version of a function
+    MemoizedFunction(Rc<RefCell<MemoizedFn>>),
+}
+
+/// Memoized function state - stores the original closure and result cache
+#[derive(Debug)]
+pub struct MemoizedFn {
+    pub closure: Rc<Closure>,
+    pub cache: HashMap<Vector<Value>, Value>,
 }
 
 /// Closure wraps a compiled function with its captured upvalues
@@ -148,11 +153,12 @@ impl Value {
             Value::List(v) => !v.is_empty(),
             Value::Set(s) => !s.is_empty(),
             Value::Dict(d) => !d.is_empty(),
-            // Functions, LazySequences, ExternalFunctions, and PartialApplications are always truthy
+            // Functions, LazySequences, ExternalFunctions, PartialApplications, and MemoizedFunctions are always truthy
             Value::Function(_) => true,
             Value::LazySequence(_) => true,
             Value::ExternalFunction(_) => true,
             Value::PartialApplication { .. } => true,
+            Value::MemoizedFunction(_) => true,
             Value::Range { .. } => true,
         }
     }
@@ -173,6 +179,7 @@ impl Value {
             Value::Range { .. } => "Range",
             Value::ExternalFunction(_) => "ExternalFunction",
             Value::PartialApplication { .. } => "Function",
+            Value::MemoizedFunction(_) => "Function",
         }
     }
 
@@ -183,9 +190,10 @@ impl Value {
             Value::String(_) => true,
             Value::List(elements) => elements.iter().all(|e| e.is_hashable()),
             Value::Set(_) => true,
-            // Dict, LazySequence, Function, ExternalFunction, PartialApplication are NOT hashable
+            // Dict, LazySequence, Function, ExternalFunction, PartialApplication, MemoizedFunction are NOT hashable
             Value::Dict(_) | Value::LazySequence(_) | Value::Function(_)
-            | Value::ExternalFunction(_) | Value::PartialApplication { .. } => false,
+            | Value::ExternalFunction(_) | Value::PartialApplication { .. }
+            | Value::MemoizedFunction(_) => false,
             // Ranges are hashable (they're just data)
             Value::Range { .. } => true,
         }
@@ -228,6 +236,8 @@ impl PartialEq for Value {
                 Value::PartialApplication { closure: c1, args: a1 },
                 Value::PartialApplication { closure: c2, args: a2 },
             ) => Rc::ptr_eq(c1, c2) && a1 == a2,
+            // Memoized functions compare by identity
+            (Value::MemoizedFunction(a), Value::MemoizedFunction(b)) => Rc::ptr_eq(a, b),
             // Different types are never equal
             _ => false,
         }
@@ -292,6 +302,9 @@ impl Hash for Value {
                     arg.hash(state);
                 }
             }
+            Value::MemoizedFunction(f) => {
+                std::ptr::hash(Rc::as_ptr(f), state);
+            }
         }
     }
 }
@@ -345,6 +358,7 @@ impl fmt::Display for Value {
             Value::LazySequence(_) => write!(f, "<lazy-sequence>"),
             Value::ExternalFunction(name) => write!(f, "<external-function:{}>", name),
             Value::PartialApplication { .. } => write!(f, "<function>"),
+            Value::MemoizedFunction(_) => write!(f, "<function>"),
             Value::Range {
                 start,
                 end,

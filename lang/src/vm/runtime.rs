@@ -1295,6 +1295,42 @@ impl VM {
                 // Push result
                 self.push(result);
             }
+            Value::MemoizedFunction(memoized_fn) => {
+                // Collect arguments from stack
+                let mut args: Vector<Value> = Vector::new();
+                for i in 0..argc {
+                    args.push_back(self.peek(argc - 1 - i).clone());
+                }
+
+                // Check cache first
+                {
+                    let cache = &memoized_fn.borrow().cache;
+                    if let Some(cached_result) = cache.get(&args) {
+                        // Pop arguments and function from stack
+                        for _ in 0..=argc {
+                            self.pop();
+                        }
+                        self.push(cached_result.clone());
+                        return Ok(());
+                    }
+                }
+
+                // Not in cache - call the underlying function
+                let closure = memoized_fn.borrow().closure.clone();
+                let args_vec: Vec<Value> = args.iter().cloned().collect();
+                let result = self.call_closure_sync(&closure, args_vec)?;
+
+                // Store in cache
+                memoized_fn.borrow_mut().cache.insert(args, result.clone());
+
+                // Pop arguments and function from stack
+                for _ in 0..=argc {
+                    self.pop();
+                }
+
+                // Push result
+                self.push(result);
+            }
             _ => {
                 return Err(self.error(format!("Cannot call {}", callee.type_name())));
             }
@@ -1495,6 +1531,7 @@ impl VM {
             BuiltinId::First => self.builtin_first(args, line),
             BuiltinId::List => self.builtin_list_callback(args, line),
             BuiltinId::Set => self.builtin_set_callback(args, line),
+            BuiltinId::Memoize => self.builtin_memoize(args, line),
             _ => Err(RuntimeError::new(
                 format!("{} is not a callback builtin", id.name()),
                 line,
@@ -4128,6 +4165,28 @@ impl VM {
 
             _ => Err(RuntimeError::new(
                 format!("Cannot convert {} to list", value.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// memoize(function) → MemoizedFunction
+    /// Wrap a function with memoization cache. Per LANG.txt §11.16
+    fn builtin_memoize(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        use super::value::MemoizedFn;
+
+        let function = &args[0];
+
+        match function {
+            Value::Function(closure) => {
+                let memoized = MemoizedFn {
+                    closure: closure.clone(),
+                    cache: im_rc::HashMap::new(),
+                };
+                Ok(Value::MemoizedFunction(Rc::new(RefCell::new(memoized))))
+            }
+            _ => Err(RuntimeError::new(
+                format!("memoize expects Function, got {}", function.type_name()),
                 line,
             )),
         }
