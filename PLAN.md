@@ -465,12 +465,12 @@ fn bytecode_encoding() { ... }
 
 ### Release Gate 4
 
-- [ ] All value types implemented with correct equality semantics
-- [ ] Hashable values work correctly in Sets and Dict keys
-- [ ] Truthiness matches LANG.txt Section 14.1
-- [ ] Bytecode instruction set is complete
-- [ ] All tests pass
-- [ ] `cargo clippy` clean
+- [x] All value types implemented with correct equality semantics
+- [x] Hashable values work correctly in Sets and Dict keys
+- [x] Truthiness matches LANG.txt Section 14.1
+- [x] Bytecode instruction set is complete
+- [x] All tests pass
+- [x] `cargo clippy` clean
 
 ---
 
