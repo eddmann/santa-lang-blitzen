@@ -709,6 +709,11 @@ impl VM {
 
             // String concatenation
             (Value::String(x), Value::String(y)) => Value::String(Rc::new(format!("{}{}", x, y))),
+            // String + other types (coerce to string)
+            (Value::String(x), Value::Integer(y)) => Value::String(Rc::new(format!("{}{}", x, y))),
+            (Value::String(x), Value::Decimal(y)) => Value::String(Rc::new(format!("{}{}", x, y.0))),
+            (Value::Integer(x), Value::String(y)) => Value::String(Rc::new(format!("{}{}", x, y))),
+            (Value::Decimal(x), Value::String(y)) => Value::String(Rc::new(format!("{}{}", x.0, y))),
 
             // List concatenation
             (Value::List(x), Value::List(y)) => {
@@ -3144,6 +3149,22 @@ impl VM {
                 }
                 Ok(Value::Nil)
             }
+            Value::String(s) => {
+                use unicode_segmentation::UnicodeSegmentation;
+                for (idx, grapheme) in s.graphemes(true).enumerate() {
+                    let elem = Value::String(std::rc::Rc::new(grapheme.to_string()));
+                    let call_args = if arity >= 2 {
+                        vec![elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem.clone()]
+                    };
+                    let result = self.call_closure_sync(&closure, call_args)?;
+                    if result.is_truthy() {
+                        return Ok(elem);
+                    }
+                }
+                Ok(Value::Nil)
+            }
             Value::Range {
                 start,
                 end,
@@ -3445,6 +3466,22 @@ impl VM {
                 }
                 Ok(Value::Boolean(false))
             }
+            Value::String(s) => {
+                use unicode_segmentation::UnicodeSegmentation;
+                for (idx, grapheme) in s.graphemes(true).enumerate() {
+                    let elem = Value::String(std::rc::Rc::new(grapheme.to_string()));
+                    let call_args = if arity >= 2 {
+                        vec![elem, Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem]
+                    };
+                    let result = self.call_closure_sync(&closure, call_args)?;
+                    if result.is_truthy() {
+                        return Ok(Value::Boolean(true));
+                    }
+                }
+                Ok(Value::Boolean(false))
+            }
             Value::Range {
                 start,
                 end,
@@ -3549,6 +3586,22 @@ impl VM {
                         vec![value.clone(), key.clone()]
                     } else {
                         vec![value.clone()]
+                    };
+                    let result = self.call_closure_sync(&closure, call_args)?;
+                    if !result.is_truthy() {
+                        return Ok(Value::Boolean(false));
+                    }
+                }
+                Ok(Value::Boolean(true))
+            }
+            Value::String(s) => {
+                use unicode_segmentation::UnicodeSegmentation;
+                for (idx, grapheme) in s.graphemes(true).enumerate() {
+                    let elem = Value::String(std::rc::Rc::new(grapheme.to_string()));
+                    let call_args = if arity >= 2 {
+                        vec![elem, Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem]
                     };
                     let result = self.call_closure_sync(&closure, call_args)?;
                     if !result.is_truthy() {

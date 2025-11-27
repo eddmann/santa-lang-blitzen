@@ -1608,8 +1608,19 @@ fn builtin_chunk(size: &Value, collection: &Value, line: u32) -> Result<Value, R
 
             Ok(Value::List(result))
         }
+        Value::String(s) => {
+            let graphemes: Vec<&str> = s.graphemes(true).collect();
+            let mut result = Vector::new();
+
+            for chunk in graphemes.chunks(chunk_size) {
+                let chunk_str: String = chunk.concat();
+                result.push_back(Value::String(Rc::new(chunk_str)));
+            }
+
+            Ok(Value::List(result))
+        }
         _ => Err(RuntimeError::new(
-            format!("chunk expects List, got {}", collection.type_name()),
+            format!("chunk expects List or String, got {}", collection.type_name()),
             line,
         )),
     }
