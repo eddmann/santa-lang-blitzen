@@ -24,11 +24,11 @@ mod value_tests {
     #[test]
     fn decimal_equality() {
         assert_eq!(
-            Value::Decimal(OrderedFloat(3.14)),
-            Value::Decimal(OrderedFloat(3.14))
+            Value::Decimal(OrderedFloat(3.15)),
+            Value::Decimal(OrderedFloat(3.15))
         );
         assert_ne!(
-            Value::Decimal(OrderedFloat(3.14)),
+            Value::Decimal(OrderedFloat(3.15)),
             Value::Decimal(OrderedFloat(2.71))
         );
     }
@@ -127,8 +127,8 @@ mod value_tests {
 
     #[test]
     fn decimal_hashable() {
-        let v1 = Value::Decimal(OrderedFloat(3.14));
-        let v2 = Value::Decimal(OrderedFloat(3.14));
+        let v1 = Value::Decimal(OrderedFloat(3.15));
+        let v2 = Value::Decimal(OrderedFloat(3.15));
         assert_eq!(hash_value(&v1), hash_value(&v2));
     }
 
@@ -294,7 +294,7 @@ mod value_tests {
 
     #[test]
     fn display_decimal() {
-        assert_eq!(format!("{}", Value::Decimal(OrderedFloat(3.14))), "3.14");
+        assert_eq!(format!("{}", Value::Decimal(OrderedFloat(3.15))), "3.15");
     }
 
     #[test]
@@ -520,10 +520,10 @@ mod compiler_tests {
     #[test]
     fn compile_decimal_literal() {
         check_bytecode(
-            "3.14",
+            "3.15",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (3.14)
+                0000 [   1] Constant 0 (3.15)
                 0002 [   1] Return
             "#]],
         );
@@ -1515,7 +1515,7 @@ mod runtime_tests {
 
     #[test]
     fn eval_decimal_literal() {
-        assert_eq!(eval("3.14"), Ok(Value::Decimal(OrderedFloat(3.14))));
+        assert_eq!(eval("3.15"), Ok(Value::Decimal(OrderedFloat(3.15))));
         assert_eq!(eval("-0.5"), Ok(Value::Decimal(OrderedFloat(-0.5))));
     }
 
@@ -1597,7 +1597,7 @@ mod runtime_tests {
     fn eval_negation() {
         assert_eq!(eval("-42"), Ok(Value::Integer(-42)));
         assert_eq!(eval("--42"), Ok(Value::Integer(42)));
-        assert_eq!(eval("-3.14"), Ok(Value::Decimal(OrderedFloat(-3.14))));
+        assert_eq!(eval("-3.15"), Ok(Value::Decimal(OrderedFloat(-3.15))));
     }
 
     #[test]
@@ -4177,7 +4177,7 @@ mod runtime_tests {
     fn eval_builtin_type() {
         assert_eq!(eval("type(nil)"), Ok(Value::String(Rc::new("Nil".to_string()))));
         assert_eq!(eval("type(42)"), Ok(Value::String(Rc::new("Integer".to_string()))));
-        assert_eq!(eval("type(3.14)"), Ok(Value::String(Rc::new("Decimal".to_string()))));
+        assert_eq!(eval("type(3.15)"), Ok(Value::String(Rc::new("Decimal".to_string()))));
         assert_eq!(eval("type(true)"), Ok(Value::String(Rc::new("Boolean".to_string()))));
         assert_eq!(eval("type(\"hello\")"), Ok(Value::String(Rc::new("String".to_string()))));
         assert_eq!(eval("type([1, 2])"), Ok(Value::String(Rc::new("List".to_string()))));
