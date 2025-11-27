@@ -356,6 +356,18 @@ impl Compiler {
         right: &SpannedExpr,
         span: Span,
     ) -> Result<(), CompileError> {
+        // Pipeline and Compose have their own handling and may contain
+        // placeholders on the right side (partial application as argument)
+        match op {
+            InfixOp::Pipeline => {
+                return self.compile_pipeline(left, right, span);
+            }
+            InfixOp::Compose => {
+                return self.compile_composition(left, right, span);
+            }
+            _ => {}
+        }
+
         // Check for partial application (placeholder in operands)
         if Self::contains_placeholder(left) || Self::contains_placeholder(right) {
             return self.compile_partial_infix(left, op, right, span);
@@ -377,11 +389,8 @@ impl Compiler {
                 self.patch_jump(jump);
                 return Ok(());
             }
-            InfixOp::Pipeline => {
-                return self.compile_pipeline(left, right, span);
-            }
-            InfixOp::Compose => {
-                return self.compile_composition(left, right, span);
+            InfixOp::Pipeline | InfixOp::Compose => {
+                unreachable!("Handled above")
             }
             _ => {}
         }
@@ -1065,20 +1074,23 @@ impl Compiler {
         mutable: bool,
         span: Span,
     ) -> Result<(), CompileError> {
-        // Value to destructure is on stack
-        // We need to extract each element and bind it
+        // Value to destructure is on stack.
+        // We make it a temporary anonymous local so we can access it via GetLocal
+        // for each element extraction.
+        self.add_local(String::new(), false);
+        let list_slot = (self.locals.len() - 1) as u8;
 
         // Find the rest pattern position if any
         let rest_pos = patterns
             .iter()
             .position(|p| matches!(p, Pattern::RestIdentifier(_)));
 
-        // For each pattern element, extract and bind
+        // For each pattern element, get the list, extract element, and bind
         for (i, pattern) in patterns.iter().enumerate() {
             match pattern {
                 Pattern::Identifier(name) => {
-                    // Dup the list, push index, index into it
-                    self.emit(OpCode::Dup);
+                    // Get the list from its local slot
+                    self.emit_with_operand(OpCode::GetLocal, list_slot);
                     let idx = if let Some(rp) = rest_pos {
                         if i < rp {
                             i as i64
@@ -1098,7 +1110,7 @@ impl Compiler {
                 }
                 Pattern::RestIdentifier(name) => {
                     // Get a slice of the middle elements
-                    self.emit(OpCode::Dup);
+                    self.emit_with_operand(OpCode::GetLocal, list_slot);
                     // Start index
                     self.emit_constant(Value::Integer(i as i64))?;
                     // End index (nil for "to end" or negative for "from end")
@@ -1112,8 +1124,8 @@ impl Compiler {
                     self.add_local(name.clone(), mutable);
                 }
                 Pattern::List(inner) => {
-                    // Nested destructuring
-                    self.emit(OpCode::Dup);
+                    // Nested destructuring: get element, then recursively destructure
+                    self.emit_with_operand(OpCode::GetLocal, list_slot);
                     self.emit_constant(Value::Integer(i as i64))?;
                     self.emit(OpCode::Index);
                     self.compile_list_destructuring(inner, mutable, span)?;
@@ -1127,8 +1139,7 @@ impl Compiler {
             }
         }
 
-        // Pop the original list value
-        self.emit(OpCode::Pop);
+        // The anonymous list local will be popped by end_scope along with other locals
         Ok(())
     }
 

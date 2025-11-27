@@ -1169,17 +1169,16 @@ mod compiler_tests {
                 0000 [   1] Constant 0 (1)
                 0002 [   1] Constant 1 (2)
                 0004 [   1] MakeList 2
-                0006 [   1] Dup
-                0007 [   1] Constant 2 (0)
-                0009 [   1] Index
-                0010 [   1] Dup
-                0011 [   1] Constant 3 (1)
-                0013 [   1] Index
-                0014 [   1] Pop
-                0015 [   1] GetLocal 0
-                0017 [   1] GetLocal 1
-                0019 [   1] Add
-                0020 [   1] Return
+                0006 [   1] GetLocal 0
+                0008 [   1] Constant 2 (0)
+                0010 [   1] Index
+                0011 [   1] GetLocal 0
+                0013 [   1] Constant 3 (1)
+                0015 [   1] Index
+                0016 [   1] GetLocal 1
+                0018 [   1] GetLocal 2
+                0020 [   1] Add
+                0021 [   1] Return
             "#]],
         );
     }
@@ -1194,16 +1193,15 @@ mod compiler_tests {
                 0002 [   1] Constant 1 (2)
                 0004 [   1] Constant 2 (3)
                 0006 [   1] MakeList 3
-                0008 [   1] Dup
-                0009 [   1] Constant 3 (0)
-                0011 [   1] Index
-                0012 [   1] Dup
-                0013 [   1] Constant 4 (1)
-                0015 [   1] Nil
-                0016 [   1] Slice
-                0017 [   1] Pop
-                0018 [   1] GetLocal 0
-                0020 [   1] Return
+                0008 [   1] GetLocal 0
+                0010 [   1] Constant 3 (0)
+                0012 [   1] Index
+                0013 [   1] GetLocal 0
+                0015 [   1] Constant 4 (1)
+                0017 [   1] Nil
+                0018 [   1] Slice
+                0019 [   1] GetLocal 1
+                0021 [   1] Return
             "#]],
         );
     }
@@ -1217,11 +1215,10 @@ mod compiler_tests {
                 0000 [   1] Constant 0 (1)
                 0002 [   1] Constant 1 (2)
                 0004 [   1] MakeList 2
-                0006 [   1] Dup
-                0007 [   1] Constant 2 (0)
-                0009 [   1] Index
-                0010 [   1] Pop
-                0011 [   1] GetLocal 0
+                0006 [   1] GetLocal 0
+                0008 [   1] Constant 2 (0)
+                0010 [   1] Index
+                0011 [   1] GetLocal 1
                 0013 [   1] Return
             "#]],
         );
@@ -2141,9 +2138,8 @@ mod runtime_tests {
     }
 
     #[test]
-    #[ignore = "Partial application in pipeline needs compiler support"]
     fn eval_pipeline_with_partial() {
-        // 5 |> _ + 1 === (_ + 1)(5)
+        // 5 |> (_ + 1) === (_ + 1)(5)
         assert_eq!(eval("5 |> (_ + 1)"), Ok(Value::Integer(6)));
     }
 
@@ -2193,7 +2189,6 @@ mod runtime_tests {
     // ============================================================
 
     #[test]
-    #[ignore = "Compiler bug: destructuring bytecode duplicates wrong value"]
     fn eval_destructuring_list() {
         assert_eq!(
             eval("{ let [a, b] = [1, 2]; a + b }"),
@@ -2202,7 +2197,6 @@ mod runtime_tests {
     }
 
     #[test]
-    #[ignore = "Compiler bug: destructuring bytecode duplicates wrong value"]
     fn eval_destructuring_nested() {
         assert_eq!(
             eval("{ let [[a, b], c] = [[1, 2], 3]; a + b + c }"),
