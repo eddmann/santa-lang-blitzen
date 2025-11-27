@@ -957,10 +957,45 @@ impl Compiler {
 
     /// Resolve upvalue (captured variable from enclosing scope)
     fn resolve_upvalue(&mut self, name: &str) -> Option<u8> {
-        // Will be properly implemented in Phase 8
-        // For now, return None to fall through to global lookup
-        let _ = name;
+        // No enclosing compiler means we're at top level - no upvalues possible
+        let enclosing = self.enclosing.as_mut()?;
+
+        // First, check if the variable is a local in the immediately enclosing scope
+        if let Some(local_idx) = enclosing.resolve_local(name) {
+            // Mark the local as captured
+            enclosing.locals[local_idx].captured = true;
+            return Some(self.add_upvalue(local_idx as u8, true));
+        }
+
+        // Otherwise, check if it's an upvalue in the enclosing scope (transitive capture)
+        if let Some(upvalue_idx) = enclosing.resolve_upvalue(name) {
+            return Some(self.add_upvalue(upvalue_idx, false));
+        }
+
         None
+    }
+
+    /// Add an upvalue to the current function's upvalue list
+    fn add_upvalue(&mut self, index: u8, is_local: bool) -> u8 {
+        // Check if we already have this upvalue
+        for (i, upvalue) in self.function.upvalues.iter().enumerate() {
+            if upvalue.index == index && upvalue.is_local == is_local {
+                return i as u8;
+            }
+        }
+
+        // Add new upvalue
+        let upvalue_count = self.function.upvalues.len();
+        if upvalue_count >= 256 {
+            panic!("Too many upvalues in function");
+        }
+
+        self.function.upvalues.push(super::bytecode::UpvalueDesc {
+            index,
+            is_local,
+        });
+
+        upvalue_count as u8
     }
 
     /// Compile a block of statements
@@ -1469,16 +1504,16 @@ impl Compiler {
 
     /// End current scope and pop locals
     fn end_scope(&mut self) {
+        // Track how many locals to pop from the compiler's locals list
+        // The stack cleanup happens at function return (for captured locals)
+        // or we rely on the block returning a value and proper scope management
         while !self.locals.is_empty()
             && self.locals.last().map(|l| l.depth).unwrap_or(0) > self.scope_depth - 1
         {
-            let local = self.locals.pop().unwrap();
-            if local.captured {
-                self.emit(OpCode::CloseUpvalue);
-            } else {
-                // Don't pop the last value - it's the block's return value
-                // Actually we need to track this better
-            }
+            let _local = self.locals.pop().unwrap();
+            // Captured locals will be closed at function return via close_upvalues
+            // Non-captured locals stay on stack until block returns its value
+            // (the block return value sits on top, locals below it)
         }
         self.scope_depth -= 1;
     }

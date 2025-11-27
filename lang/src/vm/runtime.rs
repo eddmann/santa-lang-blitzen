@@ -1039,9 +1039,13 @@ impl VM {
         }
 
         // Close them (transfer value from stack to heap)
+        // Process in reverse order so indices remain valid
         for (i, slot) in to_close.iter().rev() {
-            let value = self.stack[*slot].clone();
-            *self.open_upvalues[*i].borrow_mut() = Upvalue::Closed(value);
+            // Only close if the slot is still valid on the stack
+            if *slot < self.stack.len() {
+                let value = self.stack[*slot].clone();
+                *self.open_upvalues[*i].borrow_mut() = Upvalue::Closed(value);
+            }
         }
 
         // Remove closed upvalues from the list

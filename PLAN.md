@@ -724,13 +724,13 @@ fn nested_closures() { ... }
 
 ### Release Gate 8
 
-- [ ] Simple closures capture variables correctly
-- [ ] Nested closures work
-- [ ] Mutable captures update correctly
-- [ ] Upvalues close over when scope exits
-- [ ] Counter example works correctly
-- [ ] All tests pass
-- [ ] `cargo clippy` clean
+- [x] Simple closures capture variables correctly
+- [x] Nested closures work
+- [x] Mutable captures update correctly
+- [x] Upvalues close over when scope exits
+- [x] Counter example works correctly
+- [x] All tests pass
+- [x] `cargo clippy` clean
 
 ---
 

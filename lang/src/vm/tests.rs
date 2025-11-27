@@ -2074,14 +2074,14 @@ mod runtime_tests {
     }
 
     #[test]
-    #[ignore = "Requires closures with upvalue capture (Phase 8)"]
     fn eval_function_nested_call() {
+        // Moved to closure tests section
         assert_eq!(eval("(|x| (|y| x + y)(3))(2)"), Ok(Value::Integer(5)));
     }
 
     #[test]
-    #[ignore = "Requires closures with upvalue capture (Phase 8)"]
     fn eval_function_returning_function() {
+        // Moved to closure tests section
         assert_eq!(eval("((|x| |y| x + y)(10))(5)"), Ok(Value::Integer(15)));
     }
 
@@ -2296,5 +2296,162 @@ mod runtime_tests {
     #[test]
     fn eval_undefined_variable() {
         assert!(eval("undefined_var").is_err());
+    }
+
+    // ============================================================
+    // §8.3 Closures - Phase 8
+    // ============================================================
+
+    #[test]
+    fn eval_closure_capture_local() {
+        // Basic closure capturing a variable from enclosing scope
+        assert_eq!(eval("(|x| (|y| x + y)(3))(2)"), Ok(Value::Integer(5)));
+    }
+
+    #[test]
+    fn eval_closure_make_adder() {
+        // The make_adder example from LANG.txt §8.3
+        assert_eq!(eval("((|x| |y| x + y)(5))(3)"), Ok(Value::Integer(8)));
+    }
+
+    #[test]
+    fn eval_closure_nested() {
+        // Nested closures with multiple captures
+        assert_eq!(
+            eval("((|a| (|b| (|c| a + b + c)(3))(2))(1))"),
+            Ok(Value::Integer(6))
+        );
+    }
+
+    #[test]
+    fn eval_closure_capture_upvalue() {
+        // Capture from grandparent scope
+        assert_eq!(
+            eval("((|x| |y| |z| x + y + z)(1))(2)(3)"),
+            Ok(Value::Integer(6))
+        );
+    }
+
+    #[test]
+    fn eval_closure_mutable_capture_debug() {
+        // Debug: what does make_counter() return?
+        let result = eval(
+            r#"{
+                let make_counter = || {
+                    let mut count = 0;
+                    || {
+                        count = count + 1;
+                        count
+                    }
+                };
+                make_counter()
+            }"#
+        );
+        match &result {
+            Ok(Value::Function(_)) => { /* expected */ }
+            other => panic!("Expected Function, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn eval_closure_mutable_capture_simple() {
+        // Simpler version: just create the closure and call it once
+        assert_eq!(
+            eval(
+                r#"{
+                    let make_counter = || {
+                        let mut count = 0;
+                        || {
+                            count = count + 1;
+                            count
+                        }
+                    };
+                    let counter = make_counter();
+                    counter()
+                }"#
+            ),
+            Ok(Value::Integer(1))
+        );
+    }
+
+    #[test]
+    fn eval_closure_mutable_capture() {
+        // Mutable variable capture - counter example from LANG.txt §8.3
+        assert_eq!(
+            eval(
+                r#"{
+                    let counter = (|| {
+                        let mut count = 0;
+                        || {
+                            count = count + 1;
+                            count
+                        }
+                    })();
+                    let a = counter();
+                    let b = counter();
+                    let c = counter();
+                    [a, b, c]
+                }"#
+            ),
+            Ok(Value::List(Vector::from(vec![
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(3)
+            ])))
+        );
+    }
+
+    #[test]
+    fn eval_closure_upvalue_close_over() {
+        // Ensure upvalues are closed over when the enclosing scope exits
+        assert_eq!(
+            eval(
+                r#"{
+                    let make_counter = || {
+                        let mut n = 0;
+                        || { n = n + 1; n }
+                    };
+                    let c1 = make_counter();
+                    let c2 = make_counter();
+                    [c1(), c1(), c2(), c1()]
+                }"#
+            ),
+            Ok(Value::List(Vector::from(vec![
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(1),
+                Value::Integer(3)
+            ])))
+        );
+    }
+
+    #[test]
+    fn eval_closure_in_pipeline() {
+        // Closures used in pipeline - LANG.txt §4.7 specifies
+        // x |> f(a) compiles to f(a, x), not (f(a))(x)
+        // So we use a 2-argument function
+        assert_eq!(
+            eval(
+                r#"{
+                    let add = |x, y| x + y;
+                    5 |> add(10)
+                }"#
+            ),
+            Ok(Value::Integer(15))
+        );
+    }
+
+    #[test]
+    fn eval_closure_curried_call() {
+        // Curried function call (not pipeline)
+        assert_eq!(
+            eval(
+                r#"{
+                    let add = |x| |y| x + y;
+                    add(10)(5)
+                }"#
+            ),
+            Ok(Value::Integer(15))
+        );
     }
 }
