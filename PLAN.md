@@ -587,13 +587,13 @@ fn compile_shadowing() { ... }
 
 ### Release Gate 6
 
-- [ ] Variable scoping works correctly
-- [ ] Shadowing behaves per LANG.txt
-- [ ] Control flow generates correct jumps
-- [ ] Match compilation handles all pattern types
-- [ ] Guard clauses compile correctly
-- [ ] All tests pass
-- [ ] `cargo clippy` clean
+- [x] Variable scoping works correctly
+- [x] Shadowing behaves per LANG.txt
+- [x] Control flow generates correct jumps
+- [x] Match compilation handles all pattern types
+- [x] Guard clauses compile correctly
+- [x] All tests pass
+- [x] `cargo clippy` clean
 
 ---
 

@@ -2,7 +2,8 @@ use std::rc::Rc;
 
 use crate::lexer::Span;
 use crate::parser::ast::{
-    Expr, InfixOp, Param, ParamKind, Pattern, PrefixOp, SpannedExpr, SpannedStmt, Stmt,
+    Expr, InfixOp, LiteralPattern, MatchArm, Param, ParamKind, Pattern, PrefixOp, SpannedExpr,
+    SpannedStmt, Stmt,
 };
 
 use super::bytecode::{Chunk, CompiledFunction, OpCode};
@@ -22,7 +23,6 @@ impl CompileError {
             span,
         }
     }
-
 }
 
 impl std::fmt::Display for CompileError {
@@ -329,20 +329,19 @@ impl Compiler {
                 self.emit(OpCode::Spread);
             }
 
-            // Match expression (handled in Phase 6)
-            Expr::Match { .. } => {
-                return Err(CompileError::new(
-                    "Match expressions not yet implemented",
-                    expr.span,
-                ));
+            // Match expression
+            Expr::Match { subject, arms } => {
+                self.compile_match(subject, arms, expr.span)?;
             }
 
-            // If-let (handled in Phase 6)
-            Expr::IfLet { .. } => {
-                return Err(CompileError::new(
-                    "If-let expressions not yet implemented",
-                    expr.span,
-                ));
+            // If-let expression
+            Expr::IfLet {
+                pattern,
+                value,
+                then_branch,
+                else_branch,
+            } => {
+                self.compile_if_let(pattern, value, then_branch, else_branch, expr.span)?;
             }
         }
 
@@ -577,8 +576,7 @@ impl Compiler {
             }
             Expr::List(elems) => elems.iter().any(Self::contains_placeholder),
             Expr::Call { function, args } => {
-                Self::contains_placeholder(function)
-                    || args.iter().any(Self::contains_placeholder)
+                Self::contains_placeholder(function) || args.iter().any(Self::contains_placeholder)
             }
             _ => false,
         }
@@ -653,8 +651,8 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         let left_has_placeholder = Self::contains_placeholder(left);
         let right_has_placeholder = Self::contains_placeholder(right);
-        let placeholder_count =
-            (if left_has_placeholder { 1 } else { 0 }) + (if right_has_placeholder { 1 } else { 0 });
+        let placeholder_count = (if left_has_placeholder { 1 } else { 0 })
+            + (if right_has_placeholder { 1 } else { 0 });
 
         // Create a new function
         let enclosing = std::mem::take(self);
@@ -847,10 +845,7 @@ impl Compiler {
         // Add function to chunk
         let fn_idx = self.chunk().functions.len();
         if fn_idx > 255 {
-            return Err(CompileError::new(
-                "Too many functions in one chunk",
-                span,
-            ));
+            return Err(CompileError::new("Too many functions in one chunk", span));
         }
         self.chunk().functions.push(Rc::new(compiled_fn));
         self.emit_with_operand(OpCode::MakeClosure, fn_idx as u8);
@@ -896,7 +891,9 @@ impl Compiler {
         }
 
         // Finally, emit global lookup
-        let name_idx = self.chunk().add_constant(Value::String(Rc::new(name.to_string())));
+        let name_idx = self
+            .chunk()
+            .add_constant(Value::String(Rc::new(name.to_string())));
         if name_idx > 255 {
             return Err(CompileError::new("Too many global names", span));
         }
@@ -929,7 +926,9 @@ impl Compiler {
         }
 
         // Global assignment
-        let name_idx = self.chunk().add_constant(Value::String(Rc::new(name.to_string())));
+        let name_idx = self
+            .chunk()
+            .add_constant(Value::String(Rc::new(name.to_string())));
         if name_idx > 255 {
             return Err(CompileError::new("Too many global names", span));
         }
@@ -1017,23 +1016,427 @@ impl Compiler {
         self.expression(value)?;
 
         // Handle pattern binding
+        self.compile_pattern_binding(pattern, mutable, span)?;
+
+        Ok(())
+    }
+
+    /// Compile pattern binding for let statements
+    fn compile_pattern_binding(
+        &mut self,
+        pattern: &Pattern,
+        mutable: bool,
+        span: Span,
+    ) -> Result<(), CompileError> {
         match pattern {
             Pattern::Identifier(name) => {
-                // Simple binding - add local
+                // Simple binding - add local (value is on stack)
                 self.add_local(name.clone(), mutable);
             }
             Pattern::Wildcard => {
                 // Discard the value
                 self.emit(OpCode::Pop);
             }
-            _ => {
-                // Destructuring patterns will be handled in Phase 6
+            Pattern::List(patterns) => {
+                self.compile_list_destructuring(patterns, mutable, span)?;
+            }
+            Pattern::RestIdentifier(_) => {
+                // This shouldn't occur at top level - rest should be inside a list
                 return Err(CompileError::new(
-                    "Destructuring patterns not yet implemented",
+                    "Rest pattern can only appear inside list patterns",
+                    span,
+                ));
+            }
+            Pattern::Literal(_) | Pattern::Range { .. } => {
+                // Literals in let patterns don't make sense - they're for matching
+                return Err(CompileError::new(
+                    "Literal patterns are not allowed in let bindings",
                     span,
                 ));
             }
         }
+        Ok(())
+    }
+
+    /// Compile list destructuring pattern
+    fn compile_list_destructuring(
+        &mut self,
+        patterns: &[Pattern],
+        mutable: bool,
+        span: Span,
+    ) -> Result<(), CompileError> {
+        // Value to destructure is on stack
+        // We need to extract each element and bind it
+
+        // Find the rest pattern position if any
+        let rest_pos = patterns
+            .iter()
+            .position(|p| matches!(p, Pattern::RestIdentifier(_)));
+
+        // For each pattern element, extract and bind
+        for (i, pattern) in patterns.iter().enumerate() {
+            match pattern {
+                Pattern::Identifier(name) => {
+                    // Dup the list, push index, index into it
+                    self.emit(OpCode::Dup);
+                    let idx = if let Some(rp) = rest_pos {
+                        if i < rp {
+                            i as i64
+                        } else {
+                            // After rest: index from end
+                            -((patterns.len() - i) as i64)
+                        }
+                    } else {
+                        i as i64
+                    };
+                    self.emit_constant(Value::Integer(idx))?;
+                    self.emit(OpCode::Index);
+                    self.add_local(name.clone(), mutable);
+                }
+                Pattern::Wildcard => {
+                    // Skip this element - don't bind it
+                }
+                Pattern::RestIdentifier(name) => {
+                    // Get a slice of the middle elements
+                    self.emit(OpCode::Dup);
+                    // Start index
+                    self.emit_constant(Value::Integer(i as i64))?;
+                    // End index (nil for "to end" or negative for "from end")
+                    let end_count = patterns.len() - i - 1;
+                    if end_count == 0 {
+                        self.emit(OpCode::Nil);
+                    } else {
+                        self.emit_constant(Value::Integer(-(end_count as i64)))?;
+                    }
+                    self.emit(OpCode::Slice);
+                    self.add_local(name.clone(), mutable);
+                }
+                Pattern::List(inner) => {
+                    // Nested destructuring
+                    self.emit(OpCode::Dup);
+                    self.emit_constant(Value::Integer(i as i64))?;
+                    self.emit(OpCode::Index);
+                    self.compile_list_destructuring(inner, mutable, span)?;
+                }
+                Pattern::Literal(_) | Pattern::Range { .. } => {
+                    return Err(CompileError::new(
+                        "Literal patterns are not allowed in let destructuring",
+                        span,
+                    ));
+                }
+            }
+        }
+
+        // Pop the original list value
+        self.emit(OpCode::Pop);
+        Ok(())
+    }
+
+    /// Compile a match expression
+    fn compile_match(
+        &mut self,
+        subject: &SpannedExpr,
+        arms: &[MatchArm],
+        _span: Span,
+    ) -> Result<(), CompileError> {
+        // Compile the subject - it stays on stack for pattern matching
+        self.expression(subject)?;
+
+        // Track jump targets for after each arm
+        let mut end_jumps = Vec::new();
+
+        for (arm_idx, arm) in arms.iter().enumerate() {
+            let is_last = arm_idx == arms.len() - 1;
+
+            // Compile pattern test - this may bind locals
+            let locals_before = self.locals.len();
+            let next_arm_jump = self.compile_pattern_test(&arm.pattern, arm.span)?;
+
+            // Compile guard if present
+            let guard_jump = if let Some(guard) = &arm.guard {
+                self.expression(guard)?;
+                Some(self.emit_jump(OpCode::JumpIfFalse))
+            } else {
+                None
+            };
+
+            // Pop the subject (pattern matched, we're committed to this arm)
+            self.emit(OpCode::Pop);
+
+            // Compile arm body
+            self.expression(&arm.body)?;
+
+            // Clean up any locals bound by the pattern
+            let locals_bound = self.locals.len() - locals_before;
+            if locals_bound > 0 {
+                self.emit_with_operand(OpCode::PopN, locals_bound as u8);
+                // Remove from compiler's local list
+                for _ in 0..locals_bound {
+                    self.locals.pop();
+                }
+            }
+
+            // Jump to end
+            if !is_last {
+                end_jumps.push(self.emit_jump(OpCode::Jump));
+            }
+
+            // Patch guard jump to next arm if guard failed
+            if let Some(gj) = guard_jump {
+                self.patch_jump(gj);
+            }
+
+            // Patch pattern match failure jump
+            if let Some(pj) = next_arm_jump {
+                self.patch_jump(pj);
+            }
+        }
+
+        // Patch all end jumps to here
+        for jump in end_jumps {
+            self.patch_jump(jump);
+        }
+
+        Ok(())
+    }
+
+    /// Compile pattern test - returns jump offset for failure case
+    fn compile_pattern_test(
+        &mut self,
+        pattern: &Pattern,
+        span: Span,
+    ) -> Result<Option<usize>, CompileError> {
+        match pattern {
+            Pattern::Wildcard => {
+                // Always matches, no test needed
+                Ok(None)
+            }
+            Pattern::Identifier(name) => {
+                // Always matches, bind the value
+                // Value is on stack (via Dup from match), we keep it as local
+                self.add_local(name.clone(), false);
+                Ok(None)
+            }
+            Pattern::Literal(lit) => {
+                // Dup subject, compare with literal
+                self.emit(OpCode::Dup);
+                match lit {
+                    LiteralPattern::Integer(n) => self.emit_constant(Value::Integer(*n))?,
+                    LiteralPattern::Decimal(n) => {
+                        self.emit_constant(Value::Decimal(ordered_float::OrderedFloat(*n)))?
+                    }
+                    LiteralPattern::String(s) => {
+                        self.emit_constant(Value::String(Rc::new(s.clone())))?
+                    }
+                    LiteralPattern::Boolean(b) => {
+                        if *b {
+                            self.emit(OpCode::True)
+                        } else {
+                            self.emit(OpCode::False)
+                        }
+                    }
+                    LiteralPattern::Nil => self.emit(OpCode::Nil),
+                }
+                self.emit(OpCode::Eq);
+                Ok(Some(self.emit_jump(OpCode::JumpIfFalse)))
+            }
+            Pattern::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                // Dup subject, emit RangeCheck instruction
+                self.emit(OpCode::Dup);
+                self.emit(OpCode::RangeCheck);
+                // Write start (2 bytes)
+                self.chunk().write_operand((*start >> 8) as u8);
+                self.chunk().write_operand((*start & 0xFF) as u8);
+                // Write end (2 bytes)
+                let end_val = end.unwrap_or(i16::MAX as i64) as i16;
+                self.chunk().write_operand((end_val >> 8) as u8);
+                self.chunk().write_operand((end_val & 0xFF) as u8);
+                // Write inclusive flag
+                self.chunk().write_operand(if *inclusive { 1 } else { 0 });
+                Ok(Some(self.emit_jump(OpCode::JumpIfFalse)))
+            }
+            Pattern::List(patterns) => self.compile_list_pattern_test(patterns, span),
+            Pattern::RestIdentifier(_) => Err(CompileError::new(
+                "Rest pattern can only appear inside list patterns",
+                span,
+            )),
+        }
+    }
+
+    /// Compile list pattern test
+    fn compile_list_pattern_test(
+        &mut self,
+        patterns: &[Pattern],
+        span: Span,
+    ) -> Result<Option<usize>, CompileError> {
+        // Check size first (unless there's a rest pattern)
+        let has_rest = patterns
+            .iter()
+            .any(|p| matches!(p, Pattern::RestIdentifier(_)));
+        let required_len = if has_rest {
+            patterns.len() - 1
+        } else {
+            patterns.len()
+        };
+
+        // Dup and check size
+        self.emit(OpCode::Dup);
+        self.emit(OpCode::Size);
+        self.emit_constant(Value::Integer(required_len as i64))?;
+        if has_rest {
+            self.emit(OpCode::Ge);
+        } else {
+            self.emit(OpCode::Eq);
+        }
+        let size_fail_jump = self.emit_jump(OpCode::JumpIfFalse);
+
+        // Extract and bind each element
+        let rest_pos = patterns
+            .iter()
+            .position(|p| matches!(p, Pattern::RestIdentifier(_)));
+
+        for (i, pattern) in patterns.iter().enumerate() {
+            match pattern {
+                Pattern::Identifier(name) => {
+                    self.emit(OpCode::Dup);
+                    let idx = self.calc_pattern_index(i, rest_pos, patterns.len());
+                    self.emit_constant(Value::Integer(idx))?;
+                    self.emit(OpCode::Index);
+                    self.add_local(name.clone(), false);
+                }
+                Pattern::Wildcard => {
+                    // Skip - don't need to extract
+                }
+                Pattern::RestIdentifier(name) => {
+                    self.emit(OpCode::Dup);
+                    self.emit_constant(Value::Integer(i as i64))?;
+                    let end_count = patterns.len() - i - 1;
+                    if end_count == 0 {
+                        self.emit(OpCode::Nil);
+                    } else {
+                        self.emit_constant(Value::Integer(-(end_count as i64)))?;
+                    }
+                    self.emit(OpCode::Slice);
+                    self.add_local(name.clone(), false);
+                }
+                Pattern::Literal(lit) => {
+                    // Extract and compare
+                    self.emit(OpCode::Dup);
+                    let idx = self.calc_pattern_index(i, rest_pos, patterns.len());
+                    self.emit_constant(Value::Integer(idx))?;
+                    self.emit(OpCode::Index);
+                    match lit {
+                        LiteralPattern::Integer(n) => self.emit_constant(Value::Integer(*n))?,
+                        LiteralPattern::Decimal(n) => {
+                            self.emit_constant(Value::Decimal(ordered_float::OrderedFloat(*n)))?
+                        }
+                        LiteralPattern::String(s) => {
+                            self.emit_constant(Value::String(Rc::new(s.clone())))?
+                        }
+                        LiteralPattern::Boolean(b) => {
+                            if *b {
+                                self.emit(OpCode::True)
+                            } else {
+                                self.emit(OpCode::False)
+                            }
+                        }
+                        LiteralPattern::Nil => self.emit(OpCode::Nil),
+                    }
+                    self.emit(OpCode::Eq);
+                    // If not equal, fail
+                    let fail_jump = self.emit_jump(OpCode::JumpIfFalse);
+                    return Ok(Some(fail_jump));
+                }
+                Pattern::List(inner) => {
+                    self.emit(OpCode::Dup);
+                    let idx = self.calc_pattern_index(i, rest_pos, patterns.len());
+                    self.emit_constant(Value::Integer(idx))?;
+                    self.emit(OpCode::Index);
+                    if let Some(jump) = self.compile_list_pattern_test(inner, span)? {
+                        return Ok(Some(jump));
+                    }
+                }
+                Pattern::Range { .. } => {
+                    return Err(CompileError::new(
+                        "Range patterns inside list patterns not yet supported",
+                        span,
+                    ));
+                }
+            }
+        }
+
+        Ok(Some(size_fail_jump))
+    }
+
+    /// Calculate index for pattern element
+    fn calc_pattern_index(&self, i: usize, rest_pos: Option<usize>, total: usize) -> i64 {
+        if let Some(rp) = rest_pos {
+            if i < rp {
+                i as i64
+            } else {
+                // After rest: index from end
+                -((total - i) as i64)
+            }
+        } else {
+            i as i64
+        }
+    }
+
+    /// Compile if-let expression
+    fn compile_if_let(
+        &mut self,
+        pattern: &Pattern,
+        value: &SpannedExpr,
+        then_branch: &SpannedExpr,
+        else_branch: &Option<Box<SpannedExpr>>,
+        span: Span,
+    ) -> Result<(), CompileError> {
+        // Compile the value expression
+        self.expression(value)?;
+
+        // Compile pattern test
+        let locals_before = self.locals.len();
+        let fail_jump = self.compile_pattern_test(pattern, span)?;
+
+        // Pop subject value if pattern matched
+        self.emit(OpCode::Pop);
+
+        // Compile then branch
+        self.expression(then_branch)?;
+
+        // Clean up locals from pattern
+        let locals_bound = self.locals.len() - locals_before;
+        if locals_bound > 0 {
+            self.emit_with_operand(OpCode::PopN, locals_bound as u8);
+            for _ in 0..locals_bound {
+                self.locals.pop();
+            }
+        }
+
+        // Jump over else
+        let end_jump = self.emit_jump(OpCode::Jump);
+
+        // Patch fail jump
+        if let Some(fj) = fail_jump {
+            self.patch_jump(fj);
+        }
+
+        // Pop subject value since pattern failed
+        self.emit(OpCode::Pop);
+
+        // Compile else branch
+        if let Some(else_expr) = else_branch {
+            self.expression(else_expr)?;
+        } else {
+            self.emit(OpCode::Nil);
+        }
+
+        // Patch end jump
+        self.patch_jump(end_jump);
 
         Ok(())
     }

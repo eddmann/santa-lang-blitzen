@@ -31,17 +31,17 @@ impl ParseError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Precedence {
     None = 0,
-    Assignment = 1,   // =
-    Or = 2,           // ||
-    And = 3,          // &&
-    Equality = 4,     // == !=
-    Comparison = 5,   // < <= > >=
-    Range = 6,        // |> >> .. ..=
-    Sum = 7,          // + -
-    Product = 8,      // * / % `infix`
-    Prefix = 9,       // ! - (unary)
-    Call = 10,        // ()
-    Index = 11,       // []
+    Assignment = 1, // =
+    Or = 2,         // ||
+    And = 3,        // &&
+    Equality = 4,   // == !=
+    Comparison = 5, // < <= > >=
+    Range = 6,      // |> >> .. ..=
+    Sum = 7,        // + -
+    Product = 8,    // * / % `infix`
+    Prefix = 9,     // ! - (unary)
+    Call = 10,      // ()
+    Index = 11,     // []
 }
 
 impl Parser {
@@ -79,10 +79,8 @@ impl Parser {
             ..
         }) = self.peek()
         {
-            let is_section_name = matches!(
-                name.as_str(),
-                "input" | "part_one" | "part_two" | "test"
-            );
+            let is_section_name =
+                matches!(name.as_str(), "input" | "part_one" | "part_two" | "test");
             if is_section_name
                 && matches!(
                     self.peek_next(),
@@ -395,13 +393,13 @@ impl Parser {
                         return Err(ParseError::new(
                             format!("Expected identifier after backtick, got {:?}", t.kind),
                             t.span,
-                        ))
+                        ));
                     }
                     None => {
                         return Err(ParseError::new(
                             "Expected identifier after backtick",
                             left.span,
-                        ))
+                        ));
                     }
                 };
                 self.expect(TokenKind::Backtick)?;
@@ -429,7 +427,10 @@ impl Parser {
                 self.advance();
                 // Check for ..= (inclusive) was handled in tokenizer as DotDotEqual
                 // Check if there's a right operand (unbounded range has none)
-                if self.is_at_end() || self.check_statement_terminator() || self.check_closing_delimiter() {
+                if self.is_at_end()
+                    || self.check_statement_terminator()
+                    || self.check_closing_delimiter()
+                {
                     let span = Span {
                         start: left.span.start,
                         end: token.span.end,
@@ -490,7 +491,7 @@ impl Parser {
                         return Err(ParseError::new(
                             "Left side of assignment must be an identifier",
                             left.span,
-                        ))
+                        ));
                     }
                 };
                 let value = self.parse_precedence(Precedence::Assignment)?;
@@ -512,7 +513,10 @@ impl Parser {
             // Binary operators
             _ => {
                 let op = self.get_infix_op(&token.kind).ok_or_else(|| {
-                    ParseError::new(format!("Expected operator, got {:?}", token.kind), token.span)
+                    ParseError::new(
+                        format!("Expected operator, got {:?}", token.kind),
+                        token.span,
+                    )
                 })?;
                 self.advance();
                 let right = self.parse_precedence(precedence)?;
@@ -546,9 +550,10 @@ impl Parser {
             | TokenKind::GreaterGreater
             | TokenKind::DotDot
             | TokenKind::DotDotEqual => Precedence::Range,
-            TokenKind::Less | TokenKind::LessEqual | TokenKind::Greater | TokenKind::GreaterEqual => {
-                Precedence::Comparison
-            }
+            TokenKind::Less
+            | TokenKind::LessEqual
+            | TokenKind::Greater
+            | TokenKind::GreaterEqual => Precedence::Comparison,
             TokenKind::EqualEqual | TokenKind::BangEqual => Precedence::Equality,
             TokenKind::Equal => Precedence::Assignment,
             TokenKind::AmpAmp => Precedence::And,
@@ -815,9 +820,9 @@ impl Parser {
         let mut params = Vec::new();
 
         while !self.check(&TokenKind::Pipe) && !self.is_at_end() {
-            let param_token = self.advance().ok_or_else(|| {
-                ParseError::new("Expected parameter", start_span)
-            })?;
+            let param_token = self
+                .advance()
+                .ok_or_else(|| ParseError::new("Expected parameter", start_span))?;
 
             let param = match &param_token.kind {
                 TokenKind::Identifier(name) => Param {
@@ -846,7 +851,7 @@ impl Parser {
                             return Err(ParseError::new(
                                 "Expected identifier after ..",
                                 rest_name_token.span,
-                            ))
+                            ));
                         }
                     }
                 }
@@ -854,7 +859,7 @@ impl Parser {
                     return Err(ParseError::new(
                         format!("Expected parameter, got {:?}", param_token.kind),
                         param_token.span,
-                    ))
+                    ));
                 }
             };
             params.push(param);
@@ -1094,9 +1099,9 @@ impl Parser {
             }
             TokenKind::DotDot => {
                 self.advance();
-                let name_token = self.advance().ok_or_else(|| {
-                    ParseError::new("Expected identifier after ..", token.span)
-                })?;
+                let name_token = self
+                    .advance()
+                    .ok_or_else(|| ParseError::new("Expected identifier after ..", token.span))?;
                 match &name_token.kind {
                     TokenKind::Identifier(name) => Ok(Pattern::RestIdentifier(name.clone())),
                     _ => Err(ParseError::new(
@@ -1146,7 +1151,7 @@ impl Parser {
                             return Err(ParseError::new(
                                 "Expected integer in range pattern",
                                 end_token.span,
-                            ))
+                            ));
                         }
                     }
                 }
@@ -1382,11 +1387,7 @@ impl Parser {
                 column: 1,
             });
             Err(ParseError::new(
-                format!(
-                    "Expected {:?}, got {:?}",
-                    kind,
-                    token.map(|t| &t.kind)
-                ),
+                format!("Expected {:?}, got {:?}", kind, token.map(|t| &t.kind)),
                 span,
             ))
         }

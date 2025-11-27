@@ -100,9 +100,7 @@ pub enum LazySeq {
         remaining: usize,
     },
     /// zip multiple sequences
-    Zip {
-        sources: Vec<Rc<RefCell<LazySeq>>>,
-    },
+    Zip { sources: Vec<Rc<RefCell<LazySeq>>> },
     /// combinations of elements
     Combinations {
         source: Vec<Value>,

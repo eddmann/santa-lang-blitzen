@@ -1,6 +1,6 @@
 use super::*;
 use crate::lexer::Lexer;
-use expect_test::{expect, Expect};
+use expect_test::{Expect, expect};
 
 fn check(input: &str, expect: Expect) {
     let mut lexer = Lexer::new(input);
@@ -63,7 +63,11 @@ fn format_expr_node(expr: &Expr) -> String {
                 .collect();
             format!("#{{{}}}", pairs.join(", "))
         }
-        Expr::Range { start, end, inclusive } => {
+        Expr::Range {
+            start,
+            end,
+            inclusive,
+        } => {
             let op = if *inclusive { "..=" } else { ".." };
             match end {
                 Some(e) => format!("({}{op}{})", format_expr(start), format_expr(e)),
@@ -90,7 +94,11 @@ fn format_expr_node(expr: &Expr) -> String {
             left,
             right,
         } => {
-            format!("({} `{function}` {})", format_expr(left), format_expr(right))
+            format!(
+                "({} `{function}` {})",
+                format_expr(left),
+                format_expr(right)
+            )
         }
         Expr::If {
             condition,
@@ -142,7 +150,11 @@ fn format_expr_node(expr: &Expr) -> String {
                     )
                 })
                 .collect();
-            format!("(match {} {{ {} }})", format_expr(subject), arm_strs.join(", "))
+            format!(
+                "(match {} {{ {} }})",
+                format_expr(subject),
+                arm_strs.join(", ")
+            )
         }
         Expr::Block(stmts) => {
             let stmt_strs: Vec<_> = stmts.iter().map(format_stmt).collect();
@@ -189,9 +201,17 @@ fn format_pattern(pattern: &Pattern) -> String {
 
 fn format_stmt(stmt: &SpannedStmt) -> String {
     match &stmt.node {
-        Stmt::Let { mutable, pattern, value } => {
+        Stmt::Let {
+            mutable,
+            pattern,
+            value,
+        } => {
             let mut_str = if *mutable { "mut " } else { "" };
-            format!("let {mut_str}{} = {}", format_pattern(pattern), format_expr(value))
+            format!(
+                "let {mut_str}{} = {}",
+                format_pattern(pattern),
+                format_expr(value)
+            )
         }
         Stmt::Return(expr) => format!("return {}", format_expr(expr)),
         Stmt::Break(expr) => format!("break {}", format_expr(expr)),
@@ -373,10 +393,7 @@ fn parse_empty_set() {
 
 #[test]
 fn parse_dict_literal() {
-    check(
-        r#"#{"a": 1, "b": 2}"#,
-        expect![[r#"#{"a": 1, "b": 2}"#]],
-    );
+    check(r#"#{"a": 1, "b": 2}"#, expect![[r#"#{"a": 1, "b": 2}"#]]);
 }
 
 #[test]
@@ -617,7 +634,10 @@ fn parse_assignment() {
 
 #[test]
 fn parse_trailing_lambda() {
-    check("each(list) |x| x + 1", expect!["((each(list))(|x| (x + 1)))"]);
+    check(
+        "each(list) |x| x + 1",
+        expect!["((each(list))(|x| (x + 1)))"],
+    );
 }
 
 #[test]

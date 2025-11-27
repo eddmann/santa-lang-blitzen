@@ -368,10 +368,7 @@ mod value_tests {
         assert_eq!(Value::Integer(0).type_name(), "Integer");
         assert_eq!(Value::Decimal(OrderedFloat(0.0)).type_name(), "Decimal");
         assert_eq!(Value::Boolean(true).type_name(), "Boolean");
-        assert_eq!(
-            Value::String(Rc::new("".to_string())).type_name(),
-            "String"
-        );
+        assert_eq!(Value::String(Rc::new("".to_string())).type_name(), "String");
         assert_eq!(Value::List(Vector::new()).type_name(), "List");
         assert_eq!(Value::Set(HashSet::new()).type_name(), "Set");
         assert_eq!(Value::Dict(HashMap::new()).type_name(), "Dictionary");
@@ -478,7 +475,7 @@ mod compiler_tests {
     use crate::parser::Parser;
     use crate::vm::bytecode::OpCode;
     use crate::vm::compiler::Compiler;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
 
     fn check_bytecode(source: &str, expected: Expect) {
         let tokens = Lexer::new(source).tokenize().expect("Should tokenize");
@@ -1108,6 +1105,368 @@ mod compiler_tests {
                 0010 [   1] Constant 4 (2)
                 0012 [   1] Call 2
                 0014 [   1] Return
+            "#]],
+        );
+    }
+
+    // Phase 6: Statements & Control Flow tests
+
+    // §5.1 Let binding
+    #[test]
+    fn compile_let_binding() {
+        check_bytecode(
+            "{ let x = 42; x }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (42)
+                0002 [   1] GetLocal 0
+                0004 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_let_multiple() {
+        check_bytecode(
+            "{ let x = 1; let y = 2; x + y }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] GetLocal 0
+                0006 [   1] GetLocal 1
+                0008 [   1] Add
+                0009 [   1] Return
+            "#]],
+        );
+    }
+
+    // §5.3 Mutable variables
+    #[test]
+    fn compile_let_mut_and_assign() {
+        check_bytecode(
+            "{ let mut x = 1; x = 2; x }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] Dup
+                0005 [   1] SetLocal 0
+                0007 [   1] Pop
+                0008 [   1] GetLocal 0
+                0010 [   1] Return
+            "#]],
+        );
+    }
+
+    // §5.4 Destructuring - list
+    #[test]
+    fn compile_destructuring_list() {
+        check_bytecode(
+            "{ let [a, b] = [1, 2]; a + b }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] MakeList 2
+                0006 [   1] Dup
+                0007 [   1] Constant 2 (0)
+                0009 [   1] Index
+                0010 [   1] Dup
+                0011 [   1] Constant 3 (1)
+                0013 [   1] Index
+                0014 [   1] Pop
+                0015 [   1] GetLocal 0
+                0017 [   1] GetLocal 1
+                0019 [   1] Add
+                0020 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_destructuring_with_rest() {
+        check_bytecode(
+            "{ let [first, ..rest] = [1, 2, 3]; first }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] Constant 2 (3)
+                0006 [   1] MakeList 3
+                0008 [   1] Dup
+                0009 [   1] Constant 3 (0)
+                0011 [   1] Index
+                0012 [   1] Dup
+                0013 [   1] Constant 4 (1)
+                0015 [   1] Nil
+                0016 [   1] Slice
+                0017 [   1] Pop
+                0018 [   1] GetLocal 0
+                0020 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_destructuring_with_wildcard() {
+        check_bytecode(
+            "{ let [x, _] = [1, 2]; x }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] MakeList 2
+                0006 [   1] Dup
+                0007 [   1] Constant 2 (0)
+                0009 [   1] Index
+                0010 [   1] Pop
+                0011 [   1] GetLocal 0
+                0013 [   1] Return
+            "#]],
+        );
+    }
+
+    // §5.5 Shadowing
+    #[test]
+    fn compile_shadowing() {
+        check_bytecode(
+            "{ let x = 1; { let x = 2; x }; x }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] GetLocal 1
+                0006 [   1] Pop
+                0007 [   1] GetLocal 0
+                0009 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_shadowing_with_different_types() {
+        check_bytecode(
+            r#"{ let x = 1; let x = "hello"; x }"#,
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 ("hello")
+                0004 [   1] GetLocal 1
+                0006 [   1] Return
+            "#]],
+        );
+    }
+
+    // §6.3 Block expressions
+    #[test]
+    fn compile_block_returns_last() {
+        check_bytecode(
+            "{ 1; 2; 3 }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Pop
+                0003 [   1] Constant 1 (2)
+                0005 [   1] Pop
+                0006 [   1] Constant 2 (3)
+                0008 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_empty_block() {
+        check_bytecode(
+            "{ }",
+            expect![[r#"
+                == test ==
+                0000 [   1] MakeSet 0
+                0002 [   1] Return
+            "#]],
+        );
+    }
+
+    // §7.2 Match expression
+    #[test]
+    fn compile_match_literals() {
+        check_bytecode(
+            r#"match 1 { 0 { "zero" } 1 { "one" } _ { "other" } }"#,
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Dup
+                0003 [   1] Constant 1 (0)
+                0005 [   1] Eq
+                0006 [   1] JumpIfFalse -> 15
+                0009 [   1] Pop
+                0010 [   1] Constant 2 ("zero")
+                0012 [   1] Jump -> 31
+                0015 [   1] Dup
+                0016 [   1] Constant 3 (1)
+                0018 [   1] Eq
+                0019 [   1] JumpIfFalse -> 28
+                0022 [   1] Pop
+                0023 [   1] Constant 4 ("one")
+                0025 [   1] Jump -> 31
+                0028 [   1] Pop
+                0029 [   1] Constant 5 ("other")
+                0031 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_match_with_identifier() {
+        check_bytecode(
+            "match 42 { x { x + 1 } }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (42)
+                0002 [   1] Pop
+                0003 [   1] GetLocal 0
+                0005 [   1] Constant 1 (1)
+                0007 [   1] Add
+                0008 [   1] PopN 1
+                0010 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_match_with_guard() {
+        check_bytecode(
+            "match 5 { x if x > 3 { x } _ { 0 } }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (5)
+                0002 [   1] GetLocal 0
+                0004 [   1] Constant 1 (3)
+                0006 [   1] Gt
+                0007 [   1] JumpIfFalse -> 18
+                0010 [   1] Pop
+                0011 [   1] GetLocal 0
+                0013 [   1] PopN 1
+                0015 [   1] Jump -> 21
+                0018 [   1] Pop
+                0019 [   1] Constant 2 (0)
+                0021 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_match_list_pattern() {
+        check_bytecode(
+            "match [1, 2] { [a, b] { a + b } _ { 0 } }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] MakeList 2
+                0006 [   1] Dup
+                0007 [   1] Size
+                0008 [   1] Constant 2 (2)
+                0010 [   1] Eq
+                0011 [   1] JumpIfFalse -> 33
+                0014 [   1] Dup
+                0015 [   1] Constant 3 (0)
+                0017 [   1] Index
+                0018 [   1] Dup
+                0019 [   1] Constant 4 (1)
+                0021 [   1] Index
+                0022 [   1] Pop
+                0023 [   1] GetLocal 0
+                0025 [   1] GetLocal 1
+                0027 [   1] Add
+                0028 [   1] PopN 2
+                0030 [   1] Jump -> 36
+                0033 [   1] Pop
+                0034 [   1] Constant 5 (0)
+                0036 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_match_range_pattern() {
+        check_bytecode(
+            r#"match 5 { 1..=3 { "low" } 4..10 { "mid" } _ { "high" } }"#,
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (5)
+                0002 [   1] Dup
+                0003 [   1] RangeCheck 1 3 true
+                0009 [   1] JumpIfFalse -> 18
+                0012 [   1] Pop
+                0013 [   1] Constant 1 ("low")
+                0015 [   1] Jump -> 37
+                0018 [   1] Dup
+                0019 [   1] RangeCheck 4 10 false
+                0025 [   1] JumpIfFalse -> 34
+                0028 [   1] Pop
+                0029 [   1] Constant 2 ("mid")
+                0031 [   1] Jump -> 37
+                0034 [   1] Pop
+                0035 [   1] Constant 3 ("high")
+                0037 [   1] Return
+            "#]],
+        );
+    }
+
+    // §7.2 If-let expression
+    #[test]
+    fn compile_if_let() {
+        check_bytecode(
+            "if let [x, y] = [1, 2] { x + y } else { 0 }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] MakeList 2
+                0006 [   1] Dup
+                0007 [   1] Size
+                0008 [   1] Constant 2 (2)
+                0010 [   1] Eq
+                0011 [   1] JumpIfFalse -> 33
+                0014 [   1] Dup
+                0015 [   1] Constant 3 (0)
+                0017 [   1] Index
+                0018 [   1] Dup
+                0019 [   1] Constant 4 (1)
+                0021 [   1] Index
+                0022 [   1] Pop
+                0023 [   1] GetLocal 0
+                0025 [   1] GetLocal 1
+                0027 [   1] Add
+                0028 [   1] PopN 2
+                0030 [   1] Jump -> 36
+                0033 [   1] Pop
+                0034 [   1] Constant 5 (0)
+                0036 [   1] Return
+            "#]],
+        );
+    }
+
+    // §7.3 Return statement
+    #[test]
+    fn compile_return_in_function() {
+        let compiled = compile_expr("|x| { if x < 0 { return 0 }; x }");
+        let inner_fn = &compiled.chunk.functions[0];
+        let disasm = inner_fn.chunk.disassemble("inner");
+        assert!(disasm.contains("Return"));
+    }
+
+    // §7.4 Break statement
+    #[test]
+    fn compile_break() {
+        check_bytecode(
+            "{ break 42 }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (42)
+                0002 [   1] Break
+                0003 [   1] Return
             "#]],
         );
     }

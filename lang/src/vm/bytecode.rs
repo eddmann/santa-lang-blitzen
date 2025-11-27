@@ -77,6 +77,12 @@ pub enum OpCode {
     Index = 54,
     /// Slice operation: collection, start, end -> value
     Slice = 55,
+    /// Get size of collection (for pattern matching)
+    Size = 56,
+    /// Pop N values from stack (1 byte operand: count)
+    PopN = 57,
+    /// Check if value is in range (5 bytes: start i16, end i16, inclusive bool)
+    RangeCheck = 58,
 
     // Functions (§8)
     /// Create closure from function index (1 byte operand)
@@ -152,6 +158,9 @@ impl TryFrom<u8> for OpCode {
             53 => Ok(OpCode::MakeRange),
             54 => Ok(OpCode::Index),
             55 => Ok(OpCode::Slice),
+            56 => Ok(OpCode::Size),
+            57 => Ok(OpCode::PopN),
+            58 => Ok(OpCode::RangeCheck),
             60 => Ok(OpCode::MakeClosure),
             61 => Ok(OpCode::Call),
             62 => Ok(OpCode::TailCall),
@@ -279,9 +288,16 @@ impl Chunk {
                 let idx = self.code[offset + 1];
                 format!("{offset:04} [{line:4}] {:?} {idx}", op.unwrap())
             }
-            Ok(OpCode::MakeList) | Ok(OpCode::MakeSet) | Ok(OpCode::MakeDict) => {
+            Ok(OpCode::MakeList) | Ok(OpCode::MakeSet) | Ok(OpCode::MakeDict)
+            | Ok(OpCode::PopN) => {
                 let count = self.code[offset + 1];
                 format!("{offset:04} [{line:4}] {:?} {count}", op.unwrap())
+            }
+            Ok(OpCode::RangeCheck) => {
+                let start = ((self.code[offset + 1] as i16) << 8) | (self.code[offset + 2] as i16);
+                let end = ((self.code[offset + 3] as i16) << 8) | (self.code[offset + 4] as i16);
+                let inclusive = self.code[offset + 5] != 0;
+                format!("{offset:04} [{line:4}] RangeCheck {start} {end} {inclusive}")
             }
             Ok(OpCode::MakeClosure) => {
                 let idx = self.code[offset + 1];
@@ -296,8 +312,7 @@ impl Chunk {
             | Ok(OpCode::JumpIfTrue)
             | Ok(OpCode::PopJumpIfFalse)
             | Ok(OpCode::PopJumpIfTrue) => {
-                let jump =
-                    ((self.code[offset + 1] as u16) << 8) | (self.code[offset + 2] as u16);
+                let jump = ((self.code[offset + 1] as u16) << 8) | (self.code[offset + 2] as u16);
                 let target = offset + 3 + jump as usize;
                 format!("{offset:04} [{line:4}] {:?} -> {target}", op.unwrap())
             }
@@ -343,7 +358,9 @@ impl Chunk {
             | Ok(OpCode::MakeDict)
             | Ok(OpCode::MakeClosure)
             | Ok(OpCode::Call)
-            | Ok(OpCode::TailCall) => 2,
+            | Ok(OpCode::TailCall)
+            | Ok(OpCode::PopN) => 2,
+            Ok(OpCode::RangeCheck) => 6, // opcode + start(2) + end(2) + inclusive(1)
             Ok(OpCode::Jump)
             | Ok(OpCode::JumpIfFalse)
             | Ok(OpCode::JumpIfTrue)

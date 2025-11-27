@@ -35,25 +35,25 @@ pub enum TokenKind {
     Identifier(String),
 
     // Operators
-    Plus,      // +
-    Minus,     // -
-    Star,      // *
-    Slash,     // /
-    Percent,   // %
-    Bang,      // !
-    Equal,     // =
-    EqualEqual, // ==
-    BangEqual, // !=
-    Less,      // <
-    LessEqual, // <=
-    Greater,   // >
-    GreaterEqual, // >=
-    AmpAmp,    // &&
-    PipePipe,  // ||
-    PipeGreater, // |>
+    Plus,           // +
+    Minus,          // -
+    Star,           // *
+    Slash,          // /
+    Percent,        // %
+    Bang,           // !
+    Equal,          // =
+    EqualEqual,     // ==
+    BangEqual,      // !=
+    Less,           // <
+    LessEqual,      // <=
+    Greater,        // >
+    GreaterEqual,   // >=
+    AmpAmp,         // &&
+    PipePipe,       // ||
+    PipeGreater,    // |>
     GreaterGreater, // >>
-    DotDot,    // ..
-    DotDotEqual, // ..=
+    DotDot,         // ..
+    DotDotEqual,    // ..=
 
     // Delimiters
     LeftParen,    // (

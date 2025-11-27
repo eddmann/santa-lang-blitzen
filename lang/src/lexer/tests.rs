@@ -1,5 +1,5 @@
 use super::*;
-use expect_test::{expect, Expect};
+use expect_test::{Expect, expect};
 
 fn check(input: &str, expect: Expect) {
     let mut lexer = Lexer::new(input);
@@ -10,7 +10,11 @@ fn check(input: &str, expect: Expect) {
             for token in &tokens {
                 lines.push(format!(
                     "{:?} @ {}:{} [{}-{}]",
-                    token.kind, token.span.line, token.span.column, token.span.start, token.span.end
+                    token.kind,
+                    token.span.line,
+                    token.span.column,
+                    token.span.start,
+                    token.span.end
                 ));
             }
             lines.join("\n")
