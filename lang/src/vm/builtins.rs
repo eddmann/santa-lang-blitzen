@@ -2648,26 +2648,8 @@ fn builtin_evaluate(source: &Value, line: u32) -> Result<Value, RuntimeError> {
                 RuntimeError::new(format!("evaluate: parser error: {}", e.message), line)
             })?;
 
-            // For now, just compile and run the first expression if there is one
-            // Full section support would need more infrastructure
-            if program.statements.is_empty() {
-                return Ok(Value::Nil);
-            }
-
-            // Try to get a single expression from the first statement
-            use crate::parser::ast::Stmt;
-            let expr = match &program.statements[0].node {
-                Stmt::Expr(e) => e,
-                _ => {
-                    return Err(RuntimeError::new(
-                        "evaluate: only expressions are supported".to_string(),
-                        line,
-                    ));
-                }
-            };
-
-            // Compile the expression
-            let func = Compiler::compile_expression(expr).map_err(|e| {
+            // Compile all statements in the program
+            let func = Compiler::compile_statements(&program.statements).map_err(|e| {
                 RuntimeError::new(format!("evaluate: compiler error: {}", e.message), line)
             })?;
 

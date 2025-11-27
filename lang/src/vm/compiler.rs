@@ -93,6 +93,52 @@ impl Compiler {
         Ok(compiler.function)
     }
 
+    /// Compile a block of statements
+    /// The last statement's value is returned, or Nil if the last statement doesn't produce a value
+    pub fn compile_statements(stmts: &[SpannedStmt]) -> Result<CompiledFunction, CompileError> {
+        let mut compiler = Compiler::new();
+
+        if stmts.is_empty() {
+            // Empty program returns nil
+            compiler.emit_constant(Value::Nil)?;
+            compiler.emit(OpCode::Return);
+            return Ok(compiler.function);
+        }
+
+        // Compile all statements
+        for (i, stmt) in stmts.iter().enumerate() {
+            let is_last = i == stmts.len() - 1;
+
+            if is_last {
+                // For the last statement, we want to leave its value on the stack
+                match &stmt.node {
+                    Stmt::Expr(expr) => {
+                        // Expression statement - compile and leave value on stack
+                        compiler.expression(expr)?;
+                    }
+                    _ => {
+                        // Other statements (Let, Return, Break) - compile normally
+                        compiler.statement(stmt)?;
+                        // If it's not an expression, push nil as the return value
+                        if !matches!(&stmt.node, Stmt::Expr(_)) {
+                            compiler.emit_constant(Value::Nil)?;
+                        }
+                    }
+                }
+            } else {
+                // Non-last statements - compile and pop their values
+                compiler.statement(stmt)?;
+                // Pop the value if it's an expression statement (to avoid stack buildup)
+                if matches!(&stmt.node, Stmt::Expr(_)) {
+                    compiler.emit(OpCode::Pop);
+                }
+            }
+        }
+
+        compiler.emit(OpCode::Return);
+        Ok(compiler.function)
+    }
+
     /// Get the current chunk
     fn chunk(&mut self) -> &mut Chunk {
         &mut self.function.chunk

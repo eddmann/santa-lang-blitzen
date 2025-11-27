@@ -4135,8 +4135,26 @@ mod runtime_tests {
     }
 
     #[test]
-    fn eval_builtin_evaluate_complex() {
-        // evaluate currently only supports single expressions, not full statements with let
-        assert_eq!(eval("evaluate(\"10 * 2\")"), Ok(Value::Integer(20)));
+    fn eval_builtin_evaluate_with_let() {
+        // Test evaluate with let statements
+        assert_eq!(eval("evaluate(\"let x = 10; x * 2\")"), Ok(Value::Integer(20)));
+    }
+
+    #[test]
+    fn eval_builtin_evaluate_multiple_statements() {
+        // Test multiple statements where only the last value is returned
+        assert_eq!(
+            eval("evaluate(\"let x = 5; let y = 10; x + y\")"),
+            Ok(Value::Integer(15))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_evaluate_with_block() {
+        // Test evaluate with a block expression
+        assert_eq!(
+            eval("evaluate(\"{ let a = 3; let b = 4; a * b }\")"),
+            Ok(Value::Integer(12))
+        );
     }
 }
