@@ -578,6 +578,7 @@ impl Compiler {
     }
 
     /// Compile function composition: f >> g creates |x| g(f(x))
+    /// Special case: f >> g(a, b) creates |x| g(a, b, f(x))
     fn compile_composition(
         &mut self,
         left: &SpannedExpr,
@@ -599,68 +600,219 @@ impl Compiler {
             captured: false,
         });
 
-        // Compile: g(f(x))
-        // First compile right (g) - will be upvalue
-        // We need to capture left and right as upvalues
+        // Check if right is a Call expression
+        // If so: f >> g(a, b) creates |x| g(a, b, f(x))
+        // Otherwise: f >> g creates |x| g(f(x))
+        match &right.node {
+            Expr::Call { function, args } => {
+                // Check if the right function is a builtin
+                let is_right_builtin = if let Expr::Identifier(name) = &function.node {
+                    BuiltinId::from_name(name).is_some()
+                        && self.resolve_local(name).is_none()
+                        && self.resolve_upvalue(name).is_none()
+                } else {
+                    false
+                };
 
-        // For now, implement simple composition by generating nested calls
-        // This requires that left and right are already functions
+                // Compile: g(a, b, left(x))
+                if !is_right_builtin {
+                    // Step 1: Compile the function g (for non-builtins)
+                    self.expression(function)?;
+                }
 
-        // Emit: right(left(local_0))
-        // Step 1: Get left function
-        self.emit_upvalue_load_or_expression(left, span)?;
-        // Step 2: Get local_0 (the argument)
-        self.emit_with_operand(OpCode::GetLocal, 0);
-        // Step 3: Call left(local_0)
-        self.emit_with_operand(OpCode::Call, 1);
-        // Step 4: Get right function - result of left() is now on stack
-        // We need right(result), so get right first
-        // Actually we need to reorder: get right, get result, call
-        // Let's restructure:
+                // Step 2: Compile all the existing arguments a, b, ...
+                for arg in args {
+                    self.expression(arg)?;
+                }
 
-        // Reset and do it properly:
-        self.function.chunk = Chunk::new();
-        self.locals.clear();
-        self.locals.push(Local {
-            name: String::new(),
-            depth: 0,
-            mutable: false,
-            captured: false,
-        });
+                // Step 3: Compile left(x) as the last argument
+                // If left is also a Call, append x to its args: f(a) becomes f(a, x)
+                // Otherwise: f becomes f(x)
+                match &left.node {
+                    Expr::Call { function: left_fn, args: left_args } => {
+                        // Check if left function is a builtin
+                        let is_left_builtin = if let Expr::Identifier(name) = &left_fn.node {
+                            BuiltinId::from_name(name).is_some()
+                                && self.resolve_local(name).is_none()
+                                && self.resolve_upvalue(name).is_none()
+                        } else {
+                            false
+                        };
 
-        // left_result = left(x)
-        self.emit_upvalue_load_or_expression(left, span)?;
-        self.emit_with_operand(OpCode::GetLocal, 0);
-        self.emit_with_operand(OpCode::Call, 1);
+                        if !is_left_builtin {
+                            // Compile function for non-builtins
+                            self.expression(left_fn)?;
+                        }
 
-        // result = right(left_result)
-        self.emit_upvalue_load_or_expression(right, span)?;
-        // Swap: we have [left_result, right] but need [right, left_result]
-        // For now, let's use a different approach: compile right first
-        // Actually, the stack after the first call has left_result on top
-        // We need to call right with that result
+                        // Compile args
+                        for arg in left_args {
+                            self.expression(arg)?;
+                        }
 
-        // Reset again - cleaner approach:
-        self.function.chunk = Chunk::new();
-        self.locals.clear();
-        self.locals.push(Local {
-            name: String::new(),
-            depth: 0,
-            mutable: false,
-            captured: false,
-        });
+                        // Add x as last argument
+                        self.emit_with_operand(OpCode::GetLocal, 0);
 
-        // Compile right function reference (will be called last)
-        self.emit_upvalue_load_or_expression(right, span)?;
+                        let left_total_args = left_args.len() + 1;
+                        if left_total_args > 255 {
+                            return Err(CompileError::new("Too many arguments in composition", span));
+                        }
 
-        // Compile: left(arg)
-        self.emit_upvalue_load_or_expression(left, span)?;
-        self.emit_with_operand(OpCode::GetLocal, 0);
-        self.emit_with_operand(OpCode::Call, 1);
+                        // Emit call (builtin or regular)
+                        if is_left_builtin {
+                            if let Expr::Identifier(name) = &left_fn.node {
+                                let builtin_id = BuiltinId::from_name(name).unwrap();
+                                self.emit(OpCode::CallBuiltin);
+                                self.chunk().write_operand_u16(builtin_id as u16);
+                                self.chunk().write_operand(left_total_args as u8);
+                            }
+                        } else {
+                            self.emit_with_operand(OpCode::Call, left_total_args as u8);
+                        }
+                    }
+                    _ => {
+                        // left is f, so compile as f(x)
+                        // Check if left is a builtin identifier
+                        let is_left_builtin = if let Expr::Identifier(name) = &left.node {
+                            BuiltinId::from_name(name).is_some()
+                                && self.resolve_local(name).is_none()
+                                && self.resolve_upvalue(name).is_none()
+                        } else {
+                            false
+                        };
 
-        // Now stack has: [right_fn, left_result]
-        // Call right_fn(left_result)
-        self.emit_with_operand(OpCode::Call, 1);
+                        if !is_left_builtin {
+                            self.emit_upvalue_load_or_expression(left, span)?;
+                        }
+
+                        self.emit_with_operand(OpCode::GetLocal, 0);
+
+                        if is_left_builtin {
+                            if let Expr::Identifier(name) = &left.node {
+                                let builtin_id = BuiltinId::from_name(name).unwrap();
+                                self.emit(OpCode::CallBuiltin);
+                                self.chunk().write_operand_u16(builtin_id as u16);
+                                self.chunk().write_operand(1);
+                            }
+                        } else {
+                            self.emit_with_operand(OpCode::Call, 1);
+                        }
+                    }
+                }
+
+                // Step 4: Call g with all arguments (original args + left(x))
+                let total_args = args.len() + 1;
+                if total_args > 255 {
+                    return Err(CompileError::new("Too many arguments in composition", span));
+                }
+
+                if is_right_builtin {
+                    if let Expr::Identifier(name) = &function.node {
+                        let builtin_id = BuiltinId::from_name(name).unwrap();
+                        self.emit(OpCode::CallBuiltin);
+                        self.chunk().write_operand_u16(builtin_id as u16);
+                        self.chunk().write_operand(total_args as u8);
+                    }
+                } else {
+                    self.emit_with_operand(OpCode::Call, total_args as u8);
+                }
+            }
+            _ => {
+                // Normal composition: |x| right(left(x))
+                // Check if right is a builtin identifier
+                let is_right_builtin = if let Expr::Identifier(name) = &right.node {
+                    BuiltinId::from_name(name).is_some()
+                        && self.resolve_local(name).is_none()
+                        && self.resolve_upvalue(name).is_none()
+                } else {
+                    false
+                };
+
+                if !is_right_builtin {
+                    // Compile right function reference for non-builtins
+                    self.emit_upvalue_load_or_expression(right, span)?;
+                }
+
+                // Compile: left(arg)
+                // If left is a Call, append x to its args
+                match &left.node {
+                    Expr::Call { function: left_fn, args: left_args } => {
+                        // Check if left function is a builtin
+                        let is_left_builtin = if let Expr::Identifier(name) = &left_fn.node {
+                            BuiltinId::from_name(name).is_some()
+                                && self.resolve_local(name).is_none()
+                                && self.resolve_upvalue(name).is_none()
+                        } else {
+                            false
+                        };
+
+                        if !is_left_builtin {
+                            self.expression(left_fn)?;
+                        }
+
+                        for arg in left_args {
+                            self.expression(arg)?;
+                        }
+
+                        self.emit_with_operand(OpCode::GetLocal, 0);
+
+                        let left_total_args = left_args.len() + 1;
+                        if left_total_args > 255 {
+                            return Err(CompileError::new("Too many arguments in composition", span));
+                        }
+
+                        if is_left_builtin {
+                            if let Expr::Identifier(name) = &left_fn.node {
+                                let builtin_id = BuiltinId::from_name(name).unwrap();
+                                self.emit(OpCode::CallBuiltin);
+                                self.chunk().write_operand_u16(builtin_id as u16);
+                                self.chunk().write_operand(left_total_args as u8);
+                            }
+                        } else {
+                            self.emit_with_operand(OpCode::Call, left_total_args as u8);
+                        }
+                    }
+                    _ => {
+                        // Check if left is a builtin identifier
+                        let is_left_builtin = if let Expr::Identifier(name) = &left.node {
+                            BuiltinId::from_name(name).is_some()
+                                && self.resolve_local(name).is_none()
+                                && self.resolve_upvalue(name).is_none()
+                        } else {
+                            false
+                        };
+
+                        if !is_left_builtin {
+                            self.emit_upvalue_load_or_expression(left, span)?;
+                        }
+
+                        self.emit_with_operand(OpCode::GetLocal, 0);
+
+                        if is_left_builtin {
+                            if let Expr::Identifier(name) = &left.node {
+                                let builtin_id = BuiltinId::from_name(name).unwrap();
+                                self.emit(OpCode::CallBuiltin);
+                                self.chunk().write_operand_u16(builtin_id as u16);
+                                self.chunk().write_operand(1);
+                            }
+                        } else {
+                            self.emit_with_operand(OpCode::Call, 1);
+                        }
+                    }
+                }
+
+                // Call right(left_result)
+                if is_right_builtin {
+                    if let Expr::Identifier(name) = &right.node {
+                        let builtin_id = BuiltinId::from_name(name).unwrap();
+                        self.emit(OpCode::CallBuiltin);
+                        self.chunk().write_operand_u16(builtin_id as u16);
+                        self.chunk().write_operand(1);
+                    }
+                } else {
+                    self.emit_with_operand(OpCode::Call, 1);
+                }
+            }
+        }
 
         self.emit(OpCode::Return);
 

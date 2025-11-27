@@ -275,7 +275,6 @@ fn runner_only_part_one() {
 }
 
 #[test]
-#[ignore] // TODO: Has edge case issue with composition - needs investigation
 fn runner_complex_example() {
     // Simplified version of LANG.txt Appendix D Example 2 (AoC 2022 Day 1)
     let source = r#"
