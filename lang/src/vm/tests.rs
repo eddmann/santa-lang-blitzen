@@ -3122,6 +3122,13 @@ mod runtime_tests {
         // Can call operators directly as functions
         assert_eq!(eval("(+)(5, 3)"), Ok(Value::Integer(8)));
         assert_eq!(eval("(*)(4, 7)"), Ok(Value::Integer(28)));
+
+        // Can also call without parentheses around operator
+        assert_eq!(eval("+(1, 2)"), Ok(Value::Integer(3)));
+        assert_eq!(eval("*(6, 7)"), Ok(Value::Integer(42)));
+        assert_eq!(eval("-(10, 3)"), Ok(Value::Integer(7)));
+        assert_eq!(eval("/(20, 4)"), Ok(Value::Integer(5)));
+        assert_eq!(eval("%(10, 3)"), Ok(Value::Integer(1)));
     }
 
     #[test]

@@ -204,10 +204,16 @@ impl Parser {
             // Prefix operators (or operator as function reference)
             TokenKind::Minus => {
                 let op_span = self.advance().unwrap().span;
-                // Check if this is an operator reference (followed by , or ) or ])
+                // Check if this is an operator reference (followed by , or ) or ] or ()
+                // If followed by (, it's a function call like -(a, b)
                 if matches!(
                     self.peek().map(|t| &t.kind),
-                    Some(TokenKind::Comma | TokenKind::RightParen | TokenKind::RightBracket)
+                    Some(
+                        TokenKind::Comma
+                            | TokenKind::RightParen
+                            | TokenKind::RightBracket
+                            | TokenKind::LeftParen
+                    )
                 ) {
                     // Operator as function reference
                     Ok(Spanned::new(Expr::Identifier("-".to_string()), op_span))
