@@ -357,7 +357,47 @@ impl VM {
                     let count = self.read_byte() as usize;
                     let mut elements = Vector::new();
                     for i in 0..count {
-                        elements.push_back(self.peek(count - 1 - i).clone());
+                        let value = self.peek(count - 1 - i).clone();
+                        match value {
+                            Value::SpreadMarker(inner) => {
+                                // Expand spread value into list
+                                match *inner {
+                                    Value::List(list) => {
+                                        for item in list.iter() {
+                                            elements.push_back(item.clone());
+                                        }
+                                    }
+                                    Value::String(s) => {
+                                        use unicode_segmentation::UnicodeSegmentation;
+                                        for g in s.graphemes(true) {
+                                            elements.push_back(Value::String(Rc::new(g.to_string())));
+                                        }
+                                    }
+                                    Value::Set(set) => {
+                                        for item in set.iter() {
+                                            elements.push_back(item.clone());
+                                        }
+                                    }
+                                    Value::Range { start, end, inclusive } => {
+                                        if let Some(end_val) = end {
+                                            let actual_end = if inclusive { end_val + 1 } else { end_val };
+                                            for n in start..actual_end {
+                                                elements.push_back(Value::Integer(n));
+                                            }
+                                        } else {
+                                            return Err(self.error("Cannot spread unbounded range into list"));
+                                        }
+                                    }
+                                    other => {
+                                        return Err(self.error(format!(
+                                            "Cannot spread {} into list",
+                                            other.type_name()
+                                        )));
+                                    }
+                                }
+                            }
+                            _ => elements.push_back(value),
+                        }
                     }
                     for _ in 0..count {
                         self.pop();
@@ -369,13 +409,60 @@ impl VM {
                     let mut elements = HashSet::new();
                     for i in 0..count {
                         let value = self.peek(count - 1 - i).clone();
-                        if !value.is_hashable() {
-                            return Err(self.error(format!(
-                                "Cannot use {} as set element (not hashable)",
-                                value.type_name()
-                            )));
+                        match value {
+                            Value::SpreadMarker(inner) => {
+                                // Expand spread value into set
+                                match *inner {
+                                    Value::List(list) => {
+                                        for item in list.iter() {
+                                            if !item.is_hashable() {
+                                                return Err(self.error(format!(
+                                                    "Cannot use {} as set element (not hashable)",
+                                                    item.type_name()
+                                                )));
+                                            }
+                                            elements.insert(item.clone());
+                                        }
+                                    }
+                                    Value::Set(set) => {
+                                        for item in set.iter() {
+                                            elements.insert(item.clone());
+                                        }
+                                    }
+                                    Value::String(s) => {
+                                        use unicode_segmentation::UnicodeSegmentation;
+                                        for g in s.graphemes(true) {
+                                            elements.insert(Value::String(Rc::new(g.to_string())));
+                                        }
+                                    }
+                                    Value::Range { start, end, inclusive } => {
+                                        if let Some(end_val) = end {
+                                            let actual_end = if inclusive { end_val + 1 } else { end_val };
+                                            for n in start..actual_end {
+                                                elements.insert(Value::Integer(n));
+                                            }
+                                        } else {
+                                            return Err(self.error("Cannot spread unbounded range into set"));
+                                        }
+                                    }
+                                    other => {
+                                        return Err(self.error(format!(
+                                            "Cannot spread {} into set",
+                                            other.type_name()
+                                        )));
+                                    }
+                                }
+                            }
+                            _ => {
+                                if !value.is_hashable() {
+                                    return Err(self.error(format!(
+                                        "Cannot use {} as set element (not hashable)",
+                                        value.type_name()
+                                    )));
+                                }
+                                elements.insert(value);
+                            }
                         }
-                        elements.insert(value);
                     }
                     for _ in 0..count {
                         self.pop();
@@ -497,11 +584,15 @@ impl VM {
                 }
                 Ok(OpCode::Call) => {
                     let argc = self.read_byte() as usize;
-                    self.call_value(argc)?;
+                    // Expand any spread markers in arguments
+                    let actual_argc = self.expand_spread_in_args(argc)?;
+                    self.call_value(actual_argc)?;
                 }
                 Ok(OpCode::TailCall) => {
                     let argc = self.read_byte() as usize;
-                    let callee = self.peek(argc).clone();
+                    // Expand any spread markers in arguments
+                    let actual_argc = self.expand_spread_in_args(argc)?;
+                    let callee = self.peek(actual_argc).clone();
 
                     // Check if this is self-recursion (same closure)
                     if let Value::Function(ref new_closure) = callee {
@@ -514,16 +605,16 @@ impl VM {
                             let stack_base = self.frames[frame_idx].stack_base;
 
                             // Pop the function value
-                            let func_pos = self.stack.len() - argc - 1;
+                            let func_pos = self.stack.len() - actual_argc - 1;
                             self.stack.remove(func_pos);
 
                             // Move arguments to replace old locals
-                            for i in 0..argc {
+                            for i in 0..actual_argc {
                                 self.stack[stack_base + i] = self.stack[func_pos + i].clone();
                             }
 
                             // Truncate stack to remove extra args
-                            self.stack.truncate(stack_base + argc);
+                            self.stack.truncate(stack_base + actual_argc);
 
                             // Reset instruction pointer to beginning of function
                             self.frames[frame_idx].ip = 0;
@@ -533,7 +624,7 @@ impl VM {
                     }
 
                     // Not self-recursion, do normal call
-                    self.call_value(argc)?;
+                    self.call_value(actual_argc)?;
                 }
                 Ok(OpCode::Return) => {
                     let result = self.pop();
@@ -602,10 +693,49 @@ impl VM {
                     let builtin_id = self.read_u16();
                     let argc = self.read_byte() as usize;
 
-                    // Collect arguments from stack
+                    // Collect arguments from stack, expanding any spread markers
                     let mut args = Vec::with_capacity(argc);
                     for i in 0..argc {
-                        args.push(self.peek(argc - 1 - i).clone());
+                        let arg = self.peek(argc - 1 - i).clone();
+                        match arg {
+                            Value::SpreadMarker(inner) => {
+                                // Expand the spread
+                                match *inner {
+                                    Value::List(list) => {
+                                        for item in list.iter() {
+                                            args.push(item.clone());
+                                        }
+                                    }
+                                    Value::String(s) => {
+                                        for g in s.graphemes(true) {
+                                            args.push(Value::String(Rc::new(g.to_string())));
+                                        }
+                                    }
+                                    Value::Set(set) => {
+                                        for item in set.iter() {
+                                            args.push(item.clone());
+                                        }
+                                    }
+                                    Value::Range { start, end, inclusive } => {
+                                        if let Some(end_val) = end {
+                                            let actual_end = if inclusive { end_val + 1 } else { end_val };
+                                            for n in start..actual_end {
+                                                args.push(Value::Integer(n));
+                                            }
+                                        } else {
+                                            return Err(self.error("Cannot spread unbounded range into builtin call"));
+                                        }
+                                    }
+                                    other => {
+                                        return Err(self.error(format!(
+                                            "Cannot spread {} into builtin call",
+                                            other.type_name()
+                                        )));
+                                    }
+                                }
+                            }
+                            _ => args.push(arg),
+                        }
                     }
 
                     // Pop arguments from stack
@@ -635,8 +765,9 @@ impl VM {
                     return Err(RuntimeError::break_with(value, line));
                 }
                 Ok(OpCode::Spread) => {
-                    // TODO: Implement spread in Phase 12
-                    return Err(self.error("Spread not yet implemented"));
+                    // Wrap the value in SpreadMarker for later expansion in MakeList/MakeSet/Call
+                    let value = self.pop();
+                    self.push(Value::SpreadMarker(Box::new(value)));
                 }
 
                 Err(byte) => {
@@ -689,6 +820,82 @@ impl VM {
             Value::String(s) => Ok((**s).clone()),
             _ => Err(self.error("Expected string constant")),
         }
+    }
+
+    /// Expand any SpreadMarker values in call arguments
+    /// Returns the new argument count after expansion
+    fn expand_spread_in_args(&mut self, argc: usize) -> Result<usize, RuntimeError> {
+        // Check if any args are spread markers
+        let mut has_spread = false;
+        for i in 0..argc {
+            if matches!(self.peek(i), Value::SpreadMarker(_)) {
+                has_spread = true;
+                break;
+            }
+        }
+
+        if !has_spread {
+            return Ok(argc);
+        }
+
+        // Collect and expand arguments
+        // Stack: [callee, arg0, arg1, ..., arg_n-1] where arg_n-1 is on top
+        let callee_pos = self.stack.len() - argc - 1;
+        let mut expanded_args = Vec::new();
+
+        for i in 0..argc {
+            let arg = self.peek(argc - 1 - i).clone();
+            match arg {
+                Value::SpreadMarker(inner) => {
+                    // Expand the inner value
+                    match *inner {
+                        Value::List(list) => {
+                            for item in list.iter() {
+                                expanded_args.push(item.clone());
+                            }
+                        }
+                        Value::String(s) => {
+                            for g in s.graphemes(true) {
+                                expanded_args.push(Value::String(Rc::new(g.to_string())));
+                            }
+                        }
+                        Value::Set(set) => {
+                            for item in set.iter() {
+                                expanded_args.push(item.clone());
+                            }
+                        }
+                        Value::Range { start, end, inclusive } => {
+                            if let Some(end_val) = end {
+                                let actual_end = if inclusive { end_val + 1 } else { end_val };
+                                for n in start..actual_end {
+                                    expanded_args.push(Value::Integer(n));
+                                }
+                            } else {
+                                return Err(self.error("Cannot spread unbounded range into function call"));
+                            }
+                        }
+                        other => {
+                            return Err(self.error(format!(
+                                "Cannot spread {} into function call",
+                                other.type_name()
+                            )));
+                        }
+                    }
+                }
+                _ => expanded_args.push(arg),
+            }
+        }
+
+        // Remove old arguments from stack (keep callee)
+        self.stack.truncate(callee_pos + 1);
+
+        // Push expanded arguments
+        let new_argc = expanded_args.len();
+        for arg in expanded_args {
+            self.push(arg);
+        }
+
+        Ok(new_argc)
     }
 
     // Arithmetic operations

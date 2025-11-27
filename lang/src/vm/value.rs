@@ -62,6 +62,10 @@ pub enum Value {
     /// Memoized function - wraps a function with a cache for memoization
     /// Per LANG.txt §11.16, memoize returns a cached version of a function
     MemoizedFunction(Rc<RefCell<MemoizedFn>>),
+
+    /// Internal marker for spread operations - wraps a value to be spread
+    /// into a list literal or function call. Not exposed to user code.
+    SpreadMarker(Box<Value>),
 }
 
 /// Memoized function state - stores the original closure and result cache
@@ -160,6 +164,8 @@ impl Value {
             Value::PartialApplication { .. } => true,
             Value::MemoizedFunction(_) => true,
             Value::Range { .. } => true,
+            // SpreadMarker delegates to inner value (but should not be exposed to user)
+            Value::SpreadMarker(inner) => inner.is_truthy(),
         }
     }
 
@@ -180,6 +186,8 @@ impl Value {
             Value::ExternalFunction(_) => "ExternalFunction",
             Value::PartialApplication { .. } => "Function",
             Value::MemoizedFunction(_) => "Function",
+            // SpreadMarker is internal and should not be exposed
+            Value::SpreadMarker(inner) => inner.type_name(),
         }
     }
 
@@ -196,6 +204,8 @@ impl Value {
             | Value::MemoizedFunction(_) => false,
             // Ranges are hashable (they're just data)
             Value::Range { .. } => true,
+            // SpreadMarker is internal, delegate to inner
+            Value::SpreadMarker(inner) => inner.is_hashable(),
         }
     }
 }
@@ -238,6 +248,8 @@ impl PartialEq for Value {
             ) => Rc::ptr_eq(c1, c2) && a1 == a2,
             // Memoized functions compare by identity
             (Value::MemoizedFunction(a), Value::MemoizedFunction(b)) => Rc::ptr_eq(a, b),
+            // SpreadMarker compares by inner value
+            (Value::SpreadMarker(a), Value::SpreadMarker(b)) => a == b,
             // Different types are never equal
             _ => false,
         }
@@ -305,6 +317,9 @@ impl Hash for Value {
             Value::MemoizedFunction(f) => {
                 std::ptr::hash(Rc::as_ptr(f), state);
             }
+            Value::SpreadMarker(inner) => {
+                inner.hash(state);
+            }
         }
     }
 }
@@ -368,6 +383,8 @@ impl fmt::Display for Value {
                 (Some(e), true) => write!(f, "{start}..={e}"),
                 (None, _) => write!(f, "{start}.."),
             },
+            // SpreadMarker should not be displayed to user, but include for debugging
+            Value::SpreadMarker(inner) => write!(f, "<spread:{}>", inner),
         }
     }
 }
