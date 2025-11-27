@@ -1387,6 +1387,14 @@ impl Compiler {
             && self.resolve_local(name).is_none()
             && self.resolve_upvalue(name).is_none()
         {
+            let (min_arity, _max_arity) = builtin_id.arity();
+
+            // Check if this is a partial call (fewer args than required)
+            // If so, generate auto-currying
+            if (args.len() as u8) < min_arity {
+                return self.compile_builtin_curry(builtin_id, args, span);
+            }
+
             // Compile arguments
             for arg in args {
                 self.expression(arg)?;
@@ -1605,6 +1613,66 @@ impl Compiler {
         self.emit(OpCode::CallBuiltin);
         self.chunk().write_operand_u16(builtin_id as u16);
         self.chunk().write_operand(arity);
+
+        self.emit(OpCode::Return);
+
+        // Get the compiled function and restore enclosing
+        let compiled_fn = std::mem::replace(&mut self.function, CompiledFunction::new(0, None));
+        let enclosing = self.enclosing.take().expect("should have enclosing");
+        *self = *enclosing;
+
+        // Add the function to constants and emit MakeClosure
+        let fn_idx = self.chunk().functions.len();
+        self.chunk().functions.push(Rc::new(compiled_fn));
+        self.emit_with_operand(OpCode::MakeClosure, fn_idx as u8);
+
+        Ok(())
+    }
+
+    /// Compile auto-currying for builtin function called with fewer args than required
+    /// Creates a closure that evaluates the given args and waits for the remaining ones
+    ///
+    /// For split(","):
+    ///   - Generates: |__arg0| split(",", __arg0)
+    ///   - The "," is a constant, re-evaluated each call (could optimize with upvalues later)
+    fn compile_builtin_curry(
+        &mut self,
+        builtin_id: BuiltinId,
+        given_args: &[SpannedExpr],
+        _span: Span,
+    ) -> Result<(), CompileError> {
+        let (min_arity, _max_arity) = builtin_id.arity();
+        let remaining_arity = min_arity - given_args.len() as u8;
+
+        // Create a wrapper function that takes the remaining arguments
+        let enclosing = std::mem::take(self);
+        *self = Compiler::new_function(None, remaining_arity, enclosing);
+
+        // Add local slots for the new parameters
+        for i in 0..remaining_arity {
+            self.locals.push(Local {
+                name: format!("__curry_arg{}", i),
+                depth: 0,
+                mutable: false,
+                captured: false,
+            });
+        }
+
+        // Re-compile the given arguments (constants will be re-evaluated each call)
+        // This is simpler than upvalue capture and works for most cases
+        for arg in given_args {
+            self.expression(arg)?;
+        }
+
+        // Load the new parameters
+        for i in 0..remaining_arity {
+            self.emit_with_operand(OpCode::GetLocal, i);
+        }
+
+        // Call the builtin with all args
+        self.emit(OpCode::CallBuiltin);
+        self.chunk().write_operand_u16(builtin_id as u16);
+        self.chunk().write_operand(min_arity);
 
         self.emit(OpCode::Return);
 
