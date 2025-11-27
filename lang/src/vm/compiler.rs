@@ -61,6 +61,8 @@ pub struct Compiler {
     current_line: u32,
     /// Whether we're currently in tail position
     in_tail_position: bool,
+    /// Whether current block has pre-declared locals (for forward references)
+    did_predeclare_block: bool,
 }
 
 impl Compiler {
@@ -73,6 +75,7 @@ impl Compiler {
             enclosing: None,
             current_line: 1,
             in_tail_position: false,
+            did_predeclare_block: false,
         }
     }
 
@@ -86,6 +89,7 @@ impl Compiler {
             enclosing: Some(Box::new(enclosing)),
             current_line,
             in_tail_position: false,
+            did_predeclare_block: false,
         }
     }
 
@@ -440,17 +444,25 @@ impl Compiler {
         // Special handling for short-circuit operators
         match op {
             InfixOp::And => {
+                // Operands are NOT in tail position
+                let saved_tail = self.in_tail_position;
+                self.in_tail_position = false;
                 self.expression(left)?;
                 let jump = self.emit_jump(OpCode::PopJumpIfFalse);
                 self.expression(right)?;
                 self.patch_jump(jump);
+                self.in_tail_position = saved_tail;
                 return Ok(());
             }
             InfixOp::Or => {
+                // Operands are NOT in tail position
+                let saved_tail = self.in_tail_position;
+                self.in_tail_position = false;
                 self.expression(left)?;
                 let jump = self.emit_jump(OpCode::PopJumpIfTrue);
                 self.expression(right)?;
                 self.patch_jump(jump);
+                self.in_tail_position = saved_tail;
                 return Ok(());
             }
             InfixOp::Pipeline | InfixOp::Compose => {
@@ -460,8 +472,12 @@ impl Compiler {
         }
 
         // Regular infix operations
+        // Operands are NOT in tail position (there's an operation after)
+        let saved_tail = self.in_tail_position;
+        self.in_tail_position = false;
         self.expression(left)?;
         self.expression(right)?;
+        self.in_tail_position = saved_tail;
 
         match op {
             InfixOp::Add => self.emit(OpCode::Add),
@@ -1158,6 +1174,47 @@ impl Compiler {
 
         self.begin_scope();
 
+        // Collect unique let binding names for forward reference support
+        // Don't pre-declare shadowed variables (same name appears multiple times)
+        let mut seen_names = std::collections::HashSet::new();
+        let mut duplicate_names = std::collections::HashSet::new();
+
+        for stmt in stmts.iter() {
+            if let Stmt::Let {
+                pattern: Pattern::Identifier(name),
+                ..
+            } = &stmt.node
+                && !seen_names.insert(name.clone()) {
+                    // Name already seen - it's a shadow, not a forward reference
+                    duplicate_names.insert(name.clone());
+                }
+        }
+
+        // Pre-declare unique let bindings with nil to support forward references (mutual recursion)
+        // Only pre-declare names that appear once (shadows don't need pre-declaration)
+        let did_predeclare = seen_names.len() >= 2;
+        if did_predeclare {
+            for stmt in stmts.iter() {
+                if let Stmt::Let {
+                    mutable,
+                    pattern: Pattern::Identifier(name),
+                    ..
+                } = &stmt.node
+                {
+                    // Only pre-declare if not a duplicate (not shadowing)
+                    if !duplicate_names.contains(name) {
+                        // Emit nil placeholder
+                        self.emit(OpCode::Nil);
+                        // Add local (this reserves the slot)
+                        self.add_local(name.clone(), *mutable);
+                    }
+                }
+            }
+        }
+
+        // Save pre-declaration state for compile_let to use
+        let saved_predeclare_state = std::mem::replace(&mut self.did_predeclare_block, did_predeclare);
+
         for (i, stmt) in stmts.iter().enumerate() {
             let is_last = i == stmts.len() - 1;
 
@@ -1179,6 +1236,9 @@ impl Compiler {
 
         // The last statement's value stays on stack
         self.end_scope();
+
+        // Restore pre-declaration state
+        self.did_predeclare_block = saved_predeclare_state;
 
         // Clear tail position after block
         self.in_tail_position = false;
@@ -1220,12 +1280,33 @@ impl Compiler {
         value: &SpannedExpr,
         span: Span,
     ) -> Result<(), CompileError> {
-        // For simple identifier patterns, add the local BEFORE compiling the value
-        // This allows recursive functions to reference themselves
+        // For simple identifier patterns, check if already declared (forward reference support)
         if let Pattern::Identifier(name) = pattern {
-            self.add_local(name.clone(), mutable);
-            // Compile the value expression (can now reference the name)
-            self.expression(value)?;
+            // Only check for pre-declaration if this block actually did pre-declare
+            let is_predeclared = if self.did_predeclare_block {
+                // Check if this local was already pre-declared in the CURRENT scope
+                self.locals.iter().rev().find(|l| l.name == *name)
+                    .map(|l| l.depth == self.scope_depth)
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+
+            if is_predeclared {
+                // Already pre-declared in current scope - compile value and update the local
+                let idx = self.resolve_local(name).unwrap();
+                self.expression(value)?;
+                self.emit_with_operand(OpCode::SetLocal, idx as u8);
+                // Value is now consumed, but SetLocal leaves it on stack, so pop it
+                self.emit(OpCode::Pop);
+                // Push it back (let statements should leave value on stack)
+                self.emit_with_operand(OpCode::GetLocal, idx as u8);
+            } else {
+                // Not pre-declared - add local first (for self-recursion)
+                self.add_local(name.clone(), mutable);
+                // Compile the value expression (can now reference the name)
+                self.expression(value)?;
+            }
         } else {
             // For other patterns, compile value first, then bind
             self.expression(value)?;

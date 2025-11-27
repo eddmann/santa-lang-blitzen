@@ -1131,12 +1131,20 @@ mod compiler_tests {
             "{ let x = 1; let y = 2; x + y }",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (1)
-                0002 [   1] Constant 1 (2)
-                0004 [   1] GetLocal 0
-                0006 [   1] GetLocal 1
-                0008 [   1] Add
-                0009 [   1] Return
+                0000 [   1] Nil
+                0001 [   1] Nil
+                0002 [   1] Constant 0 (1)
+                0004 [   1] SetLocal 0
+                0006 [   1] Pop
+                0007 [   1] GetLocal 0
+                0009 [   1] Constant 1 (2)
+                0011 [   1] SetLocal 1
+                0013 [   1] Pop
+                0014 [   1] GetLocal 1
+                0016 [   1] GetLocal 0
+                0018 [   1] GetLocal 1
+                0020 [   1] Add
+                0021 [   1] Return
             "#]],
         );
     }
