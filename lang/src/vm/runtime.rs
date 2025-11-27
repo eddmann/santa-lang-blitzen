@@ -1048,6 +1048,56 @@ impl VM {
                 }
             }
 
+            // List indexing with Range
+            (Value::List(list), Value::Range { start, end, inclusive }) => {
+                let len = list.len() as i64;
+                let actual_start = if *start < 0 {
+                    (len + start).max(0)
+                } else {
+                    (*start).min(len)
+                } as usize;
+
+                let actual_end = match end {
+                    None => list.len(),
+                    Some(e) => {
+                        let idx = if *e < 0 { (len + e).max(0) } else { (*e).min(len) };
+                        if *inclusive { (idx + 1).min(len) as usize } else { idx as usize }
+                    }
+                };
+
+                if actual_start >= actual_end {
+                    Value::List(Vector::new())
+                } else {
+                    Value::List(list.clone().slice(actual_start..actual_end))
+                }
+            }
+
+            // String indexing with Range
+            (Value::String(s), Value::Range { start, end, inclusive }) => {
+                use unicode_segmentation::UnicodeSegmentation;
+                let graphemes: Vec<&str> = s.graphemes(true).collect();
+                let len = graphemes.len() as i64;
+                let actual_start = if *start < 0 {
+                    (len + start).max(0)
+                } else {
+                    (*start).min(len)
+                } as usize;
+
+                let actual_end = match end {
+                    None => graphemes.len(),
+                    Some(e) => {
+                        let idx = if *e < 0 { (len + e).max(0) } else { (*e).min(len) };
+                        if *inclusive { (idx + 1).min(len) as usize } else { idx as usize }
+                    }
+                };
+
+                if actual_start >= actual_end {
+                    Value::String(Rc::new(String::new()))
+                } else {
+                    Value::String(Rc::new(graphemes[actual_start..actual_end].join("")))
+                }
+            }
+
             // Dictionary lookup
             (Value::Dict(dict), key) => dict.get(key).cloned().unwrap_or(Value::Nil),
 

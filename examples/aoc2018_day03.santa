@@ -1,0 +1,44 @@
+input: read("aoc2018_day03.input")
+
+let parse_claims =
+  lines >> map(|line| {
+    let [id, x, y, width, height] = ints(line);
+    #{id, x, y, width, height};
+  });
+
+let compute_squares = |claim|
+  (claim["x"]..claim["x"] + claim["width"])
+    |> flat_map(|x| (claim["y"]..claim["y"] + claim["height"]) |> map(|y| [x, y]))
+    |> set;
+
+let compute_fabric = fold(
+  #{},
+  |fabric, claim| {
+    compute_squares(claim) |> fold(
+      fabric,
+      |fabric, square| update_d(square, 0, _ + 1, fabric)
+    );
+  }
+);
+
+part_one: {
+  parse_claims(input)
+    |> compute_fabric
+    |> filter(_ > 1)
+    |> size;
+}
+
+part_two: {
+  let claims = parse_claims(input);
+  let fabric = compute_fabric(claims);
+
+  claims
+    |> find(|claim| compute_squares(claim) |> all?(|square| fabric[square] == 1))
+    |> get("id");
+}
+
+test: {
+  input: "#1 @ 1,3: 4x4\n#2 @ 3,1: 4x4\n#3 @ 5,5: 2x2"
+  part_one: 4
+  part_two: 3
+}

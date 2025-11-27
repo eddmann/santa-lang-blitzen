@@ -4570,4 +4570,167 @@ mod runtime_tests {
         assert!(eval(r#"evaluate("let x = ")"#).is_err());
         assert!(eval(r#"evaluate("(((")"#).is_err());
     }
+
+    // ===== Partial Application and Currying Tests =====
+
+    #[test]
+    fn partial_application_placeholder_in_call() {
+        // Placeholder in function call argument creates partial application
+        assert_eq!(
+            eval(r#"{ let d = #{"a": 1}; let f = get(_, d); f("a") }"#),
+            Ok(Value::Integer(1))
+        );
+    }
+
+    #[test]
+    fn partial_application_placeholder_in_infix_call() {
+        // Placeholder in backtick infix call
+        assert_eq!(
+            eval(r#"{ let add = |a, b| a + b; let inc = 1 `add` _; inc(5) }"#),
+            Ok(Value::Integer(6))
+        );
+    }
+
+    #[test]
+    fn partial_application_composition_with_placeholder() {
+        // Composition with placeholder fills piped value into placeholder position
+        assert_eq!(
+            eval(r#"{ let d = #{"a": 1}; let f = |x| x; let composed = f >> get(_, d); composed("a") }"#),
+            Ok(Value::Integer(1))
+        );
+    }
+
+    #[test]
+    fn builtin_as_first_class_value() {
+        // Builtin functions can be assigned to variables and passed around
+        assert_eq!(
+            eval(r#"{ let f = ints; f("abc123") }"#),
+            Ok(Value::List(vec![Value::Integer(123)].into_iter().collect()))
+        );
+        assert_eq!(
+            eval(r#"{ let f = size; f([1, 2, 3]) }"#),
+            Ok(Value::Integer(3))
+        );
+    }
+
+    #[test]
+    fn builtin_auto_curry() {
+        // Builtin functions auto-curry when called with fewer args
+        assert_eq!(
+            eval(r#"{ let splitComma = split(","); splitComma("a,b,c") }"#),
+            Ok(Value::List(vec![
+                Value::String(Rc::new("a".to_string())),
+                Value::String(Rc::new("b".to_string())),
+                Value::String(Rc::new("c".to_string()))
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn builtin_curry_in_map() {
+        // Auto-curried builtin used in map
+        assert_eq!(
+            eval(r#"["a,b", "c,d"] |> map(split(","))"#),
+            Ok(Value::List(vec![
+                Value::List(vec![
+                    Value::String(Rc::new("a".to_string())),
+                    Value::String(Rc::new("b".to_string()))
+                ].into_iter().collect()),
+                Value::List(vec![
+                    Value::String(Rc::new("c".to_string())),
+                    Value::String(Rc::new("d".to_string()))
+                ].into_iter().collect())
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn builtin_composition_with_ints() {
+        // Composition with builtin as first-class value
+        assert_eq!(
+            eval(r#"{ let parse = lines >> map(ints); parse("abc123\ndef456") }"#),
+            Ok(Value::List(vec![
+                Value::List(vec![Value::Integer(123)].into_iter().collect()),
+                Value::List(vec![Value::Integer(456)].into_iter().collect())
+            ].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn partial_placeholder_not_in_lambda_body() {
+        // Placeholder in lambda body doesn't affect outer call
+        assert_eq!(
+            eval(r#"[1, 2, 3] |> fold(0, |acc, x| acc + x)"#),
+            Ok(Value::Integer(6))
+        );
+    }
+
+    // ===== Range Indexing Tests =====
+
+    #[test]
+    fn list_range_indexing_exclusive() {
+        // List[start..end] returns sublist (exclusive end)
+        assert_eq!(
+            eval("[1, 2, 3, 4, 5][1..3]"),
+            Ok(Value::List(vec![Value::Integer(2), Value::Integer(3)].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn list_range_indexing_inclusive() {
+        // List[start..=end] returns sublist (inclusive end)
+        assert_eq!(
+            eval("[1, 2, 3, 4, 5][1..=3]"),
+            Ok(Value::List(vec![Value::Integer(2), Value::Integer(3), Value::Integer(4)].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn list_range_indexing_open_end() {
+        // List[start..] returns from start to end
+        assert_eq!(
+            eval("[1, 2, 3, 4, 5][2..]"),
+            Ok(Value::List(vec![Value::Integer(3), Value::Integer(4), Value::Integer(5)].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn string_range_indexing_exclusive() {
+        // String[start..end] returns substring (exclusive end)
+        assert_eq!(
+            eval(r#""hello"[1..3]"#),
+            Ok(Value::String(Rc::new("el".to_string())))
+        );
+    }
+
+    #[test]
+    fn string_range_indexing_inclusive() {
+        // String[start..=end] returns substring (inclusive end)
+        assert_eq!(
+            eval(r#""hello"[1..=3]"#),
+            Ok(Value::String(Rc::new("ell".to_string())))
+        );
+    }
+
+    #[test]
+    fn string_range_indexing_open_end() {
+        // String[start..] returns from start to end
+        assert_eq!(
+            eval(r#""hello"[2..]"#),
+            Ok(Value::String(Rc::new("llo".to_string())))
+        );
+    }
+
+    #[test]
+    fn range_indexing_empty_result() {
+        // Empty range returns empty list/string
+        assert_eq!(
+            eval("[1, 2, 3][2..2]"),
+            Ok(Value::List(Vector::new()))
+        );
+        assert_eq!(
+            eval(r#""hello"[3..3]"#),
+            Ok(Value::String(Rc::new(String::new())))
+        );
+    }
 }

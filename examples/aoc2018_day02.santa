@@ -1,0 +1,45 @@
+input: read("aoc2018_day02.input")
+
+part_one: {
+  let counter = fold(
+    #{},
+    |frequencies, value| update_d(value, 0, _ + 1, frequencies)
+  );
+
+  input
+    |> lines
+    |> fold(
+      [0, 0],
+      |[twos, threes], id| {
+        let frequencies = counter(id);
+        let two = if frequencies `includes?` 2 { 1 } else { 0 };
+        let three = if frequencies `includes?` 3 { 1 } else { 0 };
+        [twos + two, threes + three];
+      }
+    )
+    |> |[a, b]| a * b
+}
+
+part_two: {
+  let checksum = |cmp, pair| fold(
+    "",
+    |acc, [x, y]| if cmp(x, y) { acc + x } else { acc },
+    zip(..pair)
+  );
+
+  input
+    |> lines
+    |> combinations(2)
+    |> find(|pair| checksum(!=, pair) |> size == 1)
+    |> checksum(==);
+}
+
+test: {
+  input: "abcdef\nbababc\nabbcde\nabcccd\naabcdd\nabcdee\nababab"
+  part_one: 12
+}
+
+test: {
+  input: "abcde\nfghij\nklmno\npqrst\nfguij\naxcye\nwvxyz"
+  part_two: "fgij"
+}
