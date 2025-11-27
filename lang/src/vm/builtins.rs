@@ -397,6 +397,8 @@ impl BuiltinId {
                 | BuiltinId::Get
                 | BuiltinId::First
                 | BuiltinId::Memoize
+                | BuiltinId::List
+                | BuiltinId::Set
         )
     }
 }
@@ -505,8 +507,16 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
     match id {
         BuiltinId::Int => builtin_int(&args[0], line),
         BuiltinId::Ints => builtin_ints(&args[0], line),
-        BuiltinId::List => builtin_list(&args[0], line),
-        BuiltinId::Set => builtin_set(&args[0], line),
+        // List and Set need callback support for LazySequence - handled by VM
+        BuiltinId::List | BuiltinId::Set => {
+            Err(RuntimeError::new(
+                format!(
+                    "{} is not a callback builtin",
+                    id.name()
+                ),
+                line,
+            ))
+        }
         BuiltinId::Dict => builtin_dict(&args[0], line),
         BuiltinId::Size => builtin_size(&args[0], line),
         // Get, First, Second, Rest are callback builtins for LazySequence support

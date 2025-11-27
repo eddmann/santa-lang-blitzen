@@ -742,6 +742,22 @@ impl VM {
                 Value::Set(result)
             }
 
+            // Set + LazySequence = materialize lazy seq and add elements to set
+            (Value::Set(x), Value::LazySequence(seq)) => {
+                let mut result = x.clone();
+                let mut seq_clone = seq.borrow().clone();
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    if !elem.is_hashable() {
+                        return Err(self.error(format!(
+                            "Cannot add {} to set (not hashable)",
+                            elem.type_name()
+                        )));
+                    }
+                    result.insert(elem);
+                }
+                Value::Set(result)
+            }
+
             // Set + hashable scalar = add element to set
             (Value::Set(x), y) if y.is_hashable() => {
                 let mut result = x.clone();
@@ -1477,6 +1493,8 @@ impl VM {
             BuiltinId::Rest => self.builtin_rest(args, line),
             BuiltinId::Get => self.builtin_get(args, line),
             BuiltinId::First => self.builtin_first(args, line),
+            BuiltinId::List => self.builtin_list_callback(args, line),
+            BuiltinId::Set => self.builtin_set_callback(args, line),
             _ => Err(RuntimeError::new(
                 format!("{} is not a callback builtin", id.name()),
                 line,
@@ -2086,38 +2104,44 @@ impl VM {
         let arity = self.closure_arity(&closure);
         let mut result = Vector::new();
 
+        // Helper to flatten a mapped result into the result vector
+        let flatten_mapped = |result: &mut Vector<Value>, mapped: Value, vm: &mut Self| -> Result<(), RuntimeError> {
+            match mapped {
+                Value::List(inner) => {
+                    for item in inner.iter() {
+                        result.push_back(item.clone());
+                    }
+                }
+                Value::LazySequence(seq) => {
+                    // Materialize lazy sequence and flatten
+                    let mut seq_clone = seq.borrow().clone();
+                    while let Some(item) = vm.lazy_seq_next_with_callback(&mut seq_clone)? {
+                        result.push_back(item);
+                    }
+                }
+                _ => result.push_back(mapped),
+            }
+            Ok(())
+        };
+
         match collection {
             Value::List(list) => {
                 for (idx, elem) in list.iter().enumerate() {
-                    // Apply mapper to each element, then flatten if result is a list
+                    // Apply mapper to each element, then flatten if result is a list or lazy seq
                     let call_args = if arity >= 2 {
                         vec![elem.clone(), Value::Integer(idx as i64)]
                     } else {
                         vec![elem.clone()]
                     };
                     let mapped = self.call_closure_sync(&closure, call_args)?;
-                    match mapped {
-                        Value::List(inner) => {
-                            for item in inner.iter() {
-                                result.push_back(item.clone());
-                            }
-                        }
-                        _ => result.push_back(mapped),
-                    }
+                    flatten_mapped(&mut result, mapped, self)?;
                 }
             }
             Value::LazySequence(seq) => {
                 let mut seq_clone = seq.borrow().clone();
                 while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
                     let mapped = self.call_closure_sync(&closure, vec![elem])?;
-                    match mapped {
-                        Value::List(inner) => {
-                            for item in inner.iter() {
-                                result.push_back(item.clone());
-                            }
-                        }
-                        _ => result.push_back(mapped),
-                    }
+                    flatten_mapped(&mut result, mapped, self)?;
                 }
             }
             Value::Range { start, end, inclusive } => {
@@ -2131,14 +2155,7 @@ impl VM {
                         };
                         for i in range_iter {
                             let mapped = self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
-                            match mapped {
-                                Value::List(inner) => {
-                                    for item in inner.iter() {
-                                        result.push_back(item.clone());
-                                    }
-                                }
-                                _ => result.push_back(mapped),
-                            }
+                            flatten_mapped(&mut result, mapped, self)?;
                         }
                     }
                     None => {
@@ -4029,6 +4046,176 @@ impl VM {
             }
             _ => Err(RuntimeError::new(
                 format!("rest not supported for {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// list(value) → List
+    /// Convert value to a list, with callback support for LazySequence.
+    fn builtin_list_callback(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let value = &args[0];
+
+        match value {
+            // List (identity)
+            Value::List(_) => Ok(value.clone()),
+
+            // Set - convert to list
+            Value::Set(s) => Ok(Value::List(s.iter().cloned().collect())),
+
+            // Dictionary - returns list of [key, value] tuples
+            Value::Dict(d) => {
+                let tuples: Vector<Value> = d
+                    .iter()
+                    .map(|(k, v)| {
+                        let mut tuple = Vector::new();
+                        tuple.push_back(k.clone());
+                        tuple.push_back(v.clone());
+                        Value::List(tuple)
+                    })
+                    .collect();
+                Ok(Value::List(tuples))
+            }
+
+            // String - each grapheme cluster
+            Value::String(s) => {
+                use unicode_segmentation::UnicodeSegmentation;
+                let chars: Vector<Value> = s
+                    .graphemes(true)
+                    .map(|g| Value::String(Rc::new(g.to_string())))
+                    .collect();
+                Ok(Value::List(chars))
+            }
+
+            // Range - materialize to list
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    let mut result = Vector::new();
+                    if start <= e {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        for i in *start..=actual_end {
+                            result.push_back(Value::Integer(i));
+                        }
+                    } else {
+                        let actual_end = if *inclusive { *e } else { e + 1 };
+                        let mut i = *start;
+                        while i >= actual_end {
+                            result.push_back(Value::Integer(i));
+                            i -= 1;
+                        }
+                    }
+                    Ok(Value::List(result))
+                }
+                None => Err(RuntimeError::new(
+                    "Cannot convert unbounded range to list",
+                    line,
+                )),
+            },
+
+            // LazySequence - materialize
+            Value::LazySequence(seq) => {
+                let mut result = Vector::new();
+                let mut seq_clone = seq.borrow().clone();
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    result.push_back(elem);
+                }
+                Ok(Value::List(result))
+            }
+
+            _ => Err(RuntimeError::new(
+                format!("Cannot convert {} to list", value.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// set(value) → Set
+    /// Convert value to a set, with callback support for LazySequence.
+    fn builtin_set_callback(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        use im_rc::HashSet;
+
+        let value = &args[0];
+
+        match value {
+            // Set (identity)
+            Value::Set(_) => Ok(value.clone()),
+
+            // List - convert to set
+            Value::List(v) => {
+                let mut result = HashSet::new();
+                for elem in v.iter() {
+                    if !elem.is_hashable() {
+                        return Err(RuntimeError::new(
+                            format!("Cannot add {} to set (not hashable)", elem.type_name()),
+                            line,
+                        ));
+                    }
+                    result.insert(elem.clone());
+                }
+                Ok(Value::Set(result))
+            }
+
+            // String - each grapheme cluster
+            Value::String(s) => {
+                use unicode_segmentation::UnicodeSegmentation;
+                let chars: HashSet<Value> = s
+                    .graphemes(true)
+                    .map(|g| Value::String(Rc::new(g.to_string())))
+                    .collect();
+                Ok(Value::Set(chars))
+            }
+
+            // Range - materialize to set
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    let mut result = HashSet::new();
+                    if start <= e {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        for i in *start..=actual_end {
+                            result.insert(Value::Integer(i));
+                        }
+                    } else {
+                        let actual_end = if *inclusive { *e } else { e + 1 };
+                        let mut i = *start;
+                        while i >= actual_end {
+                            result.insert(Value::Integer(i));
+                            i -= 1;
+                        }
+                    }
+                    Ok(Value::Set(result))
+                }
+                None => Err(RuntimeError::new(
+                    "Cannot convert unbounded range to set",
+                    line,
+                )),
+            },
+
+            // LazySequence - materialize
+            Value::LazySequence(seq) => {
+                let mut result = HashSet::new();
+                let mut seq_clone = seq.borrow().clone();
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    if !elem.is_hashable() {
+                        return Err(RuntimeError::new(
+                            format!("Cannot add {} to set (not hashable)", elem.type_name()),
+                            line,
+                        ));
+                    }
+                    result.insert(elem);
+                }
+                Ok(Value::Set(result))
+            }
+
+            _ => Err(RuntimeError::new(
+                format!("Cannot convert {} to set", value.type_name()),
                 line,
             )),
         }
