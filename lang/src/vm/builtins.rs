@@ -3,6 +3,10 @@
 //! Phase 9: Type conversion, collection access, and collection modification
 //! Per LANG.txt §11.1-11.3
 
+// RuntimeError is 128+ bytes but boxing would add overhead on successful paths.
+// Error paths are not performance-critical for an interpreter.
+#![allow(clippy::result_large_err)]
+
 use im_rc::{HashMap, HashSet, Vector};
 use ordered_float::OrderedFloat;
 use regex::Regex;

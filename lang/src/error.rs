@@ -131,15 +131,15 @@ impl SantaError {
         }
 
         // Add stack trace for runtime errors
-        if let SantaError::Runtime(err) = self {
-            if !err.stack_trace.is_empty() {
-                output.push_str("\nStack trace:\n");
-                for (i, frame) in err.stack_trace.iter().enumerate() {
-                    if let Some(ref name) = frame.function_name {
-                        output.push_str(&format!("  {} at {} (line {})\n", i, name, frame.line));
-                    } else {
-                        output.push_str(&format!("  {} at <anonymous> (line {})\n", i, frame.line));
-                    }
+        if let SantaError::Runtime(err) = self
+            && !err.stack_trace.is_empty()
+        {
+            output.push_str("\nStack trace:\n");
+            for (i, frame) in err.stack_trace.iter().enumerate() {
+                if let Some(ref name) = frame.function_name {
+                    output.push_str(&format!("  {} at {} (line {})\n", i, name, frame.line));
+                } else {
+                    output.push_str(&format!("  {} at <anonymous> (line {})\n", i, frame.line));
                 }
             }
         }

@@ -1,3 +1,7 @@
+// RuntimeError is 128+ bytes but boxing would add overhead on successful paths.
+// Error paths are not performance-critical for an interpreter.
+#![allow(clippy::result_large_err)]
+
 use crate::parser::ast::{Program, Section, SpannedExpr, SpannedStmt};
 use crate::vm::compiler::Compiler;
 use crate::vm::runtime::{RuntimeError, VM};
