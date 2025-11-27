@@ -117,11 +117,45 @@ impl VM {
     }
 
     /// Register operator functions as globals
+    /// Per LANG.txt and Phase 15 requirements, operators can be used as function values
+    /// Example: reduce(+, [1, 2, 3]) uses + as a 2-arity function
     fn register_operator_functions(&mut self) {
-        // Note: Operators as function values are registered here
-        // They are accessed via GetGlobal when used as `reduce(+, list)`
-        // The actual implementation is TODO - for now they won't work
-        // This is a placeholder for Phase 15 completion
+        use super::bytecode::{Chunk, OpCode};
+        use super::value::Closure;
+
+        // Helper to create a binary operator function
+        let create_binop = |op: OpCode, name: &str| -> Value {
+            let mut chunk = Chunk::new();
+            // GetLocal 0 (first parameter)
+            chunk.write(OpCode::GetLocal, 0);
+            chunk.write_operand(0);
+            // GetLocal 1 (second parameter)
+            chunk.write(OpCode::GetLocal, 0);
+            chunk.write_operand(1);
+            // Perform the operation
+            chunk.write(op, 0);
+            // Return the result
+            chunk.write(OpCode::Return, 0);
+
+            let function = Rc::new(CompiledFunction {
+                arity: 2,
+                chunk,
+                name: Some(name.to_string()),
+                upvalues: Vec::new(),
+            });
+
+            Value::Function(Rc::new(Closure {
+                function,
+                upvalues: Vec::new(),
+            }))
+        };
+
+        // Register all binary operators as global function values
+        self.globals.insert("+".to_string(), create_binop(OpCode::Add, "+"));
+        self.globals.insert("-".to_string(), create_binop(OpCode::Sub, "-"));
+        self.globals.insert("*".to_string(), create_binop(OpCode::Mul, "*"));
+        self.globals.insert("/".to_string(), create_binop(OpCode::Div, "/"));
+        self.globals.insert("%".to_string(), create_binop(OpCode::Mod, "%"));
     }
 
     /// Run a compiled function

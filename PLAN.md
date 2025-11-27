@@ -1186,11 +1186,11 @@ fn single_element_set() { ... }  // {2,} or set([2])
 - [x] Guards evaluate correctly
 - [x] Match returns nil if no arm matches
 - [x] Function parameter destructuring works (`|[a, b]| ...`)
-- [x] Operators as function references work (parser support added, runtime partial)
+- [x] Operators as function references work (parser and runtime complete)
 - [x] Single-element sets parse correctly (`{2,}`)
 - [x] **Phase 14 TCO tests un-ignored** (8 tests, 6 passing, 2 edge cases)
 - [ ] **TCO upvalue handling validated** (2 edge case failures - deferred)
-- [ ] All tests pass (481 passing, 2 TCO edge cases failing)
+- [ ] All tests pass (488 passing, 2 TCO edge cases failing)
 - [x] `cargo clippy` clean
 
 ---

@@ -3086,6 +3086,52 @@ mod runtime_tests {
     }
 
     #[test]
+    fn eval_operator_as_function_add() {
+        // Operators as function values per LANG.txt and Phase 15
+        // reduce(+, [1, 2, 3]) => 6
+        assert_eq!(eval("reduce(+, [1, 2, 3])"), Ok(Value::Integer(6)));
+    }
+
+    #[test]
+    fn eval_operator_as_function_multiply() {
+        // reduce(*, [2, 3, 4]) => 24
+        assert_eq!(eval("reduce(*, [2, 3, 4])"), Ok(Value::Integer(24)));
+    }
+
+    #[test]
+    fn eval_operator_as_function_subtract() {
+        // reduce(-, [10, 2, 1]) => 7 (10 - 2 - 1)
+        assert_eq!(eval("reduce(-, [10, 2, 1])"), Ok(Value::Integer(7)));
+    }
+
+    #[test]
+    fn eval_operator_as_function_divide() {
+        // reduce(/, [100, 2, 5]) => 10 (100 / 2 / 5)
+        assert_eq!(eval("reduce(/, [100, 2, 5])"), Ok(Value::Integer(10)));
+    }
+
+    #[test]
+    fn eval_operator_as_function_modulo() {
+        // Can use % as a function value
+        let code = r#"{ let mod = %; mod(10, 3) }"#;
+        assert_eq!(eval(code), Ok(Value::Integer(1)));
+    }
+
+    #[test]
+    fn eval_operator_as_function_direct_call() {
+        // Can call operators directly as functions
+        assert_eq!(eval("(+)(5, 3)"), Ok(Value::Integer(8)));
+        assert_eq!(eval("(*)(4, 7)"), Ok(Value::Integer(28)));
+    }
+
+    #[test]
+    fn eval_operator_as_function_assigned() {
+        // Can assign operator to variable
+        let code = r#"{ let add = +; add(10, 20) }"#;
+        assert_eq!(eval(code), Ok(Value::Integer(30)));
+    }
+
+    #[test]
     fn eval_builtin_fold_list() {
         // fold(0, |a, b| a + b, [1, 2, 3]) => 6
         assert_eq!(
