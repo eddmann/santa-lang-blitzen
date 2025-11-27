@@ -1483,9 +1483,7 @@ mod runtime_tests {
     /// Helper to evaluate source code and return the result
     fn eval(source: &str) -> Result<Value, String> {
         let tokens = Lexer::new(source).tokenize().map_err(|e| e.message)?;
-        let program = Parser::new(tokens)
-            .parse_program()
-            .map_err(|e| e.message)?;
+        let program = Parser::new(tokens).parse_program().map_err(|e| e.message)?;
 
         // Get first statement expression
         let expr = match &program.statements[0].node {
@@ -1493,8 +1491,7 @@ mod runtime_tests {
             _ => return Err("Expected expression statement".to_string()),
         };
 
-        let compiled =
-            Compiler::compile_expression(expr).map_err(|e| e.message)?;
+        let compiled = Compiler::compile_expression(expr).map_err(|e| e.message)?;
 
         let mut vm = VM::new();
         vm.run(Rc::new(compiled)).map_err(|e| e.message)
@@ -2162,10 +2159,7 @@ mod runtime_tests {
 
     #[test]
     fn eval_let_shadowing() {
-        assert_eq!(
-            eval("{ let x = 1; let x = 2; x }"),
-            Ok(Value::Integer(2))
-        );
+        assert_eq!(eval("{ let x = 1; let x = 2; x }"), Ok(Value::Integer(2)));
     }
 
     #[test]
@@ -2178,10 +2172,7 @@ mod runtime_tests {
 
     #[test]
     fn eval_let_mut_assignment() {
-        assert_eq!(
-            eval("{ let mut x = 1; x = 2; x }"),
-            Ok(Value::Integer(2))
-        );
+        assert_eq!(eval("{ let mut x = 1; x = 2; x }"), Ok(Value::Integer(2)));
     }
 
     // ============================================================
@@ -2223,10 +2214,7 @@ mod runtime_tests {
     #[test]
     #[ignore = "Compiler bug: match binding pattern pops value before use"]
     fn eval_match_binding() {
-        assert_eq!(
-            eval("match 42 { x { x + 1 } }"),
-            Ok(Value::Integer(43))
-        );
+        assert_eq!(eval("match 42 { x { x + 1 } }"), Ok(Value::Integer(43)));
     }
 
     #[test]
@@ -2243,10 +2231,7 @@ mod runtime_tests {
 
     #[test]
     fn eval_match_wildcard() {
-        assert_eq!(
-            eval("match 999 { _ { 42 } }"),
-            Ok(Value::Integer(42))
-        );
+        assert_eq!(eval("match 999 { _ { 42 } }"), Ok(Value::Integer(42)));
     }
 
     // ============================================================
@@ -2345,7 +2330,7 @@ mod runtime_tests {
                     }
                 };
                 make_counter()
-            }"#
+            }"#,
         );
         match &result {
             Ok(Value::Function(_)) => { /* expected */ }
@@ -2622,7 +2607,10 @@ mod runtime_tests {
 
     #[test]
     fn eval_builtin_get_dict() {
-        assert_eq!(eval(r#"get("a", #{"a": 1, "b": 2})"#), Ok(Value::Integer(1)));
+        assert_eq!(
+            eval(r#"get("a", #{"a": 1, "b": 2})"#),
+            Ok(Value::Integer(1))
+        );
         assert_eq!(eval(r#"get("c", #{"a": 1})"#), Ok(Value::Nil));
     }
 
@@ -2787,5 +2775,438 @@ mod runtime_tests {
             }
             _ => panic!("Expected dict"),
         }
+    }
+
+    // ============================================================
+    // §11.4 Built-in Transformation Functions - Phase 10
+    // ============================================================
+
+    #[test]
+    fn eval_builtin_map_list() {
+        // map(_ + 1, [1, 2]) => [2, 3]
+        let result = eval("map(_ + 1, [1, 2])").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], Value::Integer(2));
+                assert_eq!(v[1], Value::Integer(3));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_map_set() {
+        // map(_ + 1, {1, 2}) => {2, 3}
+        let result = eval("map(_ + 1, {1, 2})").unwrap();
+        match result {
+            Value::Set(s) => {
+                assert_eq!(s.len(), 2);
+                assert!(s.contains(&Value::Integer(2)));
+                assert!(s.contains(&Value::Integer(3)));
+            }
+            _ => panic!("Expected set"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_map_dict_value_only() {
+        // map(_ + 1, #{1: 2, 3: 4}) => #{1: 3, 3: 5}
+        let result = eval("map(_ + 1, #{1: 2, 3: 4})").unwrap();
+        match result {
+            Value::Dict(d) => {
+                assert_eq!(d.len(), 2);
+                assert_eq!(d.get(&Value::Integer(1)), Some(&Value::Integer(3)));
+                assert_eq!(d.get(&Value::Integer(3)), Some(&Value::Integer(5)));
+            }
+            _ => panic!("Expected dict"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_map_dict_with_key() {
+        // map(|v, k| k + v, #{1: 2, 3: 4}) => #{1: 3, 3: 7}
+        let result = eval("map(|v, k| k + v, #{1: 2, 3: 4})").unwrap();
+        match result {
+            Value::Dict(d) => {
+                assert_eq!(d.len(), 2);
+                assert_eq!(d.get(&Value::Integer(1)), Some(&Value::Integer(3)));
+                assert_eq!(d.get(&Value::Integer(3)), Some(&Value::Integer(7)));
+            }
+            _ => panic!("Expected dict"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_map_string() {
+        // map(_ * 2, "ab") => ["aa", "bb"]
+        let result = eval(r#"map(_ * 2, "ab")"#).unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], Value::String(Rc::new("aa".to_string())));
+                assert_eq!(v[1], Value::String(Rc::new("bb".to_string())));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_map_range() {
+        // map(_ + 1, 1..5) returns LazySequence
+        // We test by verifying the result is a LazySequence
+        let result = eval("map(_ + 1, 1..5)").unwrap();
+        match result {
+            Value::LazySequence(_) => {
+                // LazySequence returned as expected
+            }
+            _ => panic!("Expected LazySequence"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_filter_list() {
+        // filter(_ % 2, [1, 2, 3, 4]) => [1, 3]
+        let result = eval("filter(|v| v % 2, [1, 2, 3, 4])").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], Value::Integer(1));
+                assert_eq!(v[1], Value::Integer(3));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_filter_set() {
+        // filter(_ == 1, {1, 2}) => {1}
+        let result = eval("filter(|v| v == 1, {1, 2})").unwrap();
+        match result {
+            Value::Set(s) => {
+                assert_eq!(s.len(), 1);
+                assert!(s.contains(&Value::Integer(1)));
+            }
+            _ => panic!("Expected set"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_filter_dict_value_only() {
+        // filter(_ == 2, #{1: 2, 3: 4}) => #{1: 2}
+        let result = eval("filter(|v| v == 2, #{1: 2, 3: 4})").unwrap();
+        match result {
+            Value::Dict(d) => {
+                assert_eq!(d.len(), 1);
+                assert_eq!(d.get(&Value::Integer(1)), Some(&Value::Integer(2)));
+            }
+            _ => panic!("Expected dict"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_filter_dict_with_key() {
+        // filter(|_, k| k == 3, #{1: 2, 3: 4}) => #{3: 4}
+        let result = eval("filter(|_, k| k == 3, #{1: 2, 3: 4})").unwrap();
+        match result {
+            Value::Dict(d) => {
+                assert_eq!(d.len(), 1);
+                assert_eq!(d.get(&Value::Integer(3)), Some(&Value::Integer(4)));
+            }
+            _ => panic!("Expected dict"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_filter_string() {
+        // filter(_ == "a", "ab") => ["a"]
+        let result = eval(r#"filter(|c| c == "a", "ab")"#).unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 1);
+                assert_eq!(v[0], Value::String(Rc::new("a".to_string())));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_filter_range() {
+        // filter(_ % 2, 1..5) returns LazySequence
+        // We test by verifying the result is a LazySequence
+        let result = eval("filter(|v| v % 2, 1..5)").unwrap();
+        match result {
+            Value::LazySequence(_) => {
+                // LazySequence returned as expected
+            }
+            _ => panic!("Expected LazySequence"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_flat_map() {
+        // flat_map(|x| [x, x * 2], [1, 2]) => [1, 2, 2, 4]
+        let result = eval("flat_map(|x| [x, x * 2], [1, 2])").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 4);
+                assert_eq!(v[0], Value::Integer(1));
+                assert_eq!(v[1], Value::Integer(2));
+                assert_eq!(v[2], Value::Integer(2));
+                assert_eq!(v[3], Value::Integer(4));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_flat_map_nested() {
+        // flat_map(_ * 2, [[1, 2], [3, 4]]) => [2, 4, 6, 8]
+        let result = eval("flat_map(_ * 2, [[1, 2], [3, 4]])").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 4);
+                assert_eq!(v[0], Value::Integer(2));
+                assert_eq!(v[1], Value::Integer(4));
+                assert_eq!(v[2], Value::Integer(6));
+                assert_eq!(v[3], Value::Integer(8));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_filter_map_list() {
+        // [1, 2, 3, 4] |> filter_map(|v| if v % 2 { v * 2 }) => [2, 6]
+        let result = eval("[1, 2, 3, 4] |> filter_map(|v| if v % 2 { v * 2 })").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], Value::Integer(2));
+                assert_eq!(v[1], Value::Integer(6));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_filter_map_set() {
+        // {1, 2, 3, 4} |> filter_map(|v| if v % 2 { v * 2 }) => {2, 6}
+        let result = eval("{1, 2, 3, 4} |> filter_map(|v| if v % 2 { v * 2 })").unwrap();
+        match result {
+            Value::Set(s) => {
+                assert_eq!(s.len(), 2);
+                assert!(s.contains(&Value::Integer(2)));
+                assert!(s.contains(&Value::Integer(6)));
+            }
+            _ => panic!("Expected set"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_find_map_list() {
+        // [1, 2] |> find_map(|v| if v % 2 { v * 2 }) => 2
+        assert_eq!(
+            eval("[1, 2] |> find_map(|v| if v % 2 { v * 2 })"),
+            Ok(Value::Integer(2))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_find_map_not_found() {
+        // [2, 4] |> find_map(|v| if v % 2 { v }) => nil
+        assert_eq!(
+            eval("[2, 4] |> find_map(|v| if v % 2 { v })"),
+            Ok(Value::Nil)
+        );
+    }
+
+    // ============================================================
+    // §11.5 Built-in Reduction Functions - Phase 10
+    // ============================================================
+
+    #[test]
+    fn eval_builtin_reduce_list() {
+        // reduce(|a, b| a + b, [1, 2, 3]) => 6
+        assert_eq!(
+            eval("reduce(|a, b| a + b, [1, 2, 3])"),
+            Ok(Value::Integer(6))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_reduce_list_custom_fn() {
+        // reduce(|a, b| a * b, [1, 2, 3, 4]) => 24
+        assert_eq!(
+            eval("reduce(|a, b| a * b, [1, 2, 3, 4])"),
+            Ok(Value::Integer(24))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_reduce_string() {
+        // reduce(|acc, ch| ch + acc, "ab") => "ba"
+        assert_eq!(
+            eval(r#"reduce(|acc, ch| ch + acc, "ab")"#),
+            Ok(Value::String(Rc::new("ba".to_string())))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_reduce_range() {
+        // reduce(|a, b| a + b, 1..5) => 10
+        assert_eq!(eval("reduce(|a, b| a + b, 1..5)"), Ok(Value::Integer(10)));
+        // reduce(|a, b| a + b, 1..=5) => 15
+        assert_eq!(eval("reduce(|a, b| a + b, 1..=5)"), Ok(Value::Integer(15)));
+    }
+
+    #[test]
+    fn eval_builtin_reduce_empty_error() {
+        // reduce on empty collection throws error
+        assert!(eval("reduce(|a, b| a + b, [])").is_err());
+    }
+
+    #[test]
+    fn eval_builtin_fold_list() {
+        // fold(0, |a, b| a + b, [1, 2, 3]) => 6
+        assert_eq!(
+            eval("fold(0, |a, b| a + b, [1, 2, 3])"),
+            Ok(Value::Integer(6))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_fold_empty() {
+        // fold(0, |a, b| a + b, []) => 0 (returns initial if empty)
+        assert_eq!(eval("fold(0, |a, b| a + b, [])"), Ok(Value::Integer(0)));
+    }
+
+    #[test]
+    fn eval_builtin_fold_custom_fn() {
+        // fold(1, |acc, v| acc * v, [1, 2, 3, 4]) => 24
+        assert_eq!(
+            eval("fold(1, |acc, v| acc * v, [1, 2, 3, 4])"),
+            Ok(Value::Integer(24))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_fold_range() {
+        // fold(0, |a, b| a + b, 1..5) => 10
+        assert_eq!(eval("fold(0, |a, b| a + b, 1..5)"), Ok(Value::Integer(10)));
+        // fold(0, |a, b| a + b, 1..=5) => 15
+        assert_eq!(eval("fold(0, |a, b| a + b, 1..=5)"), Ok(Value::Integer(15)));
+    }
+
+    #[test]
+    fn eval_builtin_fold_string() {
+        // fold(0, |acc, _| acc + 1, "ab") => 2
+        assert_eq!(
+            eval(r#"fold(0, |acc, _| acc + 1, "ab")"#),
+            Ok(Value::Integer(2))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_fold_s() {
+        // fold_s returns first element of final accumulator
+        // Test with simple list accumulator (without destructuring syntax)
+        // 1..=10 gives 10 iterations, producing Fibonacci F(10)=55
+        assert_eq!(
+            eval("fold_s([0, 1], |acc, _| [get(1, acc), get(0, acc) + get(1, acc)], 1..=10)"),
+            Ok(Value::Integer(55))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_scan_list() {
+        // scan(0, |a, b| a + b, [1, 2, 3]) => [1, 3, 6]
+        let result = eval("scan(0, |a, b| a + b, [1, 2, 3])").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 3);
+                assert_eq!(v[0], Value::Integer(1));
+                assert_eq!(v[1], Value::Integer(3));
+                assert_eq!(v[2], Value::Integer(6));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_scan_string() {
+        // scan("", |a, b| a + b, "ab") => ["a", "ab"]
+        let result = eval(r#"scan("", |a, b| a + b, "ab")"#).unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], Value::String(Rc::new("a".to_string())));
+                assert_eq!(v[1], Value::String(Rc::new("ab".to_string())));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_scan_range() {
+        // scan(0, |a, b| a + b, 1..5) => [1, 3, 6, 10]
+        let result = eval("scan(0, |a, b| a + b, 1..5)").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 4);
+                assert_eq!(v[0], Value::Integer(1));
+                assert_eq!(v[1], Value::Integer(3));
+                assert_eq!(v[2], Value::Integer(6));
+                assert_eq!(v[3], Value::Integer(10));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    // ============================================================
+    // §11.6 Built-in Iteration Functions - Phase 10
+    // ============================================================
+
+    #[test]
+    fn eval_builtin_each_list() {
+        // each should return nil and execute side effects
+        // let mut acc = 0; each(|v| acc = acc + v, [1, 2, 3]); acc => 6
+        assert_eq!(
+            eval("{ let mut acc = 0; each(|v| { acc = acc + v }, [1, 2, 3]); acc }"),
+            Ok(Value::Integer(6))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_each_returns_nil() {
+        // each always returns nil
+        assert_eq!(eval("each(|v| v, [1, 2, 3])"), Ok(Value::Nil));
+    }
+
+    #[test]
+    fn eval_builtin_each_range() {
+        // let mut acc = 0; each(|v| acc = acc + v, 1..5); acc => 10
+        assert_eq!(
+            eval("{ let mut acc = 0; each(|v| { acc = acc + v }, 1..5); acc }"),
+            Ok(Value::Integer(10))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_each_dict_value_only() {
+        // let mut acc = 0; each(|v| acc = acc + v, #{1: 2, 3: 4}); acc => 6
+        assert_eq!(
+            eval("{ let mut acc = 0; each(|v| { acc = acc + v }, #{1: 2, 3: 4}); acc }"),
+            Ok(Value::Integer(6))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_each_dict_with_key() {
+        // let mut acc = 0; each(|_, k| acc = acc + k, #{1: 2, 3: 4}); acc => 4
+        assert_eq!(
+            eval("{ let mut acc = 0; each(|_, k| { acc = acc + k }, #{1: 2, 3: 4}); acc }"),
+            Ok(Value::Integer(4))
+        );
     }
 }

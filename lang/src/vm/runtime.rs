@@ -3,10 +3,11 @@ use ordered_float::OrderedFloat;
 use std::cell::RefCell;
 use std::collections::HashMap as StdHashMap;
 use std::rc::Rc;
+use unicode_segmentation::UnicodeSegmentation;
 
-use super::builtins::{call_builtin, BuiltinId};
+use super::builtins::{BuiltinId, call_builtin};
 use super::bytecode::{Chunk, CompiledFunction, OpCode};
-use super::value::{Closure, Upvalue, Value};
+use super::value::{Closure, LazySeq, Upvalue, Value};
 
 /// Runtime error with message and optional stack trace
 #[derive(Debug, Clone)]
@@ -109,11 +110,12 @@ impl VM {
         self.frames.push(CallFrame::new(closure, 0));
 
         // Run execution loop
-        self.execute()
+        self.execute_until(0)
     }
 
     /// Main execution loop
-    fn execute(&mut self) -> Result<Value, RuntimeError> {
+    /// Runs until frames.len() drops to return_depth
+    fn execute_until(&mut self, return_depth: usize) -> Result<Value, RuntimeError> {
         loop {
             let instruction = self.read_byte();
 
@@ -329,7 +331,7 @@ impl VM {
                         _ => {
                             return Err(
                                 self.error(format!("Cannot get size of {}", value.type_name()))
-                            )
+                            );
                         }
                     };
                     self.push(Value::Integer(size));
@@ -368,9 +370,9 @@ impl VM {
                             upvalues.push(self.capture_upvalue(slot));
                         } else {
                             // Capture from enclosing closure's upvalues
-                            let upvalue =
-                                self.current_frame().closure.upvalues[upvalue_desc.index as usize]
-                                    .clone();
+                            let upvalue = self.current_frame().closure.upvalues
+                                [upvalue_desc.index as usize]
+                                .clone();
                             upvalues.push(upvalue);
                         }
                     }
@@ -399,8 +401,8 @@ impl VM {
                         self.pop();
                     }
 
-                    if self.frames.is_empty() {
-                        // Top-level return
+                    if self.frames.len() <= return_depth {
+                        // Return to caller (either top-level or nested execution)
                         return Ok(result);
                     }
 
@@ -469,7 +471,13 @@ impl VM {
                     let line = self.current_frame().current_line();
                     let id = BuiltinId::try_from(builtin_id)
                         .map_err(|_| self.error(format!("Unknown builtin id: {}", builtin_id)))?;
-                    let result = call_builtin(id, &args, line)?;
+
+                    // Check if this builtin requires callback support
+                    let result = if id.requires_callback() {
+                        self.call_callback_builtin(id, &args, line)?
+                    } else {
+                        call_builtin(id, &args, line)?
+                    };
                     self.push(result);
                 }
 
@@ -548,15 +556,11 @@ impl VM {
                 // Compute in f64, then convert to i64
                 Value::Integer((*x as f64 + y.0) as i64)
             }
-            (Value::Decimal(x), Value::Integer(y)) => {
-                Value::Decimal(OrderedFloat(x.0 + *y as f64))
-            }
+            (Value::Decimal(x), Value::Integer(y)) => Value::Decimal(OrderedFloat(x.0 + *y as f64)),
             (Value::Decimal(x), Value::Decimal(y)) => Value::Decimal(OrderedFloat(x.0 + y.0)),
 
             // String concatenation
-            (Value::String(x), Value::String(y)) => {
-                Value::String(Rc::new(format!("{}{}", x, y)))
-            }
+            (Value::String(x), Value::String(y)) => Value::String(Rc::new(format!("{}{}", x, y))),
 
             // List concatenation
             (Value::List(x), Value::List(y)) => {
@@ -582,7 +586,7 @@ impl VM {
                     "Cannot add {} and {}",
                     a.type_name(),
                     b.type_name()
-                )))
+                )));
             }
         };
 
@@ -601,9 +605,7 @@ impl VM {
                 // Compute in f64, then convert to i64
                 Value::Integer((*x as f64 - y.0) as i64)
             }
-            (Value::Decimal(x), Value::Integer(y)) => {
-                Value::Decimal(OrderedFloat(x.0 - *y as f64))
-            }
+            (Value::Decimal(x), Value::Integer(y)) => Value::Decimal(OrderedFloat(x.0 - *y as f64)),
             (Value::Decimal(x), Value::Decimal(y)) => Value::Decimal(OrderedFloat(x.0 - y.0)),
 
             // Set difference
@@ -614,7 +616,7 @@ impl VM {
                     "Cannot subtract {} from {}",
                     b.type_name(),
                     a.type_name()
-                )))
+                )));
             }
         };
 
@@ -633,9 +635,7 @@ impl VM {
                 // Compute in f64, then convert to i64
                 Value::Integer((*x as f64 * y.0) as i64)
             }
-            (Value::Decimal(x), Value::Integer(y)) => {
-                Value::Decimal(OrderedFloat(x.0 * *y as f64))
-            }
+            (Value::Decimal(x), Value::Integer(y)) => Value::Decimal(OrderedFloat(x.0 * *y as f64)),
             (Value::Decimal(x), Value::Decimal(y)) => Value::Decimal(OrderedFloat(x.0 * y.0)),
 
             // String repetition
@@ -665,7 +665,7 @@ impl VM {
                     "Cannot multiply {} by {}",
                     a.type_name(),
                     b.type_name()
-                )))
+                )));
             }
         };
 
@@ -711,7 +711,7 @@ impl VM {
                     "Cannot divide {} by {}",
                     a.type_name(),
                     b.type_name()
-                )))
+                )));
             }
         };
 
@@ -758,7 +758,7 @@ impl VM {
                     "Cannot compute modulo of {} and {}",
                     a.type_name(),
                     b.type_name()
-                )))
+                )));
             }
         };
 
@@ -794,7 +794,7 @@ impl VM {
                     "Cannot compare {} < {}",
                     a.type_name(),
                     b.type_name()
-                )))
+                )));
             }
         };
 
@@ -817,7 +817,7 @@ impl VM {
                     "Cannot compare {} <= {}",
                     a.type_name(),
                     b.type_name()
-                )))
+                )));
             }
         };
 
@@ -840,7 +840,7 @@ impl VM {
                     "Cannot compare {} > {}",
                     a.type_name(),
                     b.type_name()
-                )))
+                )));
             }
         };
 
@@ -863,7 +863,7 @@ impl VM {
                     "Cannot compare {} >= {}",
                     a.type_name(),
                     b.type_name()
-                )))
+                )));
             }
         };
 
@@ -908,7 +908,7 @@ impl VM {
                     "Cannot index {} with {}",
                     collection.type_name(),
                     index.type_name()
-                )))
+                )));
             }
         };
 
@@ -938,7 +938,11 @@ impl VM {
                 let actual_end = match &end {
                     Value::Nil => list.len(),
                     Value::Integer(n) => {
-                        let idx = if *n < 0 { (len + n).max(0) } else { (*n).min(len) };
+                        let idx = if *n < 0 {
+                            (len + n).max(0)
+                        } else {
+                            (*n).min(len)
+                        };
                         idx as usize
                     }
                     _ => return Err(self.error("Slice end must be an integer or nil")),
@@ -964,7 +968,11 @@ impl VM {
                 let actual_end = match &end {
                     Value::Nil => graphemes.len(),
                     Value::Integer(n) => {
-                        let idx = if *n < 0 { (len + n).max(0) } else { (*n).min(len) };
+                        let idx = if *n < 0 {
+                            (len + n).max(0)
+                        } else {
+                            (*n).min(len)
+                        };
                         idx as usize
                     }
                     _ => return Err(self.error("Slice end must be an integer or nil")),
@@ -1005,10 +1013,7 @@ impl VM {
         let arity = closure.function.arity as usize;
 
         if argc != arity {
-            return Err(self.error(format!(
-                "Expected {} arguments but got {}",
-                arity, argc
-            )));
+            return Err(self.error(format!("Expected {} arguments but got {}", arity, argc)));
         }
 
         if self.frames.len() >= 64 {
@@ -1073,6 +1078,1148 @@ impl VM {
     /// Define a global variable (for external use)
     pub fn define_global(&mut self, name: impl Into<String>, value: Value) {
         self.globals.insert(name.into(), value);
+    }
+
+    // =========================================================================
+    // Callback-based Built-in Functions (Phase 10)
+    // =========================================================================
+
+    /// Execute a callback-based builtin function
+    fn call_callback_builtin(
+        &mut self,
+        id: BuiltinId,
+        args: &[Value],
+        line: u32,
+    ) -> Result<Value, RuntimeError> {
+        match id {
+            BuiltinId::Map => self.builtin_map(args, line),
+            BuiltinId::Filter => self.builtin_filter(args, line),
+            BuiltinId::FlatMap => self.builtin_flat_map(args, line),
+            BuiltinId::FilterMap => self.builtin_filter_map(args, line),
+            BuiltinId::FindMap => self.builtin_find_map(args, line),
+            BuiltinId::Reduce => self.builtin_reduce(args, line),
+            BuiltinId::Fold => self.builtin_fold(args, line),
+            BuiltinId::FoldS => self.builtin_fold_s(args, line),
+            BuiltinId::Scan => self.builtin_scan(args, line),
+            BuiltinId::Each => self.builtin_each(args, line),
+            BuiltinId::Update => self.builtin_update(args, line),
+            BuiltinId::UpdateD => self.builtin_update_d(args, line),
+            _ => Err(RuntimeError::new(
+                format!("{} is not a callback builtin", id.name()),
+                line,
+            )),
+        }
+    }
+
+    /// Call a closure with arguments and return the result
+    fn call_closure_sync(
+        &mut self,
+        closure: &Rc<Closure>,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        let arity = closure.function.arity as usize;
+
+        // Handle arity mismatch by padding with nil or truncating
+        let actual_args: Vec<Value> = if args.len() < arity {
+            let mut padded = args;
+            while padded.len() < arity {
+                padded.push(Value::Nil);
+            }
+            padded
+        } else if args.len() > arity {
+            args.into_iter().take(arity).collect()
+        } else {
+            args
+        };
+
+        // Push arguments onto stack
+        for arg in &actual_args {
+            self.push(arg.clone());
+        }
+
+        // Create new frame
+        if self.frames.len() >= 64 {
+            return Err(self.error("Stack overflow"));
+        }
+
+        // Remember current depth to return here after closure completes
+        let return_depth = self.frames.len();
+
+        let stack_base = self.stack.len() - arity;
+        self.frames
+            .push(CallFrame::new(closure.clone(), stack_base));
+
+        // Execute until we return to current depth
+        self.execute_until(return_depth)
+    }
+
+    /// Get the arity of a closure
+    fn closure_arity(&self, closure: &Rc<Closure>) -> usize {
+        closure.function.arity as usize
+    }
+
+    // =========================================================================
+    // Transformation Functions (§11.4)
+    // =========================================================================
+
+    /// map(mapper, collection) → Collection
+    fn builtin_map(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let mapper = &args[0];
+        let collection = &args[1];
+
+        let closure = match mapper {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "map expects Function as first argument, got {}",
+                        mapper.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let arity = self.closure_arity(&closure);
+
+        match collection {
+            Value::List(list) => {
+                let mut result = Vector::new();
+                for (idx, elem) in list.iter().enumerate() {
+                    let call_args = if arity >= 2 {
+                        vec![elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem.clone()]
+                    };
+                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    result.push_back(mapped);
+                }
+                Ok(Value::List(result))
+            }
+            Value::Set(set) => {
+                let mut result = HashSet::new();
+                for elem in set.iter() {
+                    let mapped = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    if !mapped.is_hashable() {
+                        return Err(RuntimeError::new(
+                            format!("Cannot add {} to set (not hashable)", mapped.type_name()),
+                            line,
+                        ));
+                    }
+                    result.insert(mapped);
+                }
+                Ok(Value::Set(result))
+            }
+            Value::Dict(dict) => {
+                let mut result = HashMap::new();
+                for (key, value) in dict.iter() {
+                    let call_args = if arity >= 2 {
+                        vec![value.clone(), key.clone()]
+                    } else {
+                        vec![value.clone()]
+                    };
+                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    result.insert(key.clone(), mapped);
+                }
+                Ok(Value::Dict(result))
+            }
+            Value::String(s) => {
+                // String maps to List
+                let mut result = Vector::new();
+                for (idx, grapheme) in s.graphemes(true).enumerate() {
+                    let elem = Value::String(Rc::new(grapheme.to_string()));
+                    let call_args = if arity >= 2 {
+                        vec![elem, Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem]
+                    };
+                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    result.push_back(mapped);
+                }
+                Ok(Value::List(result))
+            }
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                // Range maps to LazySequence (for now, materialize to list for bounded)
+                match end {
+                    Some(e) => {
+                        let mut result = Vector::new();
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        if start <= &actual_end {
+                            for i in *start..=actual_end {
+                                let mapped =
+                                    self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                result.push_back(mapped);
+                            }
+                        } else {
+                            // Descending range
+                            let mut i = *start;
+                            while i >= actual_end {
+                                let mapped =
+                                    self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                result.push_back(mapped);
+                                i -= 1;
+                            }
+                        }
+                        // Return as LazySequence placeholder - for now return List
+                        // Phase 12 will implement proper LazySequence
+                        Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Map {
+                            source: Rc::new(RefCell::new(LazySeq::Range {
+                                current: *start,
+                                end: *end,
+                                inclusive: *inclusive,
+                            })),
+                            mapper: closure,
+                        }))))
+                    }
+                    None => {
+                        // Unbounded range - return LazySequence
+                        Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Map {
+                            source: Rc::new(RefCell::new(LazySeq::Range {
+                                current: *start,
+                                end: None,
+                                inclusive: *inclusive,
+                            })),
+                            mapper: closure,
+                        }))))
+                    }
+                }
+            }
+            _ => Err(RuntimeError::new(
+                format!("map does not support {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// filter(predicate, collection) → Collection
+    fn builtin_filter(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let predicate = &args[0];
+        let collection = &args[1];
+
+        let closure = match predicate {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "filter expects Function as first argument, got {}",
+                        predicate.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let arity = self.closure_arity(&closure);
+
+        match collection {
+            Value::List(list) => {
+                let mut result = Vector::new();
+                for (idx, elem) in list.iter().enumerate() {
+                    let call_args = if arity >= 2 {
+                        vec![elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem.clone()]
+                    };
+                    let keep = self.call_closure_sync(&closure, call_args)?;
+                    if keep.is_truthy() {
+                        result.push_back(elem.clone());
+                    }
+                }
+                Ok(Value::List(result))
+            }
+            Value::Set(set) => {
+                let mut result = HashSet::new();
+                for elem in set.iter() {
+                    let keep = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    if keep.is_truthy() {
+                        result.insert(elem.clone());
+                    }
+                }
+                Ok(Value::Set(result))
+            }
+            Value::Dict(dict) => {
+                let mut result = HashMap::new();
+                for (key, value) in dict.iter() {
+                    let call_args = if arity >= 2 {
+                        vec![value.clone(), key.clone()]
+                    } else {
+                        vec![value.clone()]
+                    };
+                    let keep = self.call_closure_sync(&closure, call_args)?;
+                    if keep.is_truthy() {
+                        result.insert(key.clone(), value.clone());
+                    }
+                }
+                Ok(Value::Dict(result))
+            }
+            Value::String(s) => {
+                // String filters to List
+                let mut result = Vector::new();
+                for (idx, grapheme) in s.graphemes(true).enumerate() {
+                    let elem = Value::String(Rc::new(grapheme.to_string()));
+                    let call_args = if arity >= 2 {
+                        vec![elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem.clone()]
+                    };
+                    let keep = self.call_closure_sync(&closure, call_args)?;
+                    if keep.is_truthy() {
+                        result.push_back(elem);
+                    }
+                }
+                Ok(Value::List(result))
+            }
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                // Range filters to LazySequence
+                match end {
+                    Some(_) => {
+                        // For bounded range, return LazySequence
+                        Ok(Value::LazySequence(Rc::new(RefCell::new(
+                            LazySeq::Filter {
+                                source: Rc::new(RefCell::new(LazySeq::Range {
+                                    current: *start,
+                                    end: *end,
+                                    inclusive: *inclusive,
+                                })),
+                                predicate: closure,
+                            },
+                        ))))
+                    }
+                    None => {
+                        // Unbounded range
+                        Ok(Value::LazySequence(Rc::new(RefCell::new(
+                            LazySeq::Filter {
+                                source: Rc::new(RefCell::new(LazySeq::Range {
+                                    current: *start,
+                                    end: None,
+                                    inclusive: *inclusive,
+                                })),
+                                predicate: closure,
+                            },
+                        ))))
+                    }
+                }
+            }
+            _ => Err(RuntimeError::new(
+                format!("filter does not support {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// flat_map(mapper, collection) → List
+    /// For nested lists, maps into inner elements then flattens
+    fn builtin_flat_map(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let mapper = &args[0];
+        let collection = &args[1];
+
+        let closure = match mapper {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "flat_map expects Function as first argument, got {}",
+                        mapper.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let arity = self.closure_arity(&closure);
+        let mut result = Vector::new();
+
+        match collection {
+            Value::List(list) => {
+                for (idx, elem) in list.iter().enumerate() {
+                    // If element is a list, map the function over its elements
+                    // then flatten into result (this gives flat_map its special behavior)
+                    match elem {
+                        Value::List(inner_list) => {
+                            for inner_elem in inner_list.iter() {
+                                let mapped =
+                                    self.call_closure_sync(&closure, vec![inner_elem.clone()])?;
+                                result.push_back(mapped);
+                            }
+                        }
+                        _ => {
+                            // For non-list elements, apply mapper and flatten if result is a list
+                            let call_args = if arity >= 2 {
+                                vec![elem.clone(), Value::Integer(idx as i64)]
+                            } else {
+                                vec![elem.clone()]
+                            };
+                            let mapped = self.call_closure_sync(&closure, call_args)?;
+                            match mapped {
+                                Value::List(inner) => {
+                                    for item in inner.iter() {
+                                        result.push_back(item.clone());
+                                    }
+                                }
+                                _ => result.push_back(mapped),
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {
+                return Err(RuntimeError::new(
+                    format!("flat_map does not support {}", collection.type_name()),
+                    line,
+                ));
+            }
+        }
+
+        Ok(Value::List(result))
+    }
+
+    /// filter_map(mapper, collection) → Collection
+    fn builtin_filter_map(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let mapper = &args[0];
+        let collection = &args[1];
+
+        let closure = match mapper {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "filter_map expects Function as first argument, got {}",
+                        mapper.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let arity = self.closure_arity(&closure);
+
+        match collection {
+            Value::List(list) => {
+                let mut result = Vector::new();
+                for (idx, elem) in list.iter().enumerate() {
+                    let call_args = if arity >= 2 {
+                        vec![elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem.clone()]
+                    };
+                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    if mapped.is_truthy() {
+                        result.push_back(mapped);
+                    }
+                }
+                Ok(Value::List(result))
+            }
+            Value::Set(set) => {
+                let mut result = HashSet::new();
+                for elem in set.iter() {
+                    let mapped = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    if mapped.is_truthy() {
+                        if !mapped.is_hashable() {
+                            return Err(RuntimeError::new(
+                                format!("Cannot add {} to set (not hashable)", mapped.type_name()),
+                                line,
+                            ));
+                        }
+                        result.insert(mapped);
+                    }
+                }
+                Ok(Value::Set(result))
+            }
+            Value::Dict(dict) => {
+                let mut result = HashMap::new();
+                for (key, value) in dict.iter() {
+                    let call_args = if arity >= 2 {
+                        vec![value.clone(), key.clone()]
+                    } else {
+                        vec![value.clone()]
+                    };
+                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    if mapped.is_truthy() {
+                        result.insert(key.clone(), mapped);
+                    }
+                }
+                Ok(Value::Dict(result))
+            }
+            Value::String(s) => {
+                let mut result = Vector::new();
+                for (idx, grapheme) in s.graphemes(true).enumerate() {
+                    let elem = Value::String(Rc::new(grapheme.to_string()));
+                    let call_args = if arity >= 2 {
+                        vec![elem, Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem]
+                    };
+                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    if mapped.is_truthy() {
+                        result.push_back(mapped);
+                    }
+                }
+                Ok(Value::List(result))
+            }
+            _ => Err(RuntimeError::new(
+                format!("filter_map does not support {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// find_map(mapper, collection) → Value | Nil
+    fn builtin_find_map(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let mapper = &args[0];
+        let collection = &args[1];
+
+        let closure = match mapper {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "find_map expects Function as first argument, got {}",
+                        mapper.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let arity = self.closure_arity(&closure);
+
+        match collection {
+            Value::List(list) => {
+                for (idx, elem) in list.iter().enumerate() {
+                    let call_args = if arity >= 2 {
+                        vec![elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem.clone()]
+                    };
+                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    if mapped.is_truthy() {
+                        return Ok(mapped);
+                    }
+                }
+                Ok(Value::Nil)
+            }
+            Value::Set(set) => {
+                for elem in set.iter() {
+                    let mapped = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    if mapped.is_truthy() {
+                        return Ok(mapped);
+                    }
+                }
+                Ok(Value::Nil)
+            }
+            Value::Dict(dict) => {
+                for (key, value) in dict.iter() {
+                    let call_args = if arity >= 2 {
+                        vec![value.clone(), key.clone()]
+                    } else {
+                        vec![value.clone()]
+                    };
+                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    if mapped.is_truthy() {
+                        return Ok(mapped);
+                    }
+                }
+                Ok(Value::Nil)
+            }
+            Value::String(s) => {
+                for (idx, grapheme) in s.graphemes(true).enumerate() {
+                    let elem = Value::String(Rc::new(grapheme.to_string()));
+                    let call_args = if arity >= 2 {
+                        vec![elem, Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem]
+                    };
+                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    if mapped.is_truthy() {
+                        return Ok(mapped);
+                    }
+                }
+                Ok(Value::Nil)
+            }
+            _ => Err(RuntimeError::new(
+                format!("find_map does not support {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    // =========================================================================
+    // Reduction Functions (§11.5)
+    // =========================================================================
+
+    /// reduce(reducer, collection) → Value
+    fn builtin_reduce(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let reducer = &args[0];
+        let collection = &args[1];
+
+        let closure = match reducer {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "reduce expects Function as first argument, got {}",
+                        reducer.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let arity = self.closure_arity(&closure);
+
+        match collection {
+            Value::List(list) => {
+                if list.is_empty() {
+                    return Err(RuntimeError::new("reduce on empty List", line));
+                }
+                let mut acc = list[0].clone();
+                for (idx, elem) in list.iter().skip(1).enumerate() {
+                    let call_args = if arity >= 3 {
+                        vec![acc, elem.clone(), Value::Integer((idx + 1) as i64)]
+                    } else {
+                        vec![acc, elem.clone()]
+                    };
+                    acc = self.call_closure_sync(&closure, call_args)?;
+                }
+                Ok(acc)
+            }
+            Value::Set(set) => {
+                if set.is_empty() {
+                    return Err(RuntimeError::new("reduce on empty Set", line));
+                }
+                let mut iter = set.iter();
+                let mut acc = iter.next().unwrap().clone();
+                for elem in iter {
+                    acc = self.call_closure_sync(&closure, vec![acc, elem.clone()])?;
+                }
+                Ok(acc)
+            }
+            Value::Dict(dict) => {
+                if dict.is_empty() {
+                    return Err(RuntimeError::new("reduce on empty Dictionary", line));
+                }
+                let mut iter = dict.iter();
+                let (_, first_value) = iter.next().unwrap();
+                let mut acc = first_value.clone();
+                for (key, value) in iter {
+                    let call_args = if arity >= 3 {
+                        vec![acc, value.clone(), key.clone()]
+                    } else {
+                        vec![acc, value.clone()]
+                    };
+                    acc = self.call_closure_sync(&closure, call_args)?;
+                }
+                Ok(acc)
+            }
+            Value::String(s) => {
+                let graphemes: Vec<&str> = s.graphemes(true).collect();
+                if graphemes.is_empty() {
+                    return Err(RuntimeError::new("reduce on empty String", line));
+                }
+                let mut acc = Value::String(Rc::new(graphemes[0].to_string()));
+                for grapheme in graphemes.iter().skip(1) {
+                    let elem = Value::String(Rc::new(grapheme.to_string()));
+                    acc = self.call_closure_sync(&closure, vec![acc, elem])?;
+                }
+                Ok(acc)
+            }
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    let actual_end = if *inclusive { *e } else { e - 1 };
+                    if start > &actual_end {
+                        return Err(RuntimeError::new("reduce on empty Range", line));
+                    }
+                    let mut acc = Value::Integer(*start);
+                    for i in (start + 1)..=actual_end {
+                        acc = self.call_closure_sync(&closure, vec![acc, Value::Integer(i)])?;
+                    }
+                    Ok(acc)
+                }
+                None => Err(RuntimeError::new(
+                    "reduce on unbounded range requires break",
+                    line,
+                )),
+            },
+            _ => Err(RuntimeError::new(
+                format!("reduce does not support {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// fold(initial, folder, collection) → Value
+    fn builtin_fold(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let initial = &args[0];
+        let folder = &args[1];
+        let collection = &args[2];
+
+        let closure = match folder {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "fold expects Function as second argument, got {}",
+                        folder.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let arity = self.closure_arity(&closure);
+        let mut acc = initial.clone();
+
+        match collection {
+            Value::List(list) => {
+                for (idx, elem) in list.iter().enumerate() {
+                    let call_args = if arity >= 3 {
+                        vec![acc, elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![acc, elem.clone()]
+                    };
+                    acc = self.call_closure_sync(&closure, call_args)?;
+                }
+                Ok(acc)
+            }
+            Value::Set(set) => {
+                for elem in set.iter() {
+                    acc = self.call_closure_sync(&closure, vec![acc, elem.clone()])?;
+                }
+                Ok(acc)
+            }
+            Value::Dict(dict) => {
+                for (key, value) in dict.iter() {
+                    let call_args = if arity >= 3 {
+                        vec![acc, value.clone(), key.clone()]
+                    } else {
+                        vec![acc, value.clone()]
+                    };
+                    acc = self.call_closure_sync(&closure, call_args)?;
+                }
+                Ok(acc)
+            }
+            Value::String(s) => {
+                for (idx, grapheme) in s.graphemes(true).enumerate() {
+                    let elem = Value::String(Rc::new(grapheme.to_string()));
+                    let call_args = if arity >= 3 {
+                        vec![acc, elem, Value::Integer(idx as i64)]
+                    } else {
+                        vec![acc, elem]
+                    };
+                    acc = self.call_closure_sync(&closure, call_args)?;
+                }
+                Ok(acc)
+            }
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                match end {
+                    Some(e) => {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        if start <= &actual_end {
+                            for i in *start..=actual_end {
+                                acc =
+                                    self.call_closure_sync(&closure, vec![acc, Value::Integer(i)])?;
+                            }
+                        } else {
+                            // Descending range
+                            let mut i = *start;
+                            while i >= actual_end {
+                                acc =
+                                    self.call_closure_sync(&closure, vec![acc, Value::Integer(i)])?;
+                                i -= 1;
+                            }
+                        }
+                        Ok(acc)
+                    }
+                    None => Err(RuntimeError::new(
+                        "fold on unbounded range requires break",
+                        line,
+                    )),
+                }
+            }
+            _ => Err(RuntimeError::new(
+                format!("fold does not support {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// fold_s(initial, folder, collection) → Value
+    /// Fold with state - accumulator is a list where first element is result
+    fn builtin_fold_s(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let initial = &args[0];
+        let folder = &args[1];
+        let collection = &args[2];
+
+        let closure = match folder {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "fold_s expects Function as second argument, got {}",
+                        folder.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let mut acc = initial.clone();
+
+        match collection {
+            Value::List(list) => {
+                for elem in list.iter() {
+                    acc = self.call_closure_sync(&closure, vec![acc, elem.clone()])?;
+                }
+            }
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    let actual_end = if *inclusive { *e } else { e - 1 };
+                    if start <= &actual_end {
+                        for i in *start..=actual_end {
+                            acc = self.call_closure_sync(&closure, vec![acc, Value::Integer(i)])?;
+                        }
+                    }
+                }
+                None => {
+                    return Err(RuntimeError::new(
+                        "fold_s on unbounded range requires break",
+                        line,
+                    ));
+                }
+            },
+            _ => {
+                return Err(RuntimeError::new(
+                    format!("fold_s does not support {}", collection.type_name()),
+                    line,
+                ));
+            }
+        }
+
+        // Return first element of accumulator list
+        match acc {
+            Value::List(list) => Ok(list.front().cloned().unwrap_or(Value::Nil)),
+            _ => Ok(acc),
+        }
+    }
+
+    /// scan(initial, folder, collection) → List
+    fn builtin_scan(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let initial = &args[0];
+        let folder = &args[1];
+        let collection = &args[2];
+
+        let closure = match folder {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "scan expects Function as second argument, got {}",
+                        folder.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let arity = self.closure_arity(&closure);
+        let mut acc = initial.clone();
+        let mut results = Vector::new();
+
+        match collection {
+            Value::List(list) => {
+                for (idx, elem) in list.iter().enumerate() {
+                    let call_args = if arity >= 3 {
+                        vec![acc, elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![acc, elem.clone()]
+                    };
+                    acc = self.call_closure_sync(&closure, call_args)?;
+                    results.push_back(acc.clone());
+                }
+            }
+            Value::Set(set) => {
+                for elem in set.iter() {
+                    acc = self.call_closure_sync(&closure, vec![acc, elem.clone()])?;
+                    results.push_back(acc.clone());
+                }
+            }
+            Value::Dict(dict) => {
+                for (key, value) in dict.iter() {
+                    let call_args = if arity >= 3 {
+                        vec![acc, value.clone(), key.clone()]
+                    } else {
+                        vec![acc, value.clone()]
+                    };
+                    acc = self.call_closure_sync(&closure, call_args)?;
+                    results.push_back(acc.clone());
+                }
+            }
+            Value::String(s) => {
+                for (idx, grapheme) in s.graphemes(true).enumerate() {
+                    let elem = Value::String(Rc::new(grapheme.to_string()));
+                    let call_args = if arity >= 3 {
+                        vec![acc, elem, Value::Integer(idx as i64)]
+                    } else {
+                        vec![acc, elem]
+                    };
+                    acc = self.call_closure_sync(&closure, call_args)?;
+                    results.push_back(acc.clone());
+                }
+            }
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    let actual_end = if *inclusive { *e } else { e - 1 };
+                    if start <= &actual_end {
+                        for i in *start..=actual_end {
+                            acc = self.call_closure_sync(&closure, vec![acc, Value::Integer(i)])?;
+                            results.push_back(acc.clone());
+                        }
+                    }
+                }
+                None => {
+                    return Err(RuntimeError::new(
+                        "scan on unbounded range not supported",
+                        line,
+                    ));
+                }
+            },
+            _ => {
+                return Err(RuntimeError::new(
+                    format!("scan does not support {}", collection.type_name()),
+                    line,
+                ));
+            }
+        }
+
+        Ok(Value::List(results))
+    }
+
+    // =========================================================================
+    // Iteration Functions (§11.6)
+    // =========================================================================
+
+    /// each(side_effect, collection) → Nil
+    fn builtin_each(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let side_effect = &args[0];
+        let collection = &args[1];
+
+        let closure = match side_effect {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "each expects Function as first argument, got {}",
+                        side_effect.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let arity = self.closure_arity(&closure);
+
+        match collection {
+            Value::List(list) => {
+                for (idx, elem) in list.iter().enumerate() {
+                    let call_args = if arity >= 2 {
+                        vec![elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem.clone()]
+                    };
+                    self.call_closure_sync(&closure, call_args)?;
+                }
+            }
+            Value::Set(set) => {
+                for elem in set.iter() {
+                    self.call_closure_sync(&closure, vec![elem.clone()])?;
+                }
+            }
+            Value::Dict(dict) => {
+                for (key, value) in dict.iter() {
+                    let call_args = if arity >= 2 {
+                        vec![value.clone(), key.clone()]
+                    } else {
+                        vec![value.clone()]
+                    };
+                    self.call_closure_sync(&closure, call_args)?;
+                }
+            }
+            Value::String(s) => {
+                for (idx, grapheme) in s.graphemes(true).enumerate() {
+                    let elem = Value::String(Rc::new(grapheme.to_string()));
+                    let call_args = if arity >= 2 {
+                        vec![elem, Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem]
+                    };
+                    self.call_closure_sync(&closure, call_args)?;
+                }
+            }
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                match end {
+                    Some(e) => {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        if start <= &actual_end {
+                            for i in *start..=actual_end {
+                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            }
+                        } else {
+                            // Descending range
+                            let mut i = *start;
+                            while i >= actual_end {
+                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                i -= 1;
+                            }
+                        }
+                    }
+                    None => {
+                        return Err(RuntimeError::new(
+                            "each on unbounded range requires break",
+                            line,
+                        ));
+                    }
+                }
+            }
+            _ => {
+                return Err(RuntimeError::new(
+                    format!("each does not support {}", collection.type_name()),
+                    line,
+                ));
+            }
+        }
+
+        Ok(Value::Nil)
+    }
+
+    // =========================================================================
+    // Update Functions (§11.3) - requires callbacks
+    // =========================================================================
+
+    /// update(key, fn, collection) → Collection
+    fn builtin_update(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let key = &args[0];
+        let updater = &args[1];
+        let collection = &args[2];
+
+        let closure = match updater {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "update expects Function as second argument, got {}",
+                        updater.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        match collection {
+            Value::List(list) => match key {
+                Value::Integer(idx) => {
+                    let len = list.len();
+                    let actual_idx = if *idx < 0 {
+                        (len as i64 + idx) as usize
+                    } else {
+                        *idx as usize
+                    };
+                    if actual_idx >= len {
+                        return Ok(collection.clone());
+                    }
+                    let current = list[actual_idx].clone();
+                    let new_value = self.call_closure_sync(&closure, vec![current])?;
+                    let mut result = list.clone();
+                    result.set(actual_idx, new_value);
+                    Ok(Value::List(result))
+                }
+                _ => Err(RuntimeError::new(
+                    format!("List index must be Integer, got {}", key.type_name()),
+                    line,
+                )),
+            },
+            Value::Dict(dict) => match dict.get(key) {
+                Some(current) => {
+                    let new_value = self.call_closure_sync(&closure, vec![current.clone()])?;
+                    let mut result = dict.clone();
+                    result.insert(key.clone(), new_value);
+                    Ok(Value::Dict(result))
+                }
+                None => Ok(collection.clone()),
+            },
+            _ => Err(RuntimeError::new(
+                format!(
+                    "update expects List or Dictionary, got {}",
+                    collection.type_name()
+                ),
+                line,
+            )),
+        }
+    }
+
+    /// update_d(key, default, fn, collection) → Collection
+    fn builtin_update_d(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let key = &args[0];
+        let default = &args[1];
+        let updater = &args[2];
+        let collection = &args[3];
+
+        let closure = match updater {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "update_d expects Function as third argument, got {}",
+                        updater.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        match collection {
+            Value::Dict(dict) => {
+                let current = dict.get(key).cloned().unwrap_or_else(|| default.clone());
+                let new_value = self.call_closure_sync(&closure, vec![current])?;
+                let mut result = dict.clone();
+                result.insert(key.clone(), new_value);
+                Ok(Value::Dict(result))
+            }
+            _ => Err(RuntimeError::new(
+                format!(
+                    "update_d expects Dictionary, got {}",
+                    collection.type_name()
+                ),
+                line,
+            )),
+        }
     }
 }
 

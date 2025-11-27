@@ -433,18 +433,55 @@ impl Compiler {
 
         match &right.node {
             Expr::Call { function, args } => {
-                // Compile: func(args..., left)
-                self.expression(function)?;
-                for arg in args {
-                    self.expression(arg)?;
+                // Check if function is a builtin call
+                if let Expr::Identifier(name) = &function.node
+                    && let Some(builtin_id) = BuiltinId::from_name(name)
+                    && self.resolve_local(name).is_none()
+                    && self.resolve_upvalue(name).is_none()
+                {
+                    // Compile: builtin(args..., left)
+                    for arg in args {
+                        self.expression(arg)?;
+                    }
+                    self.expression(left)?;
+                    if args.len() + 1 > 255 {
+                        return Err(CompileError::new("Too many arguments", span));
+                    }
+                    self.emit(OpCode::CallBuiltin);
+                    self.chunk().write_operand_u16(builtin_id as u16);
+                    self.chunk().write_operand((args.len() + 1) as u8);
+                } else {
+                    // Compile: func(args..., left)
+                    self.expression(function)?;
+                    for arg in args {
+                        self.expression(arg)?;
+                    }
+                    self.expression(left)?;
+                    if args.len() + 1 > 255 {
+                        return Err(CompileError::new("Too many arguments", span));
+                    }
+                    self.emit_with_operand(OpCode::Call, (args.len() + 1) as u8);
                 }
-                self.expression(left)?;
-                if args.len() + 1 > 255 {
-                    return Err(CompileError::new("Too many arguments", span));
-                }
-                self.emit_with_operand(OpCode::Call, (args.len() + 1) as u8);
             }
-            Expr::Identifier(_) | Expr::Function { .. } => {
+            Expr::Identifier(name) => {
+                // Check if it's a builtin
+                if let Some(builtin_id) = BuiltinId::from_name(name)
+                    && self.resolve_local(name).is_none()
+                    && self.resolve_upvalue(name).is_none()
+                {
+                    // Compile: builtin(left)
+                    self.expression(left)?;
+                    self.emit(OpCode::CallBuiltin);
+                    self.chunk().write_operand_u16(builtin_id as u16);
+                    self.chunk().write_operand(1);
+                } else {
+                    // Compile: func(left)
+                    self.expression(right)?;
+                    self.expression(left)?;
+                    self.emit_with_operand(OpCode::Call, 1);
+                }
+            }
+            Expr::Function { .. } => {
                 // Compile: func(left)
                 self.expression(right)?;
                 self.expression(left)?;
@@ -1010,10 +1047,9 @@ impl Compiler {
             panic!("Too many upvalues in function");
         }
 
-        self.function.upvalues.push(super::bytecode::UpvalueDesc {
-            index,
-            is_local,
-        });
+        self.function
+            .upvalues
+            .push(super::bytecode::UpvalueDesc { index, is_local });
 
         upvalue_count as u8
     }

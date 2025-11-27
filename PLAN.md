@@ -836,12 +836,12 @@ fn builtin_dict_callbacks() { ... }
 
 ### Release Gate 10
 
-- [ ] All transformation functions work on all collection types
-- [ ] Dict callbacks handle both (value) and (value, key) arities
-- [ ] Reduce on empty collection throws RuntimeErr
-- [ ] Fold on empty collection returns initial
-- [ ] All tests pass
-- [ ] `cargo clippy` clean
+- [x] All transformation functions work on all collection types
+- [x] Dict callbacks handle both (value) and (value, key) arities
+- [x] Reduce on empty collection throws RuntimeErr
+- [x] Fold on empty collection returns initial
+- [x] All tests pass
+- [x] `cargo clippy` clean
 
 ---
 

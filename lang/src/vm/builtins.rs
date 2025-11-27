@@ -36,6 +36,22 @@ pub enum BuiltinId {
     Assoc = 21,
     Update = 22,
     UpdateD = 23,
+
+    // Transformation (§11.4)
+    Map = 30,
+    Filter = 31,
+    FlatMap = 32,
+    FilterMap = 33,
+    FindMap = 34,
+
+    // Reduction (§11.5)
+    Reduce = 40,
+    Fold = 41,
+    FoldS = 42,
+    Scan = 43,
+
+    // Iteration (§11.6)
+    Each = 50,
 }
 
 impl BuiltinId {
@@ -58,6 +74,16 @@ impl BuiltinId {
             BuiltinId::Assoc => "assoc",
             BuiltinId::Update => "update",
             BuiltinId::UpdateD => "update_d",
+            BuiltinId::Map => "map",
+            BuiltinId::Filter => "filter",
+            BuiltinId::FlatMap => "flat_map",
+            BuiltinId::FilterMap => "filter_map",
+            BuiltinId::FindMap => "find_map",
+            BuiltinId::Reduce => "reduce",
+            BuiltinId::Fold => "fold",
+            BuiltinId::FoldS => "fold_s",
+            BuiltinId::Scan => "scan",
+            BuiltinId::Each => "each",
         }
     }
 
@@ -80,6 +106,16 @@ impl BuiltinId {
             "assoc" => Some(BuiltinId::Assoc),
             "update" => Some(BuiltinId::Update),
             "update_d" => Some(BuiltinId::UpdateD),
+            "map" => Some(BuiltinId::Map),
+            "filter" => Some(BuiltinId::Filter),
+            "flat_map" => Some(BuiltinId::FlatMap),
+            "filter_map" => Some(BuiltinId::FilterMap),
+            "find_map" => Some(BuiltinId::FindMap),
+            "reduce" => Some(BuiltinId::Reduce),
+            "fold" => Some(BuiltinId::Fold),
+            "fold_s" => Some(BuiltinId::FoldS),
+            "scan" => Some(BuiltinId::Scan),
+            "each" => Some(BuiltinId::Each),
             _ => None,
         }
     }
@@ -101,15 +137,46 @@ impl BuiltinId {
             | BuiltinId::Keys
             | BuiltinId::Values => (1, 1),
 
-            // Two argument functions
-            BuiltinId::Get | BuiltinId::Push => (2, 2),
+            // Two argument functions: (fn, collection) or (index, collection)
+            BuiltinId::Get
+            | BuiltinId::Push
+            | BuiltinId::Map
+            | BuiltinId::Filter
+            | BuiltinId::FlatMap
+            | BuiltinId::FilterMap
+            | BuiltinId::FindMap
+            | BuiltinId::Reduce
+            | BuiltinId::Each => (2, 2),
 
             // Three argument functions
-            BuiltinId::Assoc | BuiltinId::Update => (3, 3),
+            BuiltinId::Assoc
+            | BuiltinId::Update
+            | BuiltinId::Fold
+            | BuiltinId::FoldS
+            | BuiltinId::Scan => (3, 3),
 
             // Four argument functions
             BuiltinId::UpdateD => (4, 4),
         }
+    }
+
+    /// Returns true if this builtin requires callback invocation
+    pub fn requires_callback(self) -> bool {
+        matches!(
+            self,
+            BuiltinId::Map
+                | BuiltinId::Filter
+                | BuiltinId::FlatMap
+                | BuiltinId::FilterMap
+                | BuiltinId::FindMap
+                | BuiltinId::Reduce
+                | BuiltinId::Fold
+                | BuiltinId::FoldS
+                | BuiltinId::Scan
+                | BuiltinId::Each
+                | BuiltinId::Update
+                | BuiltinId::UpdateD
+        )
     }
 }
 
@@ -134,6 +201,16 @@ impl TryFrom<u16> for BuiltinId {
             21 => Ok(BuiltinId::Assoc),
             22 => Ok(BuiltinId::Update),
             23 => Ok(BuiltinId::UpdateD),
+            30 => Ok(BuiltinId::Map),
+            31 => Ok(BuiltinId::Filter),
+            32 => Ok(BuiltinId::FlatMap),
+            33 => Ok(BuiltinId::FilterMap),
+            34 => Ok(BuiltinId::FindMap),
+            40 => Ok(BuiltinId::Reduce),
+            41 => Ok(BuiltinId::Fold),
+            42 => Ok(BuiltinId::FoldS),
+            43 => Ok(BuiltinId::Scan),
+            50 => Ok(BuiltinId::Each),
             _ => Err(value),
         }
     }
@@ -141,11 +218,7 @@ impl TryFrom<u16> for BuiltinId {
 
 /// Execute a built-in function
 /// Returns the result value or an error
-pub fn call_builtin(
-    id: BuiltinId,
-    args: &[Value],
-    line: u32,
-) -> Result<Value, RuntimeError> {
+pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
     let (min_arity, max_arity) = id.arity();
     if args.len() < min_arity as usize || args.len() > max_arity as usize {
         return Err(RuntimeError::new(
@@ -178,13 +251,25 @@ pub fn call_builtin(
         BuiltinId::Values => builtin_values(&args[0], line),
         BuiltinId::Push => builtin_push(&args[0], &args[1], line),
         BuiltinId::Assoc => builtin_assoc(&args[0], &args[1], &args[2], line),
-        BuiltinId::Update | BuiltinId::UpdateD => {
-            // These require function callbacks - will be handled specially in runtime
-            Err(RuntimeError::new(
-                format!("{} requires callback support", id.name()),
-                line,
-            ))
-        }
+        // Callback-based builtins - handled specially in runtime
+        BuiltinId::Update
+        | BuiltinId::UpdateD
+        | BuiltinId::Map
+        | BuiltinId::Filter
+        | BuiltinId::FlatMap
+        | BuiltinId::FilterMap
+        | BuiltinId::FindMap
+        | BuiltinId::Reduce
+        | BuiltinId::Fold
+        | BuiltinId::FoldS
+        | BuiltinId::Scan
+        | BuiltinId::Each => Err(RuntimeError::new(
+            format!(
+                "{} requires callback support - should be handled by VM",
+                id.name()
+            ),
+            line,
+        )),
     }
 }
 
@@ -336,10 +421,7 @@ fn builtin_set(value: &Value, line: u32) -> Result<Value, RuntimeError> {
             for elem in v.iter() {
                 if !elem.is_hashable() {
                     return Err(RuntimeError::new(
-                        format!(
-                            "Cannot add {} to set (not hashable)",
-                            elem.type_name()
-                        ),
+                        format!("Cannot add {} to set (not hashable)", elem.type_name()),
                         line,
                     ));
                 }
@@ -387,7 +469,10 @@ fn builtin_set(value: &Value, line: u32) -> Result<Value, RuntimeError> {
         },
 
         _ => Err(RuntimeError::new(
-            format!("set expects List, Set, String, or Range, got {}", value.type_name()),
+            format!(
+                "set expects List, Set, String, or Range, got {}",
+                value.type_name()
+            ),
             line,
         )),
     }
@@ -424,7 +509,7 @@ fn builtin_dict(value: &Value, line: u32) -> Result<Value, RuntimeError> {
                         return Err(RuntimeError::new(
                             "dict expects list of [key, value] pairs",
                             line,
-                        ))
+                        ));
                     }
                 }
             }
@@ -485,7 +570,9 @@ fn builtin_get(index: &Value, collection: &Value, line: u32) -> Result<Value, Ru
                 if actual_idx < 0 || actual_idx >= len {
                     Ok(Value::Nil)
                 } else {
-                    Ok(Value::String(Rc::new(graphemes[actual_idx as usize].to_string())))
+                    Ok(Value::String(Rc::new(
+                        graphemes[actual_idx as usize].to_string(),
+                    )))
                 }
             }
             _ => Err(RuntimeError::new(
@@ -571,21 +658,20 @@ fn builtin_size(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
         } => match end {
             Some(e) => {
                 let diff = (e - start).abs();
-                if *inclusive {
-                    diff + 1
-                } else {
-                    diff
-                }
+                if *inclusive { diff + 1 } else { diff }
             }
             None => {
-                return Err(RuntimeError::new("Cannot get size of unbounded range", line))
+                return Err(RuntimeError::new(
+                    "Cannot get size of unbounded range",
+                    line,
+                ));
             }
         },
         _ => {
             return Err(RuntimeError::new(
                 format!("size not supported for {}", collection.type_name()),
                 line,
-            ))
+            ));
         }
     };
     Ok(Value::Integer(size))
@@ -835,7 +921,10 @@ fn builtin_assoc(
         }
 
         _ => Err(RuntimeError::new(
-            format!("assoc expects List or Dictionary, got {}", collection.type_name()),
+            format!(
+                "assoc expects List or Dictionary, got {}",
+                collection.type_name()
+            ),
             line,
         )),
     }
