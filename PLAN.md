@@ -900,12 +900,12 @@ fn builtin_predicates() { ... }
 
 ### Release Gate 11
 
-- [ ] All search functions work correctly
-- [ ] max/min handle varargs and single collection
-- [ ] sort accepts both boolean and integer comparators
-- [ ] Set operations work on mixed collection types
-- [ ] All tests pass
-- [ ] `cargo clippy` clean
+- [x] All search functions work correctly
+- [x] max/min handle varargs and single collection
+- [x] sort accepts both boolean and integer comparators
+- [x] Set operations work on mixed collection types
+- [x] All tests pass
+- [x] `cargo clippy` clean
 
 ---
 

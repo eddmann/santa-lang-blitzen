@@ -3209,4 +3209,368 @@ mod runtime_tests {
             Ok(Value::Integer(4))
         );
     }
+
+    // =========================================================================
+    // Phase 11: Search Functions (§11.7)
+    // =========================================================================
+
+    #[test]
+    fn eval_builtin_find_list() {
+        // find(|x| x > 2, [1, 2, 3, 4]) => 3
+        assert_eq!(eval("find(|x| x > 2, [1, 2, 3, 4])"), Ok(Value::Integer(3)));
+    }
+
+    #[test]
+    fn eval_builtin_find_not_found() {
+        // find(|x| x > 10, [1, 2, 3]) => nil
+        assert_eq!(eval("find(|x| x > 10, [1, 2, 3])"), Ok(Value::Nil));
+    }
+
+    #[test]
+    fn eval_builtin_find_range() {
+        // find(|x| x > 5, 1..10) => 6
+        assert_eq!(eval("find(|x| x > 5, 1..10)"), Ok(Value::Integer(6)));
+    }
+
+    #[test]
+    fn eval_builtin_count_list() {
+        // count(|x| x > 2, [1, 2, 3, 4, 5]) => 3
+        assert_eq!(
+            eval("count(|x| x > 2, [1, 2, 3, 4, 5])"),
+            Ok(Value::Integer(3))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_count_range() {
+        // count(|x| x % 2 == 0, 1..11) => 5
+        assert_eq!(
+            eval("count(|x| x % 2 == 0, 1..11)"),
+            Ok(Value::Integer(5))
+        );
+    }
+
+    // =========================================================================
+    // Phase 11: Aggregation Functions (§11.8)
+    // =========================================================================
+
+    #[test]
+    fn eval_builtin_sum_list() {
+        // sum([1, 2, 3, 4]) => 10
+        assert_eq!(eval("sum([1, 2, 3, 4])"), Ok(Value::Integer(10)));
+    }
+
+    #[test]
+    fn eval_builtin_sum_empty() {
+        // sum([]) => 0
+        assert_eq!(eval("sum([])"), Ok(Value::Integer(0)));
+    }
+
+    #[test]
+    fn eval_builtin_sum_range() {
+        // sum(1..=5) => 15
+        assert_eq!(eval("sum(1..=5)"), Ok(Value::Integer(15)));
+    }
+
+    #[test]
+    fn eval_builtin_sum_mixed_decimal() {
+        // sum([1, 2.5, 3]) => 6.5
+        assert_eq!(
+            eval("sum([1, 2.5, 3])"),
+            Ok(Value::Decimal(OrderedFloat(6.5)))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_max_list() {
+        // max([3, 1, 4, 1, 5]) => 5
+        assert_eq!(eval("max([3, 1, 4, 1, 5])"), Ok(Value::Integer(5)));
+    }
+
+    #[test]
+    fn eval_builtin_max_variadic() {
+        // max(3, 1, 4, 1, 5) => 5
+        assert_eq!(eval("max(3, 1, 4, 1, 5)"), Ok(Value::Integer(5)));
+    }
+
+    #[test]
+    fn eval_builtin_max_empty() {
+        // max([]) => nil
+        assert_eq!(eval("max([])"), Ok(Value::Nil));
+    }
+
+    #[test]
+    fn eval_builtin_max_range() {
+        // max(1..=10) => 10
+        assert_eq!(eval("max(1..=10)"), Ok(Value::Integer(10)));
+    }
+
+    #[test]
+    fn eval_builtin_min_list() {
+        // min([3, 1, 4, 1, 5]) => 1
+        assert_eq!(eval("min([3, 1, 4, 1, 5])"), Ok(Value::Integer(1)));
+    }
+
+    #[test]
+    fn eval_builtin_min_variadic() {
+        // min(3, 1, 4, 1, 5) => 1
+        assert_eq!(eval("min(3, 1, 4, 1, 5)"), Ok(Value::Integer(1)));
+    }
+
+    #[test]
+    fn eval_builtin_min_range() {
+        // min(1..=10) => 1
+        assert_eq!(eval("min(1..=10)"), Ok(Value::Integer(1)));
+    }
+
+    // =========================================================================
+    // Phase 11: Sequence Manipulation (§11.9)
+    // =========================================================================
+
+    #[test]
+    fn eval_builtin_skip_list() {
+        // skip(2, [1, 2, 3, 4, 5]) => [3, 4, 5]
+        let expected = Value::List(
+            vec![Value::Integer(3), Value::Integer(4), Value::Integer(5)].into_iter().collect(),
+        );
+        assert_eq!(eval("skip(2, [1, 2, 3, 4, 5])"), Ok(expected));
+    }
+
+    #[test]
+    fn eval_builtin_take_list() {
+        // take(3, [1, 2, 3, 4, 5]) => [1, 2, 3]
+        let expected = Value::List(
+            vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)].into_iter().collect(),
+        );
+        assert_eq!(eval("take(3, [1, 2, 3, 4, 5])"), Ok(expected));
+    }
+
+    #[test]
+    fn eval_builtin_take_range() {
+        // take(3, 1..) => [1, 2, 3]
+        let expected = Value::List(
+            vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)].into_iter().collect(),
+        );
+        assert_eq!(eval("take(3, 1..)"), Ok(expected));
+    }
+
+    #[test]
+    fn eval_builtin_sort_list() {
+        // sort(|a, b| a - b, [3, 1, 4, 1, 5]) => [1, 1, 3, 4, 5]
+        let expected = Value::List(
+            vec![
+                Value::Integer(1),
+                Value::Integer(1),
+                Value::Integer(3),
+                Value::Integer(4),
+                Value::Integer(5),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        assert_eq!(eval("sort(|a, b| a - b, [3, 1, 4, 1, 5])"), Ok(expected));
+    }
+
+    #[test]
+    fn eval_builtin_sort_descending() {
+        // sort(|a, b| b - a, [3, 1, 4]) => [4, 3, 1]
+        let expected = Value::List(
+            vec![Value::Integer(4), Value::Integer(3), Value::Integer(1)]
+                .into_iter()
+                .collect(),
+        );
+        assert_eq!(eval("sort(|a, b| b - a, [3, 1, 4])"), Ok(expected));
+    }
+
+    #[test]
+    fn eval_builtin_reverse_list() {
+        // reverse([1, 2, 3]) => [3, 2, 1]
+        let expected = Value::List(
+            vec![Value::Integer(3), Value::Integer(2), Value::Integer(1)].into_iter().collect(),
+        );
+        assert_eq!(eval("reverse([1, 2, 3])"), Ok(expected));
+    }
+
+    #[test]
+    fn eval_builtin_reverse_string() {
+        // reverse("hello") => "olleh"
+        assert_eq!(
+            eval("reverse(\"hello\")"),
+            Ok(Value::String(Rc::new("olleh".to_string())))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_rotate_list() {
+        // rotate(1, [1, 2, 3, 4]) => [4, 1, 2, 3]
+        let expected = Value::List(
+            vec![
+                Value::Integer(4),
+                Value::Integer(1),
+                Value::Integer(2),
+                Value::Integer(3),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        assert_eq!(eval("rotate(1, [1, 2, 3, 4])"), Ok(expected));
+    }
+
+    #[test]
+    fn eval_builtin_rotate_negative() {
+        // rotate(-1, [1, 2, 3, 4]) => [2, 3, 4, 1]
+        let expected = Value::List(
+            vec![
+                Value::Integer(2),
+                Value::Integer(3),
+                Value::Integer(4),
+                Value::Integer(1),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        assert_eq!(eval("rotate(-1, [1, 2, 3, 4])"), Ok(expected));
+    }
+
+    #[test]
+    fn eval_builtin_chunk_list() {
+        // chunk(2, [1, 2, 3, 4, 5]) => [[1, 2], [3, 4], [5]]
+        let expected = Value::List(
+            vec![
+                Value::List(vec![Value::Integer(1), Value::Integer(2)].into_iter().collect()),
+                Value::List(vec![Value::Integer(3), Value::Integer(4)].into_iter().collect()),
+                Value::List(vec![Value::Integer(5)].into_iter().collect()),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        assert_eq!(eval("chunk(2, [1, 2, 3, 4, 5])"), Ok(expected));
+    }
+
+    // =========================================================================
+    // Phase 11: Set Operations (§11.10)
+    // =========================================================================
+
+    #[test]
+    fn eval_builtin_union_sets() {
+        // union({1, 2}, {2, 3}) => {1, 2, 3}
+        let result = eval("union({1, 2}, {2, 3})");
+        assert!(result.is_ok());
+        if let Value::Set(s) = result.unwrap() {
+            assert_eq!(s.len(), 3);
+            assert!(s.contains(&Value::Integer(1)));
+            assert!(s.contains(&Value::Integer(2)));
+            assert!(s.contains(&Value::Integer(3)));
+        } else {
+            panic!("Expected Set");
+        }
+    }
+
+    #[test]
+    fn eval_builtin_intersection_sets() {
+        // intersection({1, 2, 3}, {2, 3, 4}) => {2, 3}
+        let result = eval("intersection({1, 2, 3}, {2, 3, 4})");
+        assert!(result.is_ok());
+        if let Value::Set(s) = result.unwrap() {
+            assert_eq!(s.len(), 2);
+            assert!(s.contains(&Value::Integer(2)));
+            assert!(s.contains(&Value::Integer(3)));
+        } else {
+            panic!("Expected Set");
+        }
+    }
+
+    // =========================================================================
+    // Phase 11: Predicates (§11.11)
+    // =========================================================================
+
+    #[test]
+    fn eval_builtin_includes_list() {
+        // includes?([1, 2, 3], 2) => true
+        assert_eq!(
+            eval("includes?([1, 2, 3], 2)"),
+            Ok(Value::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_includes_list_not_found() {
+        // includes?([1, 2, 3], 5) => false
+        assert_eq!(
+            eval("includes?([1, 2, 3], 5)"),
+            Ok(Value::Boolean(false))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_includes_string() {
+        // includes?("hello", "ell") => true
+        assert_eq!(
+            eval("includes?(\"hello\", \"ell\")"),
+            Ok(Value::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_includes_range() {
+        // includes?(1..10, 5) => true
+        assert_eq!(
+            eval("includes?(1..10, 5)"),
+            Ok(Value::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_excludes_list() {
+        // excludes?([1, 2, 3], 5) => true
+        assert_eq!(
+            eval("excludes?([1, 2, 3], 5)"),
+            Ok(Value::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_any_list() {
+        // any?(|x| x > 3, [1, 2, 3, 4]) => true
+        assert_eq!(
+            eval("any?(|x| x > 3, [1, 2, 3, 4])"),
+            Ok(Value::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_any_list_false() {
+        // any?(|x| x > 10, [1, 2, 3]) => false
+        assert_eq!(
+            eval("any?(|x| x > 10, [1, 2, 3])"),
+            Ok(Value::Boolean(false))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_all_list() {
+        // all?(|x| x > 0, [1, 2, 3]) => true
+        assert_eq!(
+            eval("all?(|x| x > 0, [1, 2, 3])"),
+            Ok(Value::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_all_list_false() {
+        // all?(|x| x > 2, [1, 2, 3]) => false
+        assert_eq!(
+            eval("all?(|x| x > 2, [1, 2, 3])"),
+            Ok(Value::Boolean(false))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_all_range() {
+        // all?(|x| x > 0, 1..=5) => true
+        assert_eq!(
+            eval("all?(|x| x > 0, 1..=5)"),
+            Ok(Value::Boolean(true))
+        );
+    }
 }

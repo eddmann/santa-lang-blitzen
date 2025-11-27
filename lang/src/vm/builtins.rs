@@ -4,6 +4,7 @@
 //! Per LANG.txt §11.1-11.3
 
 use im_rc::{HashMap, HashSet, Vector};
+use ordered_float::OrderedFloat;
 use regex::Regex;
 use std::rc::Rc;
 use unicode_segmentation::UnicodeSegmentation;
@@ -52,6 +53,33 @@ pub enum BuiltinId {
 
     // Iteration (§11.6)
     Each = 50,
+
+    // Search (§11.7)
+    Find = 60,
+    Count = 61,
+
+    // Aggregation (§11.8)
+    Sum = 70,
+    Max = 71,
+    Min = 72,
+
+    // Sequence Manipulation (§11.9)
+    Skip = 80,
+    Take = 81,
+    Sort = 82,
+    Reverse = 83,
+    Rotate = 84,
+    Chunk = 85,
+
+    // Set Operations (§11.10)
+    Union = 90,
+    Intersection = 91,
+
+    // Predicates (§11.11)
+    Includes = 100,
+    Excludes = 101,
+    Any = 102,
+    All = 103,
 }
 
 impl BuiltinId {
@@ -84,6 +112,23 @@ impl BuiltinId {
             BuiltinId::FoldS => "fold_s",
             BuiltinId::Scan => "scan",
             BuiltinId::Each => "each",
+            BuiltinId::Find => "find",
+            BuiltinId::Count => "count",
+            BuiltinId::Sum => "sum",
+            BuiltinId::Max => "max",
+            BuiltinId::Min => "min",
+            BuiltinId::Skip => "skip",
+            BuiltinId::Take => "take",
+            BuiltinId::Sort => "sort",
+            BuiltinId::Reverse => "reverse",
+            BuiltinId::Rotate => "rotate",
+            BuiltinId::Chunk => "chunk",
+            BuiltinId::Union => "union",
+            BuiltinId::Intersection => "intersection",
+            BuiltinId::Includes => "includes?",
+            BuiltinId::Excludes => "excludes?",
+            BuiltinId::Any => "any?",
+            BuiltinId::All => "all?",
         }
     }
 
@@ -116,6 +161,23 @@ impl BuiltinId {
             "fold_s" => Some(BuiltinId::FoldS),
             "scan" => Some(BuiltinId::Scan),
             "each" => Some(BuiltinId::Each),
+            "find" => Some(BuiltinId::Find),
+            "count" => Some(BuiltinId::Count),
+            "sum" => Some(BuiltinId::Sum),
+            "max" => Some(BuiltinId::Max),
+            "min" => Some(BuiltinId::Min),
+            "skip" => Some(BuiltinId::Skip),
+            "take" => Some(BuiltinId::Take),
+            "sort" => Some(BuiltinId::Sort),
+            "reverse" => Some(BuiltinId::Reverse),
+            "rotate" => Some(BuiltinId::Rotate),
+            "chunk" => Some(BuiltinId::Chunk),
+            "union" => Some(BuiltinId::Union),
+            "intersection" => Some(BuiltinId::Intersection),
+            "includes?" => Some(BuiltinId::Includes),
+            "excludes?" => Some(BuiltinId::Excludes),
+            "any?" => Some(BuiltinId::Any),
+            "all?" => Some(BuiltinId::All),
             _ => None,
         }
     }
@@ -135,7 +197,9 @@ impl BuiltinId {
             | BuiltinId::Second
             | BuiltinId::Rest
             | BuiltinId::Keys
-            | BuiltinId::Values => (1, 1),
+            | BuiltinId::Values
+            | BuiltinId::Sum
+            | BuiltinId::Reverse => (1, 1),
 
             // Two argument functions: (fn, collection) or (index, collection)
             BuiltinId::Get
@@ -146,7 +210,18 @@ impl BuiltinId {
             | BuiltinId::FilterMap
             | BuiltinId::FindMap
             | BuiltinId::Reduce
-            | BuiltinId::Each => (2, 2),
+            | BuiltinId::Each
+            | BuiltinId::Find
+            | BuiltinId::Count
+            | BuiltinId::Skip
+            | BuiltinId::Take
+            | BuiltinId::Sort
+            | BuiltinId::Rotate
+            | BuiltinId::Chunk
+            | BuiltinId::Includes
+            | BuiltinId::Excludes
+            | BuiltinId::Any
+            | BuiltinId::All => (2, 2),
 
             // Three argument functions
             BuiltinId::Assoc
@@ -157,6 +232,9 @@ impl BuiltinId {
 
             // Four argument functions
             BuiltinId::UpdateD => (4, 4),
+
+            // Variadic functions
+            BuiltinId::Max | BuiltinId::Min | BuiltinId::Union | BuiltinId::Intersection => (1, 255),
         }
     }
 
@@ -176,6 +254,11 @@ impl BuiltinId {
                 | BuiltinId::Each
                 | BuiltinId::Update
                 | BuiltinId::UpdateD
+                | BuiltinId::Find
+                | BuiltinId::Count
+                | BuiltinId::Sort
+                | BuiltinId::Any
+                | BuiltinId::All
         )
     }
 }
@@ -211,6 +294,23 @@ impl TryFrom<u16> for BuiltinId {
             42 => Ok(BuiltinId::FoldS),
             43 => Ok(BuiltinId::Scan),
             50 => Ok(BuiltinId::Each),
+            60 => Ok(BuiltinId::Find),
+            61 => Ok(BuiltinId::Count),
+            70 => Ok(BuiltinId::Sum),
+            71 => Ok(BuiltinId::Max),
+            72 => Ok(BuiltinId::Min),
+            80 => Ok(BuiltinId::Skip),
+            81 => Ok(BuiltinId::Take),
+            82 => Ok(BuiltinId::Sort),
+            83 => Ok(BuiltinId::Reverse),
+            84 => Ok(BuiltinId::Rotate),
+            85 => Ok(BuiltinId::Chunk),
+            90 => Ok(BuiltinId::Union),
+            91 => Ok(BuiltinId::Intersection),
+            100 => Ok(BuiltinId::Includes),
+            101 => Ok(BuiltinId::Excludes),
+            102 => Ok(BuiltinId::Any),
+            103 => Ok(BuiltinId::All),
             _ => Err(value),
         }
     }
@@ -251,6 +351,19 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         BuiltinId::Values => builtin_values(&args[0], line),
         BuiltinId::Push => builtin_push(&args[0], &args[1], line),
         BuiltinId::Assoc => builtin_assoc(&args[0], &args[1], &args[2], line),
+        // Phase 11 builtins
+        BuiltinId::Sum => builtin_sum(&args[0], line),
+        BuiltinId::Max => builtin_max(args, line),
+        BuiltinId::Min => builtin_min(args, line),
+        BuiltinId::Skip => builtin_skip(&args[0], &args[1], line),
+        BuiltinId::Take => builtin_take(&args[0], &args[1], line),
+        BuiltinId::Reverse => builtin_reverse(&args[0], line),
+        BuiltinId::Rotate => builtin_rotate(&args[0], &args[1], line),
+        BuiltinId::Chunk => builtin_chunk(&args[0], &args[1], line),
+        BuiltinId::Union => builtin_union(args, line),
+        BuiltinId::Intersection => builtin_intersection(args, line),
+        BuiltinId::Includes => builtin_includes(&args[0], &args[1], line),
+        BuiltinId::Excludes => builtin_excludes(&args[0], &args[1], line),
         // Callback-based builtins - handled specially in runtime
         BuiltinId::Update
         | BuiltinId::UpdateD
@@ -263,7 +376,12 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         | BuiltinId::Fold
         | BuiltinId::FoldS
         | BuiltinId::Scan
-        | BuiltinId::Each => Err(RuntimeError::new(
+        | BuiltinId::Each
+        | BuiltinId::Find
+        | BuiltinId::Count
+        | BuiltinId::Sort
+        | BuiltinId::Any
+        | BuiltinId::All => Err(RuntimeError::new(
             format!(
                 "{} requires callback support - should be handled by VM",
                 id.name()
@@ -927,5 +1045,805 @@ fn builtin_assoc(
             ),
             line,
         )),
+    }
+}
+
+// ============================================================================
+// Aggregation Functions (§11.8)
+// ============================================================================
+
+/// sum(collection) → Integer | Decimal
+/// Sum all numeric elements. Returns 0 for empty collections.
+/// Per LANG.txt §11.8
+fn builtin_sum(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match collection {
+        Value::List(list) => {
+            if list.is_empty() {
+                return Ok(Value::Integer(0));
+            }
+            let mut has_decimal = false;
+            let mut int_sum: i64 = 0;
+            let mut decimal_sum: f64 = 0.0;
+
+            for elem in list.iter() {
+                match elem {
+                    Value::Integer(n) => {
+                        if has_decimal {
+                            decimal_sum += *n as f64;
+                        } else {
+                            int_sum += n;
+                        }
+                    }
+                    Value::Decimal(d) => {
+                        if !has_decimal {
+                            has_decimal = true;
+                            decimal_sum = int_sum as f64;
+                        }
+                        decimal_sum += d.0;
+                    }
+                    _ => {
+                        return Err(RuntimeError::new(
+                            format!("sum: non-numeric element {}", elem.type_name()),
+                            line,
+                        ));
+                    }
+                }
+            }
+
+            if has_decimal {
+                Ok(Value::Decimal(OrderedFloat(decimal_sum)))
+            } else {
+                Ok(Value::Integer(int_sum))
+            }
+        }
+        Value::Set(set) => {
+            if set.is_empty() {
+                return Ok(Value::Integer(0));
+            }
+            let mut has_decimal = false;
+            let mut int_sum: i64 = 0;
+            let mut decimal_sum: f64 = 0.0;
+
+            for elem in set.iter() {
+                match elem {
+                    Value::Integer(n) => {
+                        if has_decimal {
+                            decimal_sum += *n as f64;
+                        } else {
+                            int_sum += n;
+                        }
+                    }
+                    Value::Decimal(d) => {
+                        if !has_decimal {
+                            has_decimal = true;
+                            decimal_sum = int_sum as f64;
+                        }
+                        decimal_sum += d.0;
+                    }
+                    _ => {
+                        return Err(RuntimeError::new(
+                            format!("sum: non-numeric element {}", elem.type_name()),
+                            line,
+                        ));
+                    }
+                }
+            }
+
+            if has_decimal {
+                Ok(Value::Decimal(OrderedFloat(decimal_sum)))
+            } else {
+                Ok(Value::Integer(int_sum))
+            }
+        }
+        Value::Dict(dict) => {
+            if dict.is_empty() {
+                return Ok(Value::Integer(0));
+            }
+            let mut has_decimal = false;
+            let mut int_sum: i64 = 0;
+            let mut decimal_sum: f64 = 0.0;
+
+            for value in dict.values() {
+                match value {
+                    Value::Integer(n) => {
+                        if has_decimal {
+                            decimal_sum += *n as f64;
+                        } else {
+                            int_sum += n;
+                        }
+                    }
+                    Value::Decimal(d) => {
+                        if !has_decimal {
+                            has_decimal = true;
+                            decimal_sum = int_sum as f64;
+                        }
+                        decimal_sum += d.0;
+                    }
+                    _ => {
+                        return Err(RuntimeError::new(
+                            format!("sum: non-numeric value {}", value.type_name()),
+                            line,
+                        ));
+                    }
+                }
+            }
+
+            if has_decimal {
+                Ok(Value::Decimal(OrderedFloat(decimal_sum)))
+            } else {
+                Ok(Value::Integer(int_sum))
+            }
+        }
+        Value::Range {
+            start,
+            end,
+            inclusive,
+        } => match end {
+            Some(e) => {
+                let actual_end = if *inclusive { *e } else { e - 1 };
+                if *start > actual_end {
+                    return Ok(Value::Integer(0));
+                }
+                // Sum of arithmetic sequence: n * (first + last) / 2
+                let n = actual_end - start + 1;
+                let sum = n * (start + actual_end) / 2;
+                Ok(Value::Integer(sum))
+            }
+            None => Err(RuntimeError::new(
+                "Cannot sum unbounded range",
+                line,
+            )),
+        },
+        _ => Err(RuntimeError::new(
+            format!("sum does not support {}", collection.type_name()),
+            line,
+        )),
+    }
+}
+
+/// max(..values) → Value | Nil
+/// Find the maximum value. Variadic or single collection.
+/// Per LANG.txt §11.8
+fn builtin_max(args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+    // If single argument is a collection, find max in collection
+    if args.len() == 1 {
+        return max_of_collection(&args[0], line);
+    }
+
+    // Otherwise find max among arguments
+    let mut max_val: Option<&Value> = None;
+    for arg in args {
+        match max_val {
+            None => max_val = Some(arg),
+            Some(current) => {
+                if compare_values(arg, current, line)? > 0 {
+                    max_val = Some(arg);
+                }
+            }
+        }
+    }
+
+    Ok(max_val.cloned().unwrap_or(Value::Nil))
+}
+
+fn max_of_collection(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match collection {
+        Value::List(list) => {
+            if list.is_empty() {
+                return Ok(Value::Nil);
+            }
+            let mut max_val = &list[0];
+            for elem in list.iter().skip(1) {
+                if compare_values(elem, max_val, line)? > 0 {
+                    max_val = elem;
+                }
+            }
+            Ok(max_val.clone())
+        }
+        Value::Set(set) => {
+            if set.is_empty() {
+                return Ok(Value::Nil);
+            }
+            let mut iter = set.iter();
+            let mut max_val = iter.next().unwrap();
+            for elem in iter {
+                if compare_values(elem, max_val, line)? > 0 {
+                    max_val = elem;
+                }
+            }
+            Ok(max_val.clone())
+        }
+        Value::Dict(dict) => {
+            if dict.is_empty() {
+                return Ok(Value::Nil);
+            }
+            let mut iter = dict.values();
+            let mut max_val = iter.next().unwrap();
+            for value in iter {
+                if compare_values(value, max_val, line)? > 0 {
+                    max_val = value;
+                }
+            }
+            Ok(max_val.clone())
+        }
+        Value::Range {
+            start,
+            end,
+            inclusive,
+        } => match end {
+            Some(e) => {
+                let actual_end = if *inclusive { *e } else { e - 1 };
+                if *start > actual_end {
+                    return Ok(Value::Nil);
+                }
+                Ok(Value::Integer(actual_end.max(*start)))
+            }
+            None => Err(RuntimeError::new(
+                "Cannot find max of unbounded range",
+                line,
+            )),
+        },
+        _ => Err(RuntimeError::new(
+            format!("max does not support {}", collection.type_name()),
+            line,
+        )),
+    }
+}
+
+/// min(..values) → Value | Nil
+/// Find the minimum value. Variadic or single collection.
+/// Per LANG.txt §11.8
+fn builtin_min(args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+    // If single argument is a collection, find min in collection
+    if args.len() == 1 {
+        return min_of_collection(&args[0], line);
+    }
+
+    // Otherwise find min among arguments
+    let mut min_val: Option<&Value> = None;
+    for arg in args {
+        match min_val {
+            None => min_val = Some(arg),
+            Some(current) => {
+                if compare_values(arg, current, line)? < 0 {
+                    min_val = Some(arg);
+                }
+            }
+        }
+    }
+
+    Ok(min_val.cloned().unwrap_or(Value::Nil))
+}
+
+fn min_of_collection(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match collection {
+        Value::List(list) => {
+            if list.is_empty() {
+                return Ok(Value::Nil);
+            }
+            let mut min_val = &list[0];
+            for elem in list.iter().skip(1) {
+                if compare_values(elem, min_val, line)? < 0 {
+                    min_val = elem;
+                }
+            }
+            Ok(min_val.clone())
+        }
+        Value::Set(set) => {
+            if set.is_empty() {
+                return Ok(Value::Nil);
+            }
+            let mut iter = set.iter();
+            let mut min_val = iter.next().unwrap();
+            for elem in iter {
+                if compare_values(elem, min_val, line)? < 0 {
+                    min_val = elem;
+                }
+            }
+            Ok(min_val.clone())
+        }
+        Value::Dict(dict) => {
+            if dict.is_empty() {
+                return Ok(Value::Nil);
+            }
+            let mut iter = dict.values();
+            let mut min_val = iter.next().unwrap();
+            for value in iter {
+                if compare_values(value, min_val, line)? < 0 {
+                    min_val = value;
+                }
+            }
+            Ok(min_val.clone())
+        }
+        Value::Range {
+            start,
+            end,
+            inclusive,
+        } => match end {
+            Some(e) => {
+                let actual_end = if *inclusive { *e } else { e - 1 };
+                if *start > actual_end {
+                    return Ok(Value::Nil);
+                }
+                Ok(Value::Integer(actual_end.min(*start)))
+            }
+            None => Ok(Value::Integer(*start)),
+        },
+        _ => Err(RuntimeError::new(
+            format!("min does not support {}", collection.type_name()),
+            line,
+        )),
+    }
+}
+
+/// Helper to compare two values, returning -1, 0, or 1
+fn compare_values(a: &Value, b: &Value, line: u32) -> Result<i32, RuntimeError> {
+    match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => Ok(x.cmp(y) as i32),
+        (Value::Integer(x), Value::Decimal(y)) => {
+            let fx = *x as f64;
+            if fx < y.0 {
+                Ok(-1)
+            } else if fx > y.0 {
+                Ok(1)
+            } else {
+                Ok(0)
+            }
+        }
+        (Value::Decimal(x), Value::Integer(y)) => {
+            let fy = *y as f64;
+            if x.0 < fy {
+                Ok(-1)
+            } else if x.0 > fy {
+                Ok(1)
+            } else {
+                Ok(0)
+            }
+        }
+        (Value::Decimal(x), Value::Decimal(y)) => {
+            if x.0 < y.0 {
+                Ok(-1)
+            } else if x.0 > y.0 {
+                Ok(1)
+            } else {
+                Ok(0)
+            }
+        }
+        (Value::String(x), Value::String(y)) => Ok(x.cmp(y) as i32),
+        _ => Err(RuntimeError::new(
+            format!(
+                "Cannot compare {} and {}",
+                a.type_name(),
+                b.type_name()
+            ),
+            line,
+        )),
+    }
+}
+
+// ============================================================================
+// Sequence Manipulation Functions (§11.9)
+// ============================================================================
+
+/// skip(n, collection) → Collection
+/// Skip n elements. Per LANG.txt §11.9
+fn builtin_skip(total: &Value, collection: &Value, line: u32) -> Result<Value, RuntimeError> {
+    let n = match total {
+        Value::Integer(n) => *n as usize,
+        _ => {
+            return Err(RuntimeError::new(
+                format!("skip expects Integer, got {}", total.type_name()),
+                line,
+            ))
+        }
+    };
+
+    match collection {
+        Value::List(list) => {
+            if n >= list.len() {
+                Ok(Value::List(Vector::new()))
+            } else {
+                Ok(Value::List(list.clone().slice(n..)))
+            }
+        }
+        Value::Set(set) => {
+            if n >= set.len() {
+                Ok(Value::Set(HashSet::new()))
+            } else {
+                Ok(Value::Set(set.iter().skip(n).cloned().collect()))
+            }
+        }
+        Value::Range {
+            start,
+            end,
+            inclusive,
+        } => match end {
+            Some(e) => {
+                let actual_end = if *inclusive { *e } else { e - 1 };
+                let step = if start <= &actual_end { 1 } else { -1 };
+                let new_start = start + (n as i64) * step;
+
+                // Materialize to list for bounded ranges after skip
+                let mut result = Vector::new();
+                if step > 0 {
+                    let mut i = new_start;
+                    while i <= actual_end {
+                        result.push_back(Value::Integer(i));
+                        i += 1;
+                    }
+                } else {
+                    let mut i = new_start;
+                    while i >= actual_end {
+                        result.push_back(Value::Integer(i));
+                        i -= 1;
+                    }
+                }
+                Ok(Value::List(result))
+            }
+            None => {
+                // Unbounded range - return new range starting later
+                let new_start = start + n as i64;
+                Ok(Value::Range {
+                    start: new_start,
+                    end: None,
+                    inclusive: *inclusive,
+                })
+            }
+        },
+        _ => Err(RuntimeError::new(
+            format!("skip does not support {}", collection.type_name()),
+            line,
+        )),
+    }
+}
+
+/// take(n, collection) → List
+/// Take n elements. Per LANG.txt §11.9
+fn builtin_take(total: &Value, collection: &Value, line: u32) -> Result<Value, RuntimeError> {
+    let n = match total {
+        Value::Integer(n) => *n as usize,
+        _ => {
+            return Err(RuntimeError::new(
+                format!("take expects Integer, got {}", total.type_name()),
+                line,
+            ))
+        }
+    };
+
+    match collection {
+        Value::List(list) => {
+            let count = n.min(list.len());
+            Ok(Value::List(list.clone().slice(0..count)))
+        }
+        Value::Set(set) => Ok(Value::List(set.iter().take(n).cloned().collect())),
+        Value::Range {
+            start,
+            end,
+            inclusive,
+        } => {
+            let mut result = Vector::new();
+            let step = match end {
+                Some(e) if e < start => -1,
+                _ => 1,
+            };
+
+            let actual_end = end.map(|e| if *inclusive { e } else { e - step });
+
+            for i in 0..n {
+                let val = start + (i as i64) * step;
+                if let Some(e) = actual_end
+                    && ((step > 0 && val > e) || (step < 0 && val < e))
+                {
+                    break;
+                }
+                result.push_back(Value::Integer(val));
+            }
+            Ok(Value::List(result))
+        }
+        _ => Err(RuntimeError::new(
+            format!("take does not support {}", collection.type_name()),
+            line,
+        )),
+    }
+}
+
+/// reverse(collection) → Collection
+/// Reverse the order. Per LANG.txt §11.9
+fn builtin_reverse(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match collection {
+        Value::List(list) => {
+            let reversed: Vector<Value> = list.iter().rev().cloned().collect();
+            Ok(Value::List(reversed))
+        }
+        Value::String(s) => {
+            let reversed: String = s.graphemes(true).rev().collect();
+            Ok(Value::String(Rc::new(reversed)))
+        }
+        Value::Range {
+            start,
+            end,
+            inclusive,
+        } => match end {
+            Some(e) => {
+                let actual_end = if *inclusive { *e } else { e - 1 };
+                // Materialize and reverse
+                let mut result = Vector::new();
+                if start <= &actual_end {
+                    for i in (*start..=actual_end).rev() {
+                        result.push_back(Value::Integer(i));
+                    }
+                } else {
+                    for i in (actual_end..=*start).rev() {
+                        result.push_back(Value::Integer(i));
+                    }
+                }
+                Ok(Value::List(result))
+            }
+            None => Err(RuntimeError::new(
+                "Cannot reverse unbounded range",
+                line,
+            )),
+        },
+        _ => Err(RuntimeError::new(
+            format!("reverse does not support {}", collection.type_name()),
+            line,
+        )),
+    }
+}
+
+/// rotate(steps, collection) → List
+/// Rotate list by n steps. Per LANG.txt §11.9
+fn builtin_rotate(steps: &Value, collection: &Value, line: u32) -> Result<Value, RuntimeError> {
+    let n = match steps {
+        Value::Integer(n) => *n,
+        _ => {
+            return Err(RuntimeError::new(
+                format!("rotate expects Integer, got {}", steps.type_name()),
+                line,
+            ))
+        }
+    };
+
+    match collection {
+        Value::List(list) => {
+            if list.is_empty() {
+                return Ok(Value::List(Vector::new()));
+            }
+            let len = list.len() as i64;
+            // Normalize: positive n means forward rotation (last moves to start)
+            let normalized = ((n % len) + len) % len;
+            let split_point = len - normalized;
+
+            let mut result = Vector::new();
+            for i in split_point..len {
+                result.push_back(list[i as usize].clone());
+            }
+            for i in 0..split_point {
+                result.push_back(list[i as usize].clone());
+            }
+            Ok(Value::List(result))
+        }
+        _ => Err(RuntimeError::new(
+            format!("rotate expects List, got {}", collection.type_name()),
+            line,
+        )),
+    }
+}
+
+/// chunk(size, collection) → List[List]
+/// Split into chunks. Per LANG.txt §11.9
+fn builtin_chunk(size: &Value, collection: &Value, line: u32) -> Result<Value, RuntimeError> {
+    let chunk_size = match size {
+        Value::Integer(n) if *n > 0 => *n as usize,
+        Value::Integer(_) => {
+            return Err(RuntimeError::new("chunk size must be positive", line))
+        }
+        _ => {
+            return Err(RuntimeError::new(
+                format!("chunk expects Integer, got {}", size.type_name()),
+                line,
+            ))
+        }
+    };
+
+    match collection {
+        Value::List(list) => {
+            let mut result = Vector::new();
+            let mut current_chunk = Vector::new();
+
+            for elem in list.iter() {
+                current_chunk.push_back(elem.clone());
+                if current_chunk.len() == chunk_size {
+                    result.push_back(Value::List(current_chunk));
+                    current_chunk = Vector::new();
+                }
+            }
+
+            if !current_chunk.is_empty() {
+                result.push_back(Value::List(current_chunk));
+            }
+
+            Ok(Value::List(result))
+        }
+        _ => Err(RuntimeError::new(
+            format!("chunk expects List, got {}", collection.type_name()),
+            line,
+        )),
+    }
+}
+
+// ============================================================================
+// Set Operations (§11.10)
+// ============================================================================
+
+/// union(..values) → Set
+/// Elements found in any collection. Per LANG.txt §11.10
+fn builtin_union(args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+    let mut result = HashSet::new();
+
+    // If single argument is a list of collections, use that
+    if args.len() == 1
+        && let Value::List(collections) = &args[0]
+    {
+        for collection in collections.iter() {
+            add_to_set(&mut result, collection, line)?;
+        }
+        return Ok(Value::Set(result));
+    }
+
+    for arg in args {
+        add_to_set(&mut result, arg, line)?;
+    }
+
+    Ok(Value::Set(result))
+}
+
+fn add_to_set(result: &mut HashSet<Value>, collection: &Value, line: u32) -> Result<(), RuntimeError> {
+    match collection {
+        Value::List(list) => {
+            for elem in list.iter() {
+                if !elem.is_hashable() {
+                    return Err(RuntimeError::new(
+                        format!("Cannot add {} to set (not hashable)", elem.type_name()),
+                        line,
+                    ));
+                }
+                result.insert(elem.clone());
+            }
+        }
+        Value::Set(set) => {
+            for elem in set.iter() {
+                result.insert(elem.clone());
+            }
+        }
+        Value::Range {
+            start,
+            end,
+            inclusive,
+        } => match end {
+            Some(e) => {
+                let actual_end = if *inclusive { *e } else { e - 1 };
+                if start <= &actual_end {
+                    for i in *start..=actual_end {
+                        result.insert(Value::Integer(i));
+                    }
+                } else {
+                    for i in actual_end..=*start {
+                        result.insert(Value::Integer(i));
+                    }
+                }
+            }
+            None => {
+                return Err(RuntimeError::new(
+                    "Cannot convert unbounded range to set",
+                    line,
+                ));
+            }
+        },
+        Value::String(s) => {
+            for grapheme in s.graphemes(true) {
+                result.insert(Value::String(Rc::new(grapheme.to_string())));
+            }
+        }
+        _ => {
+            return Err(RuntimeError::new(
+                format!("union does not support {}", collection.type_name()),
+                line,
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// intersection(..values) → Set
+/// Elements found in all collections. Per LANG.txt §11.10
+fn builtin_intersection(args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+    // If single argument is a list of collections, use that
+    let collections: Vec<&Value> = if args.len() == 1 {
+        if let Value::List(list) = &args[0] {
+            list.iter().collect()
+        } else {
+            args.iter().collect()
+        }
+    } else {
+        args.iter().collect()
+    };
+
+    if collections.is_empty() {
+        return Ok(Value::Set(HashSet::new()));
+    }
+
+    // Start with elements from first collection
+    let mut result = HashSet::new();
+    add_to_set(&mut result, collections[0], line)?;
+
+    // Intersect with each subsequent collection
+    for collection in collections.iter().skip(1) {
+        let mut other = HashSet::new();
+        add_to_set(&mut other, collection, line)?;
+        result = result.intersection(other);
+    }
+
+    Ok(Value::Set(result))
+}
+
+// ============================================================================
+// Predicates (§11.11)
+// ============================================================================
+
+/// includes?(collection, value) → Boolean
+/// Check if value is in collection. Per LANG.txt §11.11
+fn builtin_includes(collection: &Value, value: &Value, line: u32) -> Result<Value, RuntimeError> {
+    let result = match collection {
+        Value::List(list) => list.contains(value),
+        Value::Set(set) => set.contains(value),
+        Value::Dict(dict) => dict.contains_key(value),
+        Value::String(s) => {
+            if let Value::String(needle) = value {
+                s.contains(needle.as_str())
+            } else {
+                false
+            }
+        }
+        Value::Range {
+            start,
+            end,
+            inclusive,
+        } => {
+            if let Value::Integer(n) = value {
+                match end {
+                    Some(e) => {
+                        if *inclusive {
+                            (*start <= *e && *n >= *start && *n <= *e)
+                                || (*start > *e && *n <= *start && *n >= *e)
+                        } else {
+                            (*start <= *e && *n >= *start && *n < *e)
+                                || (*start > *e && *n <= *start && *n > *e)
+                        }
+                    }
+                    None => *n >= *start,
+                }
+            } else {
+                false
+            }
+        }
+        _ => {
+            return Err(RuntimeError::new(
+                format!("includes? does not support {}", collection.type_name()),
+                line,
+            ))
+        }
+    };
+
+    Ok(Value::Boolean(result))
+}
+
+/// excludes?(collection, value) → Boolean
+/// Check if value is NOT in collection. Per LANG.txt §11.11
+fn builtin_excludes(collection: &Value, value: &Value, line: u32) -> Result<Value, RuntimeError> {
+    let includes = builtin_includes(collection, value, line)?;
+    match includes {
+        Value::Boolean(b) => Ok(Value::Boolean(!b)),
+        _ => Ok(Value::Boolean(true)), // Should not happen
     }
 }

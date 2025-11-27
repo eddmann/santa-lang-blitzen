@@ -1104,6 +1104,11 @@ impl VM {
             BuiltinId::Each => self.builtin_each(args, line),
             BuiltinId::Update => self.builtin_update(args, line),
             BuiltinId::UpdateD => self.builtin_update_d(args, line),
+            BuiltinId::Find => self.builtin_find(args, line),
+            BuiltinId::Count => self.builtin_count(args, line),
+            BuiltinId::Sort => self.builtin_sort(args, line),
+            BuiltinId::Any => self.builtin_any(args, line),
+            BuiltinId::All => self.builtin_all(args, line),
             _ => Err(RuntimeError::new(
                 format!("{} is not a callback builtin", id.name()),
                 line,
@@ -2217,6 +2222,486 @@ impl VM {
                     "update_d expects Dictionary, got {}",
                     collection.type_name()
                 ),
+                line,
+            )),
+        }
+    }
+
+    // =========================================================================
+    // Search Functions (§11.7)
+    // =========================================================================
+
+    /// find(predicate, collection) → Value | Nil
+    fn builtin_find(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let predicate = &args[0];
+        let collection = &args[1];
+
+        let closure = match predicate {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "find expects Function as first argument, got {}",
+                        predicate.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let arity = self.closure_arity(&closure);
+
+        match collection {
+            Value::List(list) => {
+                for (idx, elem) in list.iter().enumerate() {
+                    let call_args = if arity >= 2 {
+                        vec![elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem.clone()]
+                    };
+                    let result = self.call_closure_sync(&closure, call_args)?;
+                    if result.is_truthy() {
+                        return Ok(elem.clone());
+                    }
+                }
+                Ok(Value::Nil)
+            }
+            Value::Set(set) => {
+                for elem in set.iter() {
+                    let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    if result.is_truthy() {
+                        return Ok(elem.clone());
+                    }
+                }
+                Ok(Value::Nil)
+            }
+            Value::Dict(dict) => {
+                for (key, value) in dict.iter() {
+                    let call_args = if arity >= 2 {
+                        vec![value.clone(), key.clone()]
+                    } else {
+                        vec![value.clone()]
+                    };
+                    let result = self.call_closure_sync(&closure, call_args)?;
+                    if result.is_truthy() {
+                        return Ok(value.clone());
+                    }
+                }
+                Ok(Value::Nil)
+            }
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    let actual_end = if *inclusive { *e } else { e - 1 };
+                    if start <= &actual_end {
+                        for i in *start..=actual_end {
+                            let elem = Value::Integer(i);
+                            let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                            if result.is_truthy() {
+                                return Ok(elem);
+                            }
+                        }
+                    } else {
+                        let mut i = *start;
+                        while i >= actual_end {
+                            let elem = Value::Integer(i);
+                            let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                            if result.is_truthy() {
+                                return Ok(elem);
+                            }
+                            i -= 1;
+                        }
+                    }
+                    Ok(Value::Nil)
+                }
+                None => Err(RuntimeError::new(
+                    "find on unbounded range may not terminate",
+                    line,
+                )),
+            },
+            _ => Err(RuntimeError::new(
+                format!("find does not support {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// count(predicate, collection) → Integer
+    fn builtin_count(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let predicate = &args[0];
+        let collection = &args[1];
+
+        let closure = match predicate {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "count expects Function as first argument, got {}",
+                        predicate.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let arity = self.closure_arity(&closure);
+        let mut count = 0i64;
+
+        match collection {
+            Value::List(list) => {
+                for (idx, elem) in list.iter().enumerate() {
+                    let call_args = if arity >= 2 {
+                        vec![elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem.clone()]
+                    };
+                    let result = self.call_closure_sync(&closure, call_args)?;
+                    if result.is_truthy() {
+                        count += 1;
+                    }
+                }
+            }
+            Value::Set(set) => {
+                for elem in set.iter() {
+                    let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    if result.is_truthy() {
+                        count += 1;
+                    }
+                }
+            }
+            Value::Dict(dict) => {
+                for (key, value) in dict.iter() {
+                    let call_args = if arity >= 2 {
+                        vec![value.clone(), key.clone()]
+                    } else {
+                        vec![value.clone()]
+                    };
+                    let result = self.call_closure_sync(&closure, call_args)?;
+                    if result.is_truthy() {
+                        count += 1;
+                    }
+                }
+            }
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    let actual_end = if *inclusive { *e } else { e - 1 };
+                    if start <= &actual_end {
+                        for i in *start..=actual_end {
+                            let result =
+                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            if result.is_truthy() {
+                                count += 1;
+                            }
+                        }
+                    } else {
+                        let mut i = *start;
+                        while i >= actual_end {
+                            let result =
+                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            if result.is_truthy() {
+                                count += 1;
+                            }
+                            i -= 1;
+                        }
+                    }
+                }
+                None => {
+                    return Err(RuntimeError::new(
+                        "count on unbounded range may not terminate",
+                        line,
+                    ))
+                }
+            },
+            _ => {
+                return Err(RuntimeError::new(
+                    format!("count does not support {}", collection.type_name()),
+                    line,
+                ))
+            }
+        }
+
+        Ok(Value::Integer(count))
+    }
+
+    /// sort(comparator, collection) → List
+    fn builtin_sort(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let comparator = &args[0];
+        let collection = &args[1];
+
+        let closure = match comparator {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "sort expects Function as first argument, got {}",
+                        comparator.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        // Collect elements to sort
+        let mut elements: Vec<Value> = match collection {
+            Value::List(list) => list.iter().cloned().collect(),
+            Value::Set(set) => set.iter().cloned().collect(),
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    let actual_end = if *inclusive { *e } else { e - 1 };
+                    if start <= &actual_end {
+                        (*start..=actual_end).map(Value::Integer).collect()
+                    } else {
+                        (actual_end..=*start).rev().map(Value::Integer).collect()
+                    }
+                }
+                None => {
+                    return Err(RuntimeError::new(
+                        "Cannot sort unbounded range",
+                        line,
+                    ))
+                }
+            },
+            _ => {
+                return Err(RuntimeError::new(
+                    format!("sort does not support {}", collection.type_name()),
+                    line,
+                ))
+            }
+        };
+
+        // Simple insertion sort using comparator
+        // (Could use merge sort for better performance)
+        for i in 1..elements.len() {
+            let key = elements[i].clone();
+            let mut j = i;
+            while j > 0 {
+                let cmp_result = self.call_closure_sync(
+                    &closure,
+                    vec![elements[j - 1].clone(), key.clone()],
+                )?;
+                let should_swap = match cmp_result {
+                    Value::Integer(n) => n > 0,
+                    Value::Boolean(b) => b, // Treat true as "should swap"
+                    _ => false,
+                };
+                if !should_swap {
+                    break;
+                }
+                elements[j] = elements[j - 1].clone();
+                j -= 1;
+            }
+            elements[j] = key;
+        }
+
+        Ok(Value::List(elements.into_iter().collect()))
+    }
+
+    // =========================================================================
+    // Predicates (§11.11)
+    // =========================================================================
+
+    /// any?(predicate, collection) → Boolean
+    fn builtin_any(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let predicate = &args[0];
+        let collection = &args[1];
+
+        let closure = match predicate {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "any? expects Function as first argument, got {}",
+                        predicate.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let arity = self.closure_arity(&closure);
+
+        match collection {
+            Value::List(list) => {
+                for (idx, elem) in list.iter().enumerate() {
+                    let call_args = if arity >= 2 {
+                        vec![elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem.clone()]
+                    };
+                    let result = self.call_closure_sync(&closure, call_args)?;
+                    if result.is_truthy() {
+                        return Ok(Value::Boolean(true));
+                    }
+                }
+                Ok(Value::Boolean(false))
+            }
+            Value::Set(set) => {
+                for elem in set.iter() {
+                    let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    if result.is_truthy() {
+                        return Ok(Value::Boolean(true));
+                    }
+                }
+                Ok(Value::Boolean(false))
+            }
+            Value::Dict(dict) => {
+                for (key, value) in dict.iter() {
+                    let call_args = if arity >= 2 {
+                        vec![value.clone(), key.clone()]
+                    } else {
+                        vec![value.clone()]
+                    };
+                    let result = self.call_closure_sync(&closure, call_args)?;
+                    if result.is_truthy() {
+                        return Ok(Value::Boolean(true));
+                    }
+                }
+                Ok(Value::Boolean(false))
+            }
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    let actual_end = if *inclusive { *e } else { e - 1 };
+                    if start <= &actual_end {
+                        for i in *start..=actual_end {
+                            let result =
+                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            if result.is_truthy() {
+                                return Ok(Value::Boolean(true));
+                            }
+                        }
+                    } else {
+                        let mut i = *start;
+                        while i >= actual_end {
+                            let result =
+                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            if result.is_truthy() {
+                                return Ok(Value::Boolean(true));
+                            }
+                            i -= 1;
+                        }
+                    }
+                    Ok(Value::Boolean(false))
+                }
+                None => Err(RuntimeError::new(
+                    "any? on unbounded range may not terminate",
+                    line,
+                )),
+            },
+            _ => Err(RuntimeError::new(
+                format!("any? does not support {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// all?(predicate, collection) → Boolean
+    fn builtin_all(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let predicate = &args[0];
+        let collection = &args[1];
+
+        let closure = match predicate {
+            Value::Function(c) => c.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!(
+                        "all? expects Function as first argument, got {}",
+                        predicate.type_name()
+                    ),
+                    line,
+                ));
+            }
+        };
+
+        let arity = self.closure_arity(&closure);
+
+        match collection {
+            Value::List(list) => {
+                for (idx, elem) in list.iter().enumerate() {
+                    let call_args = if arity >= 2 {
+                        vec![elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem.clone()]
+                    };
+                    let result = self.call_closure_sync(&closure, call_args)?;
+                    if !result.is_truthy() {
+                        return Ok(Value::Boolean(false));
+                    }
+                }
+                Ok(Value::Boolean(true))
+            }
+            Value::Set(set) => {
+                for elem in set.iter() {
+                    let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    if !result.is_truthy() {
+                        return Ok(Value::Boolean(false));
+                    }
+                }
+                Ok(Value::Boolean(true))
+            }
+            Value::Dict(dict) => {
+                for (key, value) in dict.iter() {
+                    let call_args = if arity >= 2 {
+                        vec![value.clone(), key.clone()]
+                    } else {
+                        vec![value.clone()]
+                    };
+                    let result = self.call_closure_sync(&closure, call_args)?;
+                    if !result.is_truthy() {
+                        return Ok(Value::Boolean(false));
+                    }
+                }
+                Ok(Value::Boolean(true))
+            }
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    let actual_end = if *inclusive { *e } else { e - 1 };
+                    if start <= &actual_end {
+                        for i in *start..=actual_end {
+                            let result =
+                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            if !result.is_truthy() {
+                                return Ok(Value::Boolean(false));
+                            }
+                        }
+                    } else {
+                        let mut i = *start;
+                        while i >= actual_end {
+                            let result =
+                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            if !result.is_truthy() {
+                                return Ok(Value::Boolean(false));
+                            }
+                            i -= 1;
+                        }
+                    }
+                    Ok(Value::Boolean(true))
+                }
+                None => Err(RuntimeError::new(
+                    "all? on unbounded range may not terminate",
+                    line,
+                )),
+            },
+            _ => Err(RuntimeError::new(
+                format!("all? does not support {}", collection.type_name()),
                 line,
             )),
         }
