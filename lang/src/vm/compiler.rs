@@ -334,11 +334,16 @@ impl Compiler {
                 left,
                 right,
             } => {
-                // Compile as: function(left, right)
-                self.compile_identifier(function, expr.span)?;
-                self.expression(left)?;
-                self.expression(right)?;
-                self.emit_with_operand(OpCode::Call, 2);
+                // Check for placeholders - if any, generate partial application
+                if Self::contains_placeholder(left) || Self::contains_placeholder(right) {
+                    self.compile_partial_infix_call(function, left, right, expr.span)?;
+                } else {
+                    // Compile as: function(left, right)
+                    self.compile_identifier(function, expr.span)?;
+                    self.expression(left)?;
+                    self.expression(right)?;
+                    self.emit_with_operand(OpCode::Call, 2);
+                }
             }
 
             // Control flow - if expression
@@ -614,6 +619,123 @@ impl Compiler {
                     false
                 };
 
+                // Check if any args contain placeholders
+                // In composition context, placeholders represent "where the left(x) result goes"
+                let has_placeholders = args.iter().any(Self::contains_placeholder);
+
+                if has_placeholders {
+                    // f >> g(_, b) creates |x| g(f(x), b)
+                    // First compile left(x) and store in a temporary
+                    match &left.node {
+                        Expr::Call { function: left_fn, args: left_args } => {
+                            // Check if left function is a builtin
+                            let is_left_builtin = if let Expr::Identifier(name) = &left_fn.node {
+                                BuiltinId::from_name(name).is_some()
+                                    && self.resolve_local(name).is_none()
+                                    && self.resolve_upvalue(name).is_none()
+                            } else {
+                                false
+                            };
+
+                            if !is_left_builtin {
+                                self.expression(left_fn)?;
+                            }
+
+                            for arg in left_args {
+                                self.expression(arg)?;
+                            }
+
+                            self.emit_with_operand(OpCode::GetLocal, 0);
+
+                            let left_total_args = left_args.len() + 1;
+                            if is_left_builtin {
+                                if let Expr::Identifier(name) = &left_fn.node {
+                                    let builtin_id = BuiltinId::from_name(name).unwrap();
+                                    self.emit(OpCode::CallBuiltin);
+                                    self.chunk().write_operand_u16(builtin_id as u16);
+                                    self.chunk().write_operand(left_total_args as u8);
+                                }
+                            } else {
+                                self.emit_with_operand(OpCode::Call, left_total_args as u8);
+                            }
+                        }
+                        _ => {
+                            // left is f, compile as f(x)
+                            let is_left_builtin = if let Expr::Identifier(name) = &left.node {
+                                BuiltinId::from_name(name).is_some()
+                                    && self.resolve_local(name).is_none()
+                                    && self.resolve_upvalue(name).is_none()
+                            } else {
+                                false
+                            };
+
+                            if !is_left_builtin {
+                                self.emit_upvalue_load_or_expression(left, span)?;
+                            }
+
+                            self.emit_with_operand(OpCode::GetLocal, 0);
+
+                            if is_left_builtin {
+                                if let Expr::Identifier(name) = &left.node {
+                                    let builtin_id = BuiltinId::from_name(name).unwrap();
+                                    self.emit(OpCode::CallBuiltin);
+                                    self.chunk().write_operand_u16(builtin_id as u16);
+                                    self.chunk().write_operand(1);
+                                }
+                            } else {
+                                self.emit_with_operand(OpCode::Call, 1);
+                            }
+                        }
+                    }
+
+                    // Now left(x) result is on stack. Store it in local slot 1.
+                    self.locals.push(Local {
+                        name: String::from("__compose_result"),
+                        depth: 0,
+                        mutable: false,
+                        captured: false,
+                    });
+
+                    // Compile function g for non-builtins
+                    if !is_right_builtin {
+                        self.expression(function)?;
+                    }
+
+                    // Compile args, replacing placeholders with the result
+                    for arg in args {
+                        if matches!(arg.node, Expr::Placeholder) {
+                            self.emit_with_operand(OpCode::GetLocal, 1); // the stored result
+                        } else {
+                            self.expression(arg)?;
+                        }
+                    }
+
+                    // Call g with all args
+                    if is_right_builtin {
+                        if let Expr::Identifier(name) = &function.node {
+                            let builtin_id = BuiltinId::from_name(name).unwrap();
+                            self.emit(OpCode::CallBuiltin);
+                            self.chunk().write_operand_u16(builtin_id as u16);
+                            self.chunk().write_operand(args.len() as u8);
+                        }
+                    } else {
+                        self.emit_with_operand(OpCode::Call, args.len() as u8);
+                    }
+
+                    self.emit(OpCode::Return);
+
+                    // Restore enclosing compiler
+                    let compiled_fn = std::mem::replace(&mut self.function, CompiledFunction::new(0, None));
+                    let enclosing = self.enclosing.take().expect("should have enclosing");
+                    *self = *enclosing;
+
+                    let fn_idx = self.chunk().functions.len();
+                    self.chunk().functions.push(Rc::new(compiled_fn));
+                    self.emit_with_operand(OpCode::MakeClosure, fn_idx as u8);
+
+                    return Ok(());
+                }
+
                 // Compile: g(a, b, left(x))
                 if !is_right_builtin {
                     // Step 1: Compile the function g (for non-builtins)
@@ -844,7 +966,9 @@ impl Compiler {
         self.expression(expr)
     }
 
-    /// Check if an expression contains a placeholder
+    /// Check if an expression contains a placeholder at the immediate level
+    /// Does NOT recurse into function bodies, since placeholders in nested lambdas
+    /// are scoped to that lambda, not the outer expression
     fn contains_placeholder(expr: &SpannedExpr) -> bool {
         match &expr.node {
             Expr::Placeholder => true,
@@ -852,10 +976,18 @@ impl Compiler {
             Expr::Infix { left, right, .. } => {
                 Self::contains_placeholder(left) || Self::contains_placeholder(right)
             }
+            Expr::InfixCall { left, right, .. } => {
+                Self::contains_placeholder(left) || Self::contains_placeholder(right)
+            }
             Expr::List(elems) => elems.iter().any(Self::contains_placeholder),
             Expr::Call { function, args } => {
                 Self::contains_placeholder(function) || args.iter().any(Self::contains_placeholder)
             }
+            Expr::Index { collection, index } => {
+                Self::contains_placeholder(collection) || Self::contains_placeholder(index)
+            }
+            // Do NOT recurse into function bodies - placeholders there are scoped to that function
+            Expr::Function { .. } => false,
             _ => false,
         }
     }
@@ -865,7 +997,8 @@ impl Compiler {
         exprs.iter().any(Self::contains_placeholder)
     }
 
-    /// Count the number of placeholders in an expression
+    /// Count the number of placeholders in an expression at the immediate level
+    /// Does NOT recurse into function bodies
     fn count_placeholders(expr: &SpannedExpr) -> usize {
         match &expr.node {
             Expr::Placeholder => 1,
@@ -873,11 +1006,19 @@ impl Compiler {
             Expr::Infix { left, right, .. } => {
                 Self::count_placeholders(left) + Self::count_placeholders(right)
             }
+            Expr::InfixCall { left, right, .. } => {
+                Self::count_placeholders(left) + Self::count_placeholders(right)
+            }
             Expr::List(elems) => elems.iter().map(Self::count_placeholders).sum(),
             Expr::Call { function, args } => {
                 Self::count_placeholders(function)
                     + args.iter().map(Self::count_placeholders).sum::<usize>()
             }
+            Expr::Index { collection, index } => {
+                Self::count_placeholders(collection) + Self::count_placeholders(index)
+            }
+            // Do NOT recurse into function bodies
+            Expr::Function { .. } => 0,
             _ => 0,
         }
     }
@@ -1059,6 +1200,61 @@ impl Compiler {
             Expr::Identifier(name) => {
                 self.compile_identifier(name, expr.span)?;
             }
+            Expr::Call { function, args } => {
+                // Handle function calls with placeholders in arguments
+                // Check if this is a builtin call
+                if let Expr::Identifier(name) = &function.node
+                    && let Some(builtin_id) = BuiltinId::from_name(name)
+                    && self.resolve_local(name).is_none()
+                    && self.resolve_upvalue(name).is_none()
+                {
+                    // Compile arguments with placeholder substitution
+                    for arg in args {
+                        self.compile_with_placeholders(arg, placeholder_idx)?;
+                    }
+                    // Emit CallBuiltin instruction
+                    self.emit(OpCode::CallBuiltin);
+                    self.chunk().write_operand_u16(builtin_id as u16);
+                    self.chunk().write_operand(args.len() as u8);
+                } else {
+                    // Regular function call
+                    self.compile_with_placeholders(function, placeholder_idx)?;
+                    for arg in args {
+                        self.compile_with_placeholders(arg, placeholder_idx)?;
+                    }
+                    self.emit_with_operand(OpCode::Call, args.len() as u8);
+                }
+            }
+            Expr::Index { collection, index } => {
+                // Handle index operations with placeholders
+                self.compile_with_placeholders(collection, placeholder_idx)?;
+                self.compile_with_placeholders(index, placeholder_idx)?;
+                self.emit(OpCode::Index);
+            }
+            Expr::List(elements) => {
+                // Handle list literals with placeholders
+                for elem in elements {
+                    self.compile_with_placeholders(elem, placeholder_idx)?;
+                }
+                if elements.len() > 255 {
+                    return Err(CompileError::new(
+                        "List literal too large (max 255 elements)",
+                        expr.span,
+                    ));
+                }
+                self.emit_with_operand(OpCode::MakeList, elements.len() as u8);
+            }
+            Expr::InfixCall {
+                function,
+                left,
+                right,
+            } => {
+                // Handle infix calls (backtick syntax) with placeholders
+                self.compile_identifier(function, expr.span)?;
+                self.compile_with_placeholders(left, placeholder_idx)?;
+                self.compile_with_placeholders(right, placeholder_idx)?;
+                self.emit_with_operand(OpCode::Call, 2);
+            }
             _ => {
                 return Err(CompileError::new(
                     "Expression type not supported in partial application",
@@ -1180,6 +1376,11 @@ impl Compiler {
             return Err(CompileError::new("Too many arguments (max 255)", span));
         }
 
+        // Check for placeholders in arguments - if any, generate partial application
+        if args.iter().any(Self::contains_placeholder) {
+            return self.compile_partial_call(function, args, span);
+        }
+
         // Check if this is a built-in function call
         if let Expr::Identifier(name) = &function.node
             && let Some(builtin_id) = BuiltinId::from_name(name)
@@ -1217,6 +1418,121 @@ impl Compiler {
         Ok(())
     }
 
+    /// Compile a partial function call (call with placeholder arguments)
+    fn compile_partial_call(
+        &mut self,
+        function: &SpannedExpr,
+        args: &[SpannedExpr],
+        span: Span,
+    ) -> Result<(), CompileError> {
+        // Count total placeholders in all arguments
+        let placeholder_count: usize = args.iter().map(Self::count_placeholders).sum();
+
+        // Create a new function with arity = placeholder_count
+        let enclosing = std::mem::take(self);
+        *self = Compiler::new_function(None, placeholder_count as u8, enclosing);
+
+        // Add locals for each placeholder parameter
+        for i in 0..placeholder_count {
+            self.locals.push(Local {
+                name: format!("__arg{}", i),
+                depth: 0,
+                mutable: false,
+                captured: false,
+            });
+        }
+
+        let mut placeholder_idx = 0u8;
+
+        // Check if this is a builtin call
+        if let Expr::Identifier(name) = &function.node
+            && let Some(builtin_id) = BuiltinId::from_name(name)
+            && self.resolve_local(name).is_none()
+            && self.resolve_upvalue(name).is_none()
+        {
+            // Compile arguments with placeholder substitution
+            for arg in args {
+                self.compile_with_placeholders(arg, &mut placeholder_idx)?;
+            }
+            // Emit CallBuiltin instruction
+            self.emit(OpCode::CallBuiltin);
+            self.chunk().write_operand_u16(builtin_id as u16);
+            self.chunk().write_operand(args.len() as u8);
+        } else {
+            // Regular function call
+            self.compile_with_placeholders(function, &mut placeholder_idx)?;
+            for arg in args {
+                self.compile_with_placeholders(arg, &mut placeholder_idx)?;
+            }
+            self.emit_with_operand(OpCode::Call, args.len() as u8);
+        }
+
+        self.emit(OpCode::Return);
+
+        // Get the compiled function and restore enclosing
+        let compiled_fn = std::mem::replace(&mut self.function, CompiledFunction::new(0, None));
+        let enclosing = self.enclosing.take().expect("should have enclosing");
+        *self = *enclosing;
+
+        // Add the function to constants and emit MakeClosure
+        let fn_idx = self.chunk().functions.len();
+        self.chunk().functions.push(Rc::new(compiled_fn));
+        self.emit_with_operand(OpCode::MakeClosure, fn_idx as u8);
+
+        // Check if we need to error on unsupported span usage
+        let _ = span;
+
+        Ok(())
+    }
+
+    /// Compile a partial infix call (backtick call with placeholder arguments)
+    fn compile_partial_infix_call(
+        &mut self,
+        function: &str,
+        left: &SpannedExpr,
+        right: &SpannedExpr,
+        span: Span,
+    ) -> Result<(), CompileError> {
+        // Count total placeholders
+        let placeholder_count = Self::count_placeholders(left) + Self::count_placeholders(right);
+
+        // Create a new function with arity = placeholder_count
+        let enclosing = std::mem::take(self);
+        *self = Compiler::new_function(None, placeholder_count as u8, enclosing);
+
+        // Add locals for each placeholder parameter
+        for i in 0..placeholder_count {
+            self.locals.push(Local {
+                name: format!("__arg{}", i),
+                depth: 0,
+                mutable: false,
+                captured: false,
+            });
+        }
+
+        let mut placeholder_idx = 0u8;
+
+        // Compile as: function(left, right)
+        self.compile_identifier(function, span)?;
+        self.compile_with_placeholders(left, &mut placeholder_idx)?;
+        self.compile_with_placeholders(right, &mut placeholder_idx)?;
+        self.emit_with_operand(OpCode::Call, 2);
+
+        self.emit(OpCode::Return);
+
+        // Get the compiled function and restore enclosing
+        let compiled_fn = std::mem::replace(&mut self.function, CompiledFunction::new(0, None));
+        let enclosing = self.enclosing.take().expect("should have enclosing");
+        *self = *enclosing;
+
+        // Add the function to constants and emit MakeClosure
+        let fn_idx = self.chunk().functions.len();
+        self.chunk().functions.push(Rc::new(compiled_fn));
+        self.emit_with_operand(OpCode::MakeClosure, fn_idx as u8);
+
+        Ok(())
+    }
+
     /// Compile identifier lookup
     fn compile_identifier(&mut self, name: &str, span: Span) -> Result<(), CompileError> {
         // First check locals
@@ -1225,10 +1541,16 @@ impl Compiler {
             return Ok(());
         }
 
-        // Then check upvalues (will be implemented in Phase 8)
+        // Then check upvalues
         if let Some(idx) = self.resolve_upvalue(name) {
             self.emit_with_operand(OpCode::GetUpvalue, idx);
             return Ok(());
+        }
+
+        // Check if this is a builtin function being used as a value
+        // In this case, create a wrapper closure that calls the builtin
+        if let Some(builtin_id) = BuiltinId::from_name(name) {
+            return self.compile_builtin_as_value(builtin_id, span);
         }
 
         // Finally, emit global lookup
@@ -1239,6 +1561,63 @@ impl Compiler {
             return Err(CompileError::new("Too many global names", span));
         }
         self.emit_with_operand(OpCode::GetGlobal, name_idx as u8);
+        Ok(())
+    }
+
+    /// Compile a builtin function reference as a first-class value
+    /// Creates a wrapper closure that calls the builtin
+    fn compile_builtin_as_value(
+        &mut self,
+        builtin_id: BuiltinId,
+        _span: Span,
+    ) -> Result<(), CompileError> {
+        let (min_arity, max_arity) = builtin_id.arity();
+
+        // For variadic builtins, use min_arity as the wrapper's arity
+        // For fixed-arity builtins, use the exact arity
+        let arity = if min_arity == max_arity {
+            min_arity
+        } else {
+            // For variadic functions, we need to handle this differently
+            // For now, use minimum arity
+            min_arity
+        };
+
+        // Create a wrapper function
+        let enclosing = std::mem::take(self);
+        *self = Compiler::new_function(None, arity, enclosing);
+
+        // Add parameter locals
+        for i in 0..arity {
+            self.locals.push(Local {
+                name: format!("__builtin_arg{}", i),
+                depth: 0,
+                mutable: false,
+                captured: false,
+            });
+        }
+
+        // Load all parameters and call the builtin
+        for i in 0..arity {
+            self.emit_with_operand(OpCode::GetLocal, i);
+        }
+
+        self.emit(OpCode::CallBuiltin);
+        self.chunk().write_operand_u16(builtin_id as u16);
+        self.chunk().write_operand(arity);
+
+        self.emit(OpCode::Return);
+
+        // Get the compiled function and restore enclosing
+        let compiled_fn = std::mem::replace(&mut self.function, CompiledFunction::new(0, None));
+        let enclosing = self.enclosing.take().expect("should have enclosing");
+        *self = *enclosing;
+
+        // Add the function to constants and emit MakeClosure
+        let fn_idx = self.chunk().functions.len();
+        self.chunk().functions.push(Rc::new(compiled_fn));
+        self.emit_with_operand(OpCode::MakeClosure, fn_idx as u8);
+
         Ok(())
     }
 
