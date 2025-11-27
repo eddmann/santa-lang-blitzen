@@ -1097,6 +1097,7 @@ fn tco_not_tail_position() { ... }
 
 Generate bytecode for pattern matching:
 
+- Identifier patterns: bind matched value to variable (fix existing bug)
 - Literal patterns: equality check
 - List patterns: length check, element checks
 - Rest patterns: slice extraction
@@ -1112,6 +1113,8 @@ Generate bytecode for pattern matching:
 ### 15.3 Tests
 
 ```rust
+#[test]
+fn pattern_identifier() { ... }  // match 42 { x { x + 1 } }
 #[test]
 fn pattern_literal() { ... }
 #[test]
@@ -1130,6 +1133,7 @@ fn destructuring_let() { ... }
 
 ### Release Gate 15
 
+- [ ] Identifier patterns bind value correctly (currently ignored test)
 - [ ] All pattern types match correctly
 - [ ] Rest patterns work in any position
 - [ ] Nested patterns work
