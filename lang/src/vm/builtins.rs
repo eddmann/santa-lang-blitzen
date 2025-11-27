@@ -100,6 +100,9 @@ pub enum BuiltinId {
     Split = 131,
     RegexMatch = 132,
     RegexMatchAll = 133,
+    Upper = 134,
+    Lower = 135,
+    Replace = 136,
 
     // Math Functions (§11.15)
     Abs = 140,
@@ -180,6 +183,9 @@ impl BuiltinId {
             BuiltinId::Split => "split",
             BuiltinId::RegexMatch => "regex_match",
             BuiltinId::RegexMatchAll => "regex_match_all",
+            BuiltinId::Upper => "upper",
+            BuiltinId::Lower => "lower",
+            BuiltinId::Replace => "replace",
             BuiltinId::Abs => "abs",
             BuiltinId::Signum => "signum",
             BuiltinId::VecAdd => "vec_add",
@@ -254,6 +260,9 @@ impl BuiltinId {
             "split" => Some(BuiltinId::Split),
             "regex_match" => Some(BuiltinId::RegexMatch),
             "regex_match_all" => Some(BuiltinId::RegexMatchAll),
+            "upper" => Some(BuiltinId::Upper),
+            "lower" => Some(BuiltinId::Lower),
+            "replace" => Some(BuiltinId::Replace),
             "abs" => Some(BuiltinId::Abs),
             "signum" => Some(BuiltinId::Signum),
             "vec_add" => Some(BuiltinId::VecAdd),
@@ -294,6 +303,8 @@ impl BuiltinId {
             | BuiltinId::Repeat
             | BuiltinId::Cycle
             | BuiltinId::Lines
+            | BuiltinId::Upper
+            | BuiltinId::Lower
             | BuiltinId::Abs
             | BuiltinId::Signum
             | BuiltinId::BitNot
@@ -343,7 +354,8 @@ impl BuiltinId {
             | BuiltinId::Fold
             | BuiltinId::FoldS
             | BuiltinId::Scan
-            | BuiltinId::RangeFn => (3, 3),
+            | BuiltinId::RangeFn
+            | BuiltinId::Replace => (3, 3),
 
             // Four argument functions
             BuiltinId::UpdateD => (4, 4),
@@ -447,6 +459,9 @@ impl TryFrom<u16> for BuiltinId {
             131 => Ok(BuiltinId::Split),
             132 => Ok(BuiltinId::RegexMatch),
             133 => Ok(BuiltinId::RegexMatchAll),
+            134 => Ok(BuiltinId::Upper),
+            135 => Ok(BuiltinId::Lower),
+            136 => Ok(BuiltinId::Replace),
             140 => Ok(BuiltinId::Abs),
             141 => Ok(BuiltinId::Signum),
             142 => Ok(BuiltinId::VecAdd),
@@ -522,6 +537,9 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         BuiltinId::Split => builtin_split(&args[0], &args[1], line),
         BuiltinId::RegexMatch => builtin_regex_match(&args[0], &args[1], line),
         BuiltinId::RegexMatchAll => builtin_regex_match_all(&args[0], &args[1], line),
+        BuiltinId::Upper => builtin_upper(&args[0], line),
+        BuiltinId::Lower => builtin_lower(&args[0], line),
+        BuiltinId::Replace => builtin_replace(&args[0], &args[1], &args[2], line),
         // Phase 13: Math functions
         BuiltinId::Abs => builtin_abs(&args[0], line),
         BuiltinId::Signum => builtin_signum(&args[0], line),
@@ -2323,6 +2341,66 @@ fn builtin_lines(value: &Value, line: u32) -> Result<Value, RuntimeError> {
         }
         _ => Err(RuntimeError::new(
             format!("lines expects String, got {}", value.type_name()),
+            line,
+        )),
+    }
+}
+
+/// upper(string) → String
+/// Convert string to uppercase. Per LANG.txt §11.14
+fn builtin_upper(value: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match value {
+        Value::String(s) => Ok(Value::String(Rc::new(s.to_uppercase()))),
+        _ => Err(RuntimeError::new(
+            format!("upper expects String, got {}", value.type_name()),
+            line,
+        )),
+    }
+}
+
+/// lower(string) → String
+/// Convert string to lowercase. Per LANG.txt §11.14
+fn builtin_lower(value: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match value {
+        Value::String(s) => Ok(Value::String(Rc::new(s.to_lowercase()))),
+        _ => Err(RuntimeError::new(
+            format!("lower expects String, got {}", value.type_name()),
+            line,
+        )),
+    }
+}
+
+/// replace(pattern, replacement, string) → String
+/// Replace all occurrences of pattern with replacement. Per LANG.txt §11.14
+fn builtin_replace(
+    pattern: &Value,
+    replacement: &Value,
+    string: &Value,
+    line: u32,
+) -> Result<Value, RuntimeError> {
+    match (pattern, replacement, string) {
+        (Value::String(pat), Value::String(repl), Value::String(s)) => {
+            Ok(Value::String(Rc::new(s.replace(pat.as_str(), repl.as_str()))))
+        }
+        (Value::String(_), Value::String(_), _) => Err(RuntimeError::new(
+            format!(
+                "replace expects String as third argument, got {}",
+                string.type_name()
+            ),
+            line,
+        )),
+        (Value::String(_), _, _) => Err(RuntimeError::new(
+            format!(
+                "replace expects String as second argument, got {}",
+                replacement.type_name()
+            ),
+            line,
+        )),
+        _ => Err(RuntimeError::new(
+            format!(
+                "replace expects String as first argument, got {}",
+                pattern.type_name()
+            ),
             line,
         )),
     }
