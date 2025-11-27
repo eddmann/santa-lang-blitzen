@@ -276,7 +276,7 @@ fn runner_only_part_one() {
 
 #[test]
 fn runner_complex_example() {
-    // Simplified version of LANG.txt Appendix D Example 2 (AoC 2022 Day 1)
+    // Full version of LANG.txt §12.3 Example (AoC 2022 Day 1)
     let source = r#"
         input: "1000
 2000
@@ -300,7 +300,10 @@ fn runner_complex_example() {
         }
 
         part_two: {
-            parse_inventories(input) |> take(3) |> sum
+            parse_inventories(input)
+                |> sort(<)
+                |> take(3)
+                |> sum
         }
 
         test: {
@@ -319,6 +322,7 @@ fn runner_complex_example() {
 
 10000"
             part_one: 24000
+            part_two: 45000
         }
     "#;
 
@@ -329,13 +333,18 @@ fn runner_complex_example() {
     let result = runner.run_solution().unwrap();
 
     assert!(result.part_one.is_some());
+    assert!(result.part_two.is_some());
 
     let (part_one_value, _) = result.part_one.unwrap();
+    let (part_two_value, _) = result.part_two.unwrap();
+
     assert_eq!(part_one_value, Value::Integer(24000));
+    assert_eq!(part_two_value, Value::Integer(45000));
 
     // Test the test execution
     let test_results = runner.run_tests().unwrap();
 
     assert_eq!(test_results.len(), 1);
     assert_eq!(test_results[0].part_one_passed, Some(true));
+    assert_eq!(test_results[0].part_two_passed, Some(true));
 }

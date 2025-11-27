@@ -346,6 +346,7 @@ impl Parser {
             }
 
             // Binary operators as function references
+            // Arithmetic operators
             TokenKind::Plus => {
                 let span = self.advance().unwrap().span;
                 Ok(Spanned::new(Expr::Identifier("+".to_string()), span))
@@ -361,6 +362,32 @@ impl Parser {
             TokenKind::Percent => {
                 let span = self.advance().unwrap().span;
                 Ok(Spanned::new(Expr::Identifier("%".to_string()), span))
+            }
+
+            // Comparison operators
+            TokenKind::Less => {
+                let span = self.advance().unwrap().span;
+                Ok(Spanned::new(Expr::Identifier("<".to_string()), span))
+            }
+            TokenKind::Greater => {
+                let span = self.advance().unwrap().span;
+                Ok(Spanned::new(Expr::Identifier(">".to_string()), span))
+            }
+            TokenKind::LessEqual => {
+                let span = self.advance().unwrap().span;
+                Ok(Spanned::new(Expr::Identifier("<=".to_string()), span))
+            }
+            TokenKind::GreaterEqual => {
+                let span = self.advance().unwrap().span;
+                Ok(Spanned::new(Expr::Identifier(">=".to_string()), span))
+            }
+            TokenKind::EqualEqual => {
+                let span = self.advance().unwrap().span;
+                Ok(Spanned::new(Expr::Identifier("==".to_string()), span))
+            }
+            TokenKind::BangEqual => {
+                let span = self.advance().unwrap().span;
+                Ok(Spanned::new(Expr::Identifier("!=".to_string()), span))
             }
 
             // Grouped expression

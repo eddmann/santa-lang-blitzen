@@ -151,11 +151,20 @@ impl VM {
         };
 
         // Register all binary operators as global function values
+        // Arithmetic operators
         self.globals.insert("+".to_string(), create_binop(OpCode::Add, "+"));
         self.globals.insert("-".to_string(), create_binop(OpCode::Sub, "-"));
         self.globals.insert("*".to_string(), create_binop(OpCode::Mul, "*"));
         self.globals.insert("/".to_string(), create_binop(OpCode::Div, "/"));
         self.globals.insert("%".to_string(), create_binop(OpCode::Mod, "%"));
+
+        // Comparison operators
+        self.globals.insert("<".to_string(), create_binop(OpCode::Lt, "<"));
+        self.globals.insert(">".to_string(), create_binop(OpCode::Gt, ">"));
+        self.globals.insert("<=".to_string(), create_binop(OpCode::Le, "<="));
+        self.globals.insert(">=".to_string(), create_binop(OpCode::Ge, ">="));
+        self.globals.insert("==".to_string(), create_binop(OpCode::Eq, "=="));
+        self.globals.insert("!=".to_string(), create_binop(OpCode::Ne, "!="));
     }
 
     /// Run a compiled function
