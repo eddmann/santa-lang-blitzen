@@ -1320,12 +1320,11 @@ mod compiler_tests {
             expect![[r#"
                 == test ==
                 0000 [   1] Constant 0 (42)
-                0002 [   1] Pop
-                0003 [   1] GetLocal 0
-                0005 [   1] Constant 1 (1)
-                0007 [   1] Add
-                0008 [   1] PopN 1
-                0010 [   1] Return
+                0002 [   1] GetLocal 0
+                0004 [   1] Constant 1 (1)
+                0006 [   1] Add
+                0007 [   1] PopN 1
+                0009 [   1] Return
             "#]],
         );
     }
@@ -1340,14 +1339,13 @@ mod compiler_tests {
                 0002 [   1] GetLocal 0
                 0004 [   1] Constant 1 (3)
                 0006 [   1] Gt
-                0007 [   1] JumpIfFalse -> 18
-                0010 [   1] Pop
-                0011 [   1] GetLocal 0
-                0013 [   1] PopN 1
-                0015 [   1] Jump -> 21
-                0018 [   1] Pop
-                0019 [   1] Constant 2 (0)
-                0021 [   1] Return
+                0007 [   1] JumpIfFalse -> 17
+                0010 [   1] GetLocal 0
+                0012 [   1] PopN 1
+                0014 [   1] Jump -> 20
+                0017 [   1] Pop
+                0018 [   1] Constant 2 (0)
+                0020 [   1] Return
             "#]],
         );
     }
@@ -1365,22 +1363,21 @@ mod compiler_tests {
                 0007 [   1] Size
                 0008 [   1] Constant 2 (2)
                 0010 [   1] Eq
-                0011 [   1] JumpIfFalse -> 33
+                0011 [   1] JumpIfFalse -> 32
                 0014 [   1] Dup
                 0015 [   1] Constant 3 (0)
                 0017 [   1] Index
                 0018 [   1] Dup
                 0019 [   1] Constant 4 (1)
                 0021 [   1] Index
-                0022 [   1] Pop
-                0023 [   1] GetLocal 0
-                0025 [   1] GetLocal 1
-                0027 [   1] Add
-                0028 [   1] PopN 2
-                0030 [   1] Jump -> 36
-                0033 [   1] Pop
-                0034 [   1] Constant 5 (0)
-                0036 [   1] Return
+                0022 [   1] GetLocal 0
+                0024 [   1] GetLocal 1
+                0026 [   1] Add
+                0027 [   1] PopN 2
+                0029 [   1] Jump -> 35
+                0032 [   1] Pop
+                0033 [   1] Constant 5 (0)
+                0035 [   1] Return
             "#]],
         );
     }
@@ -2212,7 +2209,6 @@ mod runtime_tests {
     }
 
     #[test]
-    #[ignore = "Compiler bug: match binding pattern pops value before use"]
     fn eval_match_binding() {
         assert_eq!(eval("match 42 { x { x + 1 } }"), Ok(Value::Integer(43)));
     }
@@ -4161,7 +4157,6 @@ mod runtime_tests {
     // §8.9 Tail-Call Optimization Tests (Phase 14)
 
     #[test]
-    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
     fn tco_simple_factorial() {
         // Tail-recursive factorial - should not overflow stack
         let code = r#"{
@@ -4178,7 +4173,6 @@ mod runtime_tests {
     }
 
     #[test]
-    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
     fn tco_deep_recursion() {
         // Test that deep tail recursion doesn't overflow
         // This would overflow without TCO (typically ~1000-10000 calls max)
@@ -4193,7 +4187,6 @@ mod runtime_tests {
     }
 
     #[test]
-    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
     fn tco_sum_tail_recursive() {
         // Tail-recursive sum using accumulator
         let code = r#"{
@@ -4211,7 +4204,6 @@ mod runtime_tests {
     }
 
     #[test]
-    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
     fn tco_not_tail_position() {
         // Non-tail recursive call (operation after the call)
         // This should NOT be optimized and may overflow for large inputs
@@ -4226,7 +4218,6 @@ mod runtime_tests {
     }
 
     #[test]
-    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
     fn tco_tail_call_in_if_branches() {
         // Tail calls in both if branches
         let code = r#"{
@@ -4241,7 +4232,6 @@ mod runtime_tests {
     }
 
     #[test]
-    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
     fn tco_tail_call_in_match() {
         // Tail call in match expression
         let code = r#"{
@@ -4258,7 +4248,6 @@ mod runtime_tests {
     }
 
     #[test]
-    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
     fn tco_mutual_recursion_not_optimized() {
         // Mutual recursion should NOT be optimized (per spec)
         // but should still work for small inputs
@@ -4277,7 +4266,6 @@ mod runtime_tests {
     }
 
     #[test]
-    #[ignore] // Requires Phase 15 (identifier pattern binding) - function can't reference itself yet
     fn tco_fibonacci_accumulator() {
         // Tail-recursive fibonacci with accumulators
         let code = r#"{
@@ -4292,5 +4280,28 @@ mod runtime_tests {
         }"#;
         // 20th fibonacci number
         assert_eq!(eval(code), Ok(Value::Integer(6765)));
+    }
+
+    // §9 Function Parameter Destructuring (Phase 15)
+
+    #[test]
+    fn eval_function_param_destructuring_basic() {
+        // Basic list pattern parameter
+        let code = r#"{ let add = |[a, b]| a + b; add([1, 2]) }"#;
+        assert_eq!(eval(code), Ok(Value::Integer(3)));
+    }
+
+    #[test]
+    fn eval_function_param_destructuring_multiple_params() {
+        // Mix of pattern and regular parameters
+        let code = r#"{ let f = |[x, y], z| x + y + z; f([1, 2], 3) }"#;
+        assert_eq!(eval(code), Ok(Value::Integer(6)));
+    }
+
+    #[test]
+    fn eval_function_param_destructuring_inline() {
+        // Inline lambda with pattern parameter
+        let code = r#"(|[a, b]| a * b)([3, 4])"#;
+        assert_eq!(eval(code), Ok(Value::Integer(12)));
     }
 }

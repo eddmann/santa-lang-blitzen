@@ -201,23 +201,33 @@ impl Parser {
                 Ok(Spanned::new(Expr::Placeholder, span))
             }
 
-            // Prefix operators
+            // Prefix operators (or operator as function reference)
             TokenKind::Minus => {
                 let op_span = self.advance().unwrap().span;
-                let right = self.parse_precedence(Precedence::Prefix)?;
-                let span = Span {
-                    start: op_span.start,
-                    end: right.span.end,
-                    line: op_span.line,
-                    column: op_span.column,
-                };
-                Ok(Spanned::new(
-                    Expr::Prefix {
-                        op: PrefixOp::Neg,
-                        right: Box::new(right),
-                    },
-                    span,
-                ))
+                // Check if this is an operator reference (followed by , or ) or ])
+                if matches!(
+                    self.peek().map(|t| &t.kind),
+                    Some(TokenKind::Comma | TokenKind::RightParen | TokenKind::RightBracket)
+                ) {
+                    // Operator as function reference
+                    Ok(Spanned::new(Expr::Identifier("-".to_string()), op_span))
+                } else {
+                    // Prefix negation
+                    let right = self.parse_precedence(Precedence::Prefix)?;
+                    let span = Span {
+                        start: op_span.start,
+                        end: right.span.end,
+                        line: op_span.line,
+                        column: op_span.column,
+                    };
+                    Ok(Spanned::new(
+                        Expr::Prefix {
+                            op: PrefixOp::Neg,
+                            right: Box::new(right),
+                        },
+                        span,
+                    ))
+                }
             }
             TokenKind::Bang => {
                 let op_span = self.advance().unwrap().span;
@@ -235,6 +245,24 @@ impl Parser {
                     },
                     span,
                 ))
+            }
+
+            // Binary operators as function references
+            TokenKind::Plus => {
+                let span = self.advance().unwrap().span;
+                Ok(Spanned::new(Expr::Identifier("+".to_string()), span))
+            }
+            TokenKind::Star => {
+                let span = self.advance().unwrap().span;
+                Ok(Spanned::new(Expr::Identifier("*".to_string()), span))
+            }
+            TokenKind::Slash => {
+                let span = self.advance().unwrap().span;
+                Ok(Spanned::new(Expr::Identifier("/".to_string()), span))
+            }
+            TokenKind::Percent => {
+                let span = self.advance().unwrap().span;
+                Ok(Spanned::new(Expr::Identifier("%".to_string()), span))
             }
 
             // Grouped expression
@@ -853,6 +881,16 @@ impl Parser {
                                 rest_name_token.span,
                             ));
                         }
+                    }
+                }
+                TokenKind::LeftBracket => {
+                    // List pattern parameter: |[a, b]| ...
+                    self.position -= 1; // Put the [ back for parse_pattern
+                    let pattern = self.parse_pattern()?;
+                    // The span is just the pattern token span for now
+                    Param {
+                        name: ParamKind::Pattern(pattern),
+                        span: param_token.span,
                     }
                 }
                 _ => {

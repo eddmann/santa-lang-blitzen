@@ -81,6 +81,7 @@ fn format_expr_node(expr: &Expr) -> String {
                     ParamKind::Identifier(n) => n.clone(),
                     ParamKind::Placeholder => "_".to_string(),
                     ParamKind::Rest(n) => format!("..{n}"),
+                    ParamKind::Pattern(pat) => format!("{:?}", pat),
                 })
                 .collect();
             format!("|{}| {}", ps.join(", "), format_expr(body))

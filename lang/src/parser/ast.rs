@@ -171,6 +171,7 @@ pub enum ParamKind {
     Identifier(String),
     Placeholder,
     Rest(String),
+    Pattern(Pattern),
 }
 
 #[derive(Debug, Clone, PartialEq)]

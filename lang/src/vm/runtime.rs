@@ -106,12 +106,22 @@ pub struct VM {
 impl VM {
     /// Create a new VM
     pub fn new() -> Self {
-        Self {
+        let mut vm = Self {
             stack: Vec::with_capacity(256),
             frames: Vec::with_capacity(64),
             globals: StdHashMap::new(),
             open_upvalues: Vec::new(),
-        }
+        };
+        vm.register_operator_functions();
+        vm
+    }
+
+    /// Register operator functions as globals
+    fn register_operator_functions(&mut self) {
+        // Note: Operators as function values are registered here
+        // They are accessed via GetGlobal when used as `reduce(+, list)`
+        // The actual implementation is TODO - for now they won't work
+        // This is a placeholder for Phase 15 completion
     }
 
     /// Run a compiled function

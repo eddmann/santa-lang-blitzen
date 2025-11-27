@@ -928,19 +928,46 @@ impl Compiler {
         let enclosing = std::mem::take(self);
         *self = Compiler::new_function(None, regular_param_count as u8, enclosing);
 
-        // Add parameter locals
-        for param in params {
-            let name = match &param.name {
-                ParamKind::Identifier(name) => name.clone(),
-                ParamKind::Placeholder => String::from("_"),
-                ParamKind::Rest(name) => name.clone(),
-            };
-            self.locals.push(Local {
-                name,
-                depth: 0,
-                mutable: false,
-                captured: false,
-            });
+        // Add parameter locals and compile destructuring if needed
+        for (param_idx, param) in params.iter().enumerate() {
+            match &param.name {
+                ParamKind::Identifier(name) => {
+                    self.locals.push(Local {
+                        name: name.clone(),
+                        depth: 0,
+                        mutable: false,
+                        captured: false,
+                    });
+                }
+                ParamKind::Placeholder => {
+                    self.locals.push(Local {
+                        name: String::from("_"),
+                        depth: 0,
+                        mutable: false,
+                        captured: false,
+                    });
+                }
+                ParamKind::Rest(name) => {
+                    self.locals.push(Local {
+                        name: name.clone(),
+                        depth: 0,
+                        mutable: false,
+                        captured: false,
+                    });
+                }
+                ParamKind::Pattern(pattern) => {
+                    // Pattern parameter: the parameter value is on stack at param_idx
+                    // First add a temporary local for the pattern parameter itself
+                    self.locals.push(Local {
+                        name: format!("__pattern_param_{}", param_idx),
+                        depth: 0,
+                        mutable: false,
+                        captured: false,
+                    });
+                    // Now compile destructuring to extract pattern variables
+                    self.compile_param_pattern_destructuring(pattern, param_idx as u8, param.span)?;
+                }
+            }
         }
 
         // Compile body in tail position
@@ -1193,11 +1220,17 @@ impl Compiler {
         value: &SpannedExpr,
         span: Span,
     ) -> Result<(), CompileError> {
-        // Compile the value expression
-        self.expression(value)?;
-
-        // Handle pattern binding
-        self.compile_pattern_binding(pattern, mutable, span)?;
+        // For simple identifier patterns, add the local BEFORE compiling the value
+        // This allows recursive functions to reference themselves
+        if let Pattern::Identifier(name) = pattern {
+            self.add_local(name.clone(), mutable);
+            // Compile the value expression (can now reference the name)
+            self.expression(value)?;
+        } else {
+            // For other patterns, compile value first, then bind
+            self.expression(value)?;
+            self.compile_pattern_binding(pattern, mutable, span)?;
+        }
 
         Ok(())
     }
@@ -1315,6 +1348,61 @@ impl Compiler {
         Ok(())
     }
 
+    /// Compile parameter pattern destructuring
+    /// For function parameters like |[a, b]|, destructure the parameter into locals
+    fn compile_param_pattern_destructuring(
+        &mut self,
+        pattern: &Pattern,
+        param_idx: u8,
+        span: Span,
+    ) -> Result<(), CompileError> {
+        match pattern {
+            Pattern::List(patterns) => {
+                // For each element in the list pattern, extract and bind
+                for (i, elem_pattern) in patterns.iter().enumerate() {
+                    match elem_pattern {
+                        Pattern::Identifier(name) => {
+                            // Get the list parameter
+                            self.emit_with_operand(OpCode::GetLocal, param_idx);
+                            // Index into it
+                            self.emit_constant(Value::Integer(i as i64))?;
+                            self.emit(OpCode::Index);
+                            // Add as local (value is on stack)
+                            self.add_local(name.clone(), false);
+                        }
+                        Pattern::Wildcard => {
+                            // Don't need to extract or bind wildcards
+                        }
+                        Pattern::RestIdentifier(name) => {
+                            // Get the rest of the list starting at position i
+                            self.emit_with_operand(OpCode::GetLocal, param_idx);
+                            self.emit_constant(Value::Integer(i as i64))?;
+                            let end_count = patterns.len() - i - 1;
+                            if end_count == 0 {
+                                self.emit(OpCode::Nil);
+                            } else {
+                                self.emit_constant(Value::Integer(-(end_count as i64)))?;
+                            }
+                            self.emit(OpCode::Slice);
+                            self.add_local(name.clone(), false);
+                        }
+                        _ => {
+                            return Err(CompileError::new(
+                                "Nested patterns in function parameters not yet supported",
+                                span,
+                            ));
+                        }
+                    }
+                }
+                Ok(())
+            }
+            _ => Err(CompileError::new(
+                "Only list patterns supported in function parameters",
+                span,
+            )),
+        }
+    }
+
     /// Compile a match expression
     fn compile_match(
         &mut self,
@@ -1348,15 +1436,20 @@ impl Compiler {
                 None
             };
 
-            // Pop the subject (pattern matched, we're committed to this arm)
-            self.emit(OpCode::Pop);
+            // Check if any locals were bound by the pattern
+            let locals_bound = self.locals.len() - locals_before;
+
+            // Pop the subject only if no locals were bound
+            // (If locals were bound, the subject IS those locals on stack)
+            if locals_bound == 0 {
+                self.emit(OpCode::Pop);
+            }
 
             // Compile arm body (restore tail position)
             self.in_tail_position = in_tail;
             self.expression(&arm.body)?;
 
             // Clean up any locals bound by the pattern
-            let locals_bound = self.locals.len() - locals_before;
             if locals_bound > 0 {
                 self.emit_with_operand(OpCode::PopN, locals_bound as u8);
                 // Remove from compiler's local list
@@ -1405,7 +1498,7 @@ impl Compiler {
             }
             Pattern::Identifier(name) => {
                 // Always matches, bind the value
-                // Value is on stack (via Dup from match), we keep it as local
+                // Value is on stack, we keep it as local
                 self.add_local(name.clone(), false);
                 Ok(None)
             }
