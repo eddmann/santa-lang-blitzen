@@ -9,6 +9,11 @@ rustyline = "14.0"
 ureq = { version = "2.10", features = ["json"] }
 dirs = "5.0"
 
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+tempfile = "3.14"
+
 [[bin]]
 name = "santa-cli"
 path = "src/main.rs"
