@@ -1023,6 +1023,11 @@ impl Compiler {
         }
     }
 
+    /// Check if an expression is directly a placeholder (not nested inside another expr)
+    fn is_direct_placeholder(expr: &SpannedExpr) -> bool {
+        matches!(&expr.node, Expr::Placeholder)
+    }
+
     /// Compile partial application from an expression with placeholders
     fn compile_partial_application(&mut self, expr: &SpannedExpr) -> Result<(), CompileError> {
         let placeholder_count = Self::count_placeholders(expr);
@@ -1244,6 +1249,49 @@ impl Compiler {
                 }
                 self.emit_with_operand(OpCode::MakeList, elements.len() as u8);
             }
+            Expr::Set(elements) => {
+                // Handle set literals with placeholders
+                for elem in elements {
+                    self.compile_with_placeholders(elem, placeholder_idx)?;
+                }
+                if elements.len() > 255 {
+                    return Err(CompileError::new(
+                        "Set literal too large (max 255 elements)",
+                        expr.span,
+                    ));
+                }
+                self.emit_with_operand(OpCode::MakeSet, elements.len() as u8);
+            }
+            Expr::Dict(entries) => {
+                // Handle dict literals with placeholders
+                for (key, value) in entries {
+                    self.compile_with_placeholders(key, placeholder_idx)?;
+                    self.compile_with_placeholders(value, placeholder_idx)?;
+                }
+                if entries.len() > 255 {
+                    return Err(CompileError::new(
+                        "Dict literal too large (max 255 entries)",
+                        expr.span,
+                    ));
+                }
+                self.emit_with_operand(OpCode::MakeDict, entries.len() as u8);
+            }
+            Expr::Range { start, end, inclusive } => {
+                // Handle range literals with placeholders
+                self.compile_with_placeholders(start, placeholder_idx)?;
+                if let Some(end_expr) = end {
+                    self.compile_with_placeholders(end_expr, placeholder_idx)?;
+                } else {
+                    self.emit(OpCode::Nil);
+                }
+                // Push inclusive flag as boolean
+                if *inclusive {
+                    self.emit(OpCode::True);
+                } else {
+                    self.emit(OpCode::False);
+                }
+                self.emit(OpCode::MakeRange);
+            }
             Expr::InfixCall {
                 function,
                 left,
@@ -1376,8 +1424,10 @@ impl Compiler {
             return Err(CompileError::new("Too many arguments (max 255)", span));
         }
 
-        // Check for placeholders in arguments - if any, generate partial application
-        if args.iter().any(Self::contains_placeholder) {
+        // Check for direct placeholders in arguments - if any, generate partial application
+        // Note: we only create a partial call if an argument IS a placeholder directly,
+        // not if it contains one. Expressions like `_ + 1` are compiled as lambdas.
+        if args.iter().any(Self::is_direct_placeholder) {
             return self.compile_partial_call(function, args, span);
         }
 

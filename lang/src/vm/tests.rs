@@ -2159,8 +2159,10 @@ mod runtime_tests {
 
     #[test]
     fn eval_function_wrong_arity() {
+        // Too many arguments is still an error
         assert!(eval("(|x| x)(1, 2)").is_err());
-        assert!(eval("(|x, y| x + y)(1)").is_err());
+        // Too few arguments now returns a partial application (auto-currying)
+        // So this is no longer an error - test moved to auto-currying tests
     }
 
     // ============================================================
@@ -4527,9 +4529,10 @@ mod runtime_tests {
 
     #[test]
     fn error_wrong_function_arity() {
-        // Calling function with wrong number of arguments
-        assert!(eval("{ let f = |x, y| x + y; f(1) }").is_err());
+        // Calling function with too many arguments is an error
         assert!(eval("{ let f = |x| x * 2; f(1, 2) }").is_err());
+        // Calling with too few now returns a partial application (auto-currying)
+        // so f(1) is not an error
     }
 
     #[test]

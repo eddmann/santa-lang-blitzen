@@ -97,8 +97,9 @@ pub enum LazySeq {
     /// cycle(collection) - cycle through collection
     Cycle { source: Vector<Value>, index: usize },
     /// iterate(fn, initial) - apply fn repeatedly
+    /// generator is stored as Value to support both Function and PartialApplication
     Iterate {
-        generator: Rc<Closure>,
+        generator: Value,
         current: Value,
     },
     /// map over lazy sequence

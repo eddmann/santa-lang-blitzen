@@ -1572,7 +1572,7 @@ impl VM {
             }
             LazySeq::Iterate { generator, current } => {
                 let result = current.clone();
-                let next = self.call_closure_sync(generator, vec![current.clone()])?;
+                let next = self.call_callable_sync(generator, vec![current.clone()])?;
                 *current = next;
                 Ok(Some(result))
             }
@@ -1848,20 +1848,19 @@ impl VM {
         let predicate = &args[0];
         let collection = &args[1];
 
-        let closure = match predicate {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "filter expects Function as first argument, got {}",
-                        predicate.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        // Validate predicate is callable
+        if !matches!(predicate, Value::Function(_) | Value::PartialApplication { .. }) {
+            return Err(RuntimeError::new(
+                format!(
+                    "filter expects Function as first argument, got {}",
+                    predicate.type_name()
+                ),
+                line,
+            ));
+        }
 
-        let arity = self.closure_arity(&closure);
+        let arity = self.callable_arity(predicate);
+        let predicate = predicate.clone();
 
         match collection {
             Value::List(list) => {
@@ -1872,7 +1871,7 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    let keep = self.call_closure_sync(&closure, call_args)?;
+                    let keep = self.call_callable_sync(&predicate, call_args)?;
                     if keep.is_truthy() {
                         result.push_back(elem.clone());
                     }
@@ -1882,7 +1881,7 @@ impl VM {
             Value::Set(set) => {
                 let mut result = HashSet::new();
                 for elem in set.iter() {
-                    let keep = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    let keep = self.call_callable_sync(&predicate, vec![elem.clone()])?;
                     if keep.is_truthy() {
                         result.insert(elem.clone());
                     }
@@ -1897,7 +1896,7 @@ impl VM {
                     } else {
                         vec![value.clone()]
                     };
-                    let keep = self.call_closure_sync(&closure, call_args)?;
+                    let keep = self.call_callable_sync(&predicate, call_args)?;
                     if keep.is_truthy() {
                         result.insert(key.clone(), value.clone());
                     }
@@ -1914,7 +1913,7 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    let keep = self.call_closure_sync(&closure, call_args)?;
+                    let keep = self.call_callable_sync(&predicate, call_args)?;
                     if keep.is_truthy() {
                         result.push_back(elem);
                     }
@@ -1926,6 +1925,36 @@ impl VM {
                 end,
                 inclusive,
             } => {
+                // For lazy sequences, need a raw closure
+                let closure = match &predicate {
+                    Value::Function(c) => c.clone(),
+                    Value::PartialApplication { .. } => {
+                        // For ranges with partial application, eagerly evaluate
+                        let mut result = Vector::new();
+                        match end {
+                            Some(e) => {
+                                let actual_end = if *inclusive { *e } else { e - 1 };
+                                if start <= &actual_end {
+                                    for i in *start..=actual_end {
+                                        let keep = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
+                                        if keep.is_truthy() {
+                                            result.push_back(Value::Integer(i));
+                                        }
+                                    }
+                                }
+                            }
+                            None => {
+                                return Err(RuntimeError::new(
+                                    "Cannot lazily filter unbounded range with partial application".to_string(),
+                                    line,
+                                ));
+                            }
+                        }
+                        return Ok(Value::List(result));
+                    }
+                    _ => unreachable!(),
+                };
+
                 // Range filters to LazySequence
                 match end {
                     Some(_) => {
@@ -1957,6 +1986,16 @@ impl VM {
                 }
             }
             Value::LazySequence(lazy_seq) => {
+                let closure = match &predicate {
+                    Value::Function(c) => c.clone(),
+                    Value::PartialApplication { .. } => {
+                        return Err(RuntimeError::new(
+                            "Cannot lazily filter lazy sequence with partial application".to_string(),
+                            line,
+                        ));
+                    }
+                    _ => unreachable!(),
+                };
                 // Wrap in LazySeq::Filter for lazy composition
                 Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Filter {
                     source: lazy_seq.clone(),
@@ -2487,20 +2526,19 @@ impl VM {
         let folder = &args[1];
         let collection = &args[2];
 
-        let closure = match folder {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "fold expects Function as second argument, got {}",
-                        folder.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        // Validate folder is callable
+        if !matches!(folder, Value::Function(_) | Value::PartialApplication { .. }) {
+            return Err(RuntimeError::new(
+                format!(
+                    "fold expects Function as second argument, got {}",
+                    folder.type_name()
+                ),
+                line,
+            ));
+        }
 
-        let arity = self.closure_arity(&closure);
+        let arity = self.callable_arity(folder);
+        let folder = folder.clone();
         let mut acc = initial.clone();
 
         match collection {
@@ -2511,13 +2549,13 @@ impl VM {
                     } else {
                         vec![acc, elem.clone()]
                     };
-                    acc = self.call_closure_sync(&closure, call_args)?;
+                    acc = self.call_callable_sync(&folder, call_args)?;
                 }
                 Ok(acc)
             }
             Value::Set(set) => {
                 for elem in set.iter() {
-                    acc = self.call_closure_sync(&closure, vec![acc, elem.clone()])?;
+                    acc = self.call_callable_sync(&folder, vec![acc, elem.clone()])?;
                 }
                 Ok(acc)
             }
@@ -2528,7 +2566,7 @@ impl VM {
                     } else {
                         vec![acc, value.clone()]
                     };
-                    acc = self.call_closure_sync(&closure, call_args)?;
+                    acc = self.call_callable_sync(&folder, call_args)?;
                 }
                 Ok(acc)
             }
@@ -2540,7 +2578,7 @@ impl VM {
                     } else {
                         vec![acc, elem]
                     };
-                    acc = self.call_closure_sync(&closure, call_args)?;
+                    acc = self.call_callable_sync(&folder, call_args)?;
                 }
                 Ok(acc)
             }
@@ -2554,7 +2592,7 @@ impl VM {
                         let actual_end = if *inclusive { *e } else { e - 1 };
                         if start <= &actual_end {
                             for i in *start..=actual_end {
-                                match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)]) {
+                                match self.call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)]) {
                                     Ok(v) => acc = v,
                                     Err(e) if e.is_break => {
                                         return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -2566,7 +2604,7 @@ impl VM {
                             // Descending range
                             let mut i = *start;
                             while i >= actual_end {
-                                match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)]) {
+                                match self.call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)]) {
                                     Ok(v) => acc = v,
                                     Err(e) if e.is_break => {
                                         return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -2582,7 +2620,7 @@ impl VM {
                         // Unbounded range - must use break to terminate
                         let mut i = *start;
                         loop {
-                            match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)]) {
+                            match self.call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)]) {
                                 Ok(v) => acc = v,
                                 Err(e) if e.is_break => {
                                     return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -2597,7 +2635,7 @@ impl VM {
             Value::LazySequence(seq) => {
                 let mut seq_clone = seq.borrow().clone();
                 while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
-                    match self.call_closure_sync(&closure, vec![acc.clone(), elem]) {
+                    match self.call_callable_sync(&folder, vec![acc.clone(), elem]) {
                         Ok(v) => acc = v,
                         Err(e) if e.is_break => {
                             return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -3237,18 +3275,17 @@ impl VM {
         let comparator = &args[0];
         let collection = &args[1];
 
-        let closure = match comparator {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "sort expects Function as first argument, got {}",
-                        comparator.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        // Validate comparator is callable
+        if !matches!(comparator, Value::Function(_) | Value::PartialApplication { .. }) {
+            return Err(RuntimeError::new(
+                format!(
+                    "sort expects Function as first argument, got {}",
+                    comparator.type_name()
+                ),
+                line,
+            ));
+        }
+        let comparator = comparator.clone();
 
         // Collect elements to sort
         let mut elements: Vec<Value> = match collection {
@@ -3288,8 +3325,8 @@ impl VM {
             let key = elements[i].clone();
             let mut j = i;
             while j > 0 {
-                let cmp_result = self.call_closure_sync(
-                    &closure,
+                let cmp_result = self.call_callable_sync(
+                    &comparator,
                     vec![elements[j - 1].clone(), key.clone()],
                 )?;
                 let should_swap = match cmp_result {
@@ -3533,22 +3570,20 @@ impl VM {
         let generator = &args[0];
         let initial = &args[1];
 
-        let closure = match generator {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "iterate expects Function as first argument, got {}",
-                        generator.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        // Validate generator is callable
+        if !matches!(generator, Value::Function(_) | Value::PartialApplication { .. }) {
+            return Err(RuntimeError::new(
+                format!(
+                    "iterate expects Function as first argument, got {}",
+                    generator.type_name()
+                ),
+                line,
+            ));
+        }
 
         Ok(Value::LazySequence(Rc::new(RefCell::new(
             LazySeq::Iterate {
-                generator: closure,
+                generator: generator.clone(),
                 current: initial.clone(),
             },
         ))))
