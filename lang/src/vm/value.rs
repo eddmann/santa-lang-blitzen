@@ -52,6 +52,13 @@ pub enum Value {
     /// but needed for CLI runtime (Phase 18)
     ExternalFunction(String),
 
+    /// Partially applied function - stores original closure and captured arguments
+    /// Used for auto-currying when a function is called with fewer args than its arity
+    PartialApplication {
+        closure: Rc<Closure>,
+        args: Vec<Value>,
+    },
+
     // TODO: Add MemoizedFunction variant for memoize builtin (Phase 14+)
     // See PLAN.md "Future Work: memoize Implementation" for details
     // Will require:
@@ -140,10 +147,11 @@ impl Value {
             Value::List(v) => !v.is_empty(),
             Value::Set(s) => !s.is_empty(),
             Value::Dict(d) => !d.is_empty(),
-            // Functions, LazySequences, and ExternalFunctions are always truthy
+            // Functions, LazySequences, ExternalFunctions, and PartialApplications are always truthy
             Value::Function(_) => true,
             Value::LazySequence(_) => true,
             Value::ExternalFunction(_) => true,
+            Value::PartialApplication { .. } => true,
             Value::Range { .. } => true,
         }
     }
@@ -163,6 +171,7 @@ impl Value {
             Value::LazySequence(_) => "LazySequence",
             Value::Range { .. } => "Range",
             Value::ExternalFunction(_) => "ExternalFunction",
+            Value::PartialApplication { .. } => "Function",
         }
     }
 
@@ -173,8 +182,9 @@ impl Value {
             Value::String(_) => true,
             Value::List(elements) => elements.iter().all(|e| e.is_hashable()),
             Value::Set(_) => true,
-            // Dict, LazySequence, Function, ExternalFunction are NOT hashable
-            Value::Dict(_) | Value::LazySequence(_) | Value::Function(_) | Value::ExternalFunction(_) => false,
+            // Dict, LazySequence, Function, ExternalFunction, PartialApplication are NOT hashable
+            Value::Dict(_) | Value::LazySequence(_) | Value::Function(_)
+            | Value::ExternalFunction(_) | Value::PartialApplication { .. } => false,
             // Ranges are hashable (they're just data)
             Value::Range { .. } => true,
         }
@@ -212,6 +222,11 @@ impl PartialEq for Value {
             (Value::LazySequence(a), Value::LazySequence(b)) => Rc::ptr_eq(a, b),
             // External functions compare by name
             (Value::ExternalFunction(a), Value::ExternalFunction(b)) => a == b,
+            // Partial applications compare by closure identity and args equality
+            (
+                Value::PartialApplication { closure: c1, args: a1 },
+                Value::PartialApplication { closure: c2, args: a2 },
+            ) => Rc::ptr_eq(c1, c2) && a1 == a2,
             // Different types are never equal
             _ => false,
         }
@@ -270,6 +285,12 @@ impl Hash for Value {
             Value::ExternalFunction(name) => {
                 name.hash(state);
             }
+            Value::PartialApplication { closure, args } => {
+                std::ptr::hash(Rc::as_ptr(closure), state);
+                for arg in args {
+                    arg.hash(state);
+                }
+            }
         }
     }
 }
@@ -322,6 +343,7 @@ impl fmt::Display for Value {
             Value::Function(_) => write!(f, "<function>"),
             Value::LazySequence(_) => write!(f, "<lazy-sequence>"),
             Value::ExternalFunction(name) => write!(f, "<external-function:{}>", name),
+            Value::PartialApplication { .. } => write!(f, "<function>"),
             Value::Range {
                 start,
                 end,

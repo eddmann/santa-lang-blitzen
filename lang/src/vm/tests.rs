@@ -4800,4 +4800,42 @@ mod runtime_tests {
             Ok(Value::Integer(15))  // 1+2+3+4+5
         );
     }
+
+    // ===== Auto-Currying User Functions Tests =====
+
+    #[test]
+    fn user_function_auto_curry_one_arg() {
+        // User-defined function called with fewer args creates partial application
+        assert_eq!(
+            eval(r#"{ let add = |a, b| a + b; let inc = add(1); inc(5) }"#),
+            Ok(Value::Integer(6))
+        );
+    }
+
+    #[test]
+    fn user_function_auto_curry_in_map() {
+        // Partial application used in map
+        assert_eq!(
+            eval(r#"{ let mult = |a, b| a * b; [1, 2, 3] |> map(mult(2)) }"#),
+            Ok(Value::List(vec![Value::Integer(2), Value::Integer(4), Value::Integer(6)].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn user_function_chained_curry() {
+        // Multiple levels of currying
+        assert_eq!(
+            eval(r#"{ let add3 = |a, b, c| a + b + c; let add2 = add3(1); let add1 = add2(2); add1(3) }"#),
+            Ok(Value::Integer(6))
+        );
+    }
+
+    #[test]
+    fn partial_application_preserves_order() {
+        // First args applied first, then remaining args
+        assert_eq!(
+            eval(r#"{ let sub = |a, b| a - b; let subFrom10 = sub(10); subFrom10(3) }"#),
+            Ok(Value::Integer(7))  // 10 - 3 = 7
+        );
+    }
 }

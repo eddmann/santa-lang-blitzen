@@ -1199,6 +1199,10 @@ impl VM {
             Value::Function(closure) => {
                 self.call_closure(closure, argc)?;
             }
+            Value::PartialApplication { closure, args: partial_args } => {
+                // Calling a partial application: combine partial args with new args
+                self.call_partial_application(closure, partial_args, argc)?;
+            }
             Value::ExternalFunction(name) => {
                 // Collect arguments from stack
                 let mut args = Vec::with_capacity(argc);
@@ -1231,7 +1235,27 @@ impl VM {
     fn call_closure(&mut self, closure: Rc<Closure>, argc: usize) -> Result<(), RuntimeError> {
         let arity = closure.function.arity as usize;
 
-        if argc != arity {
+        if argc < arity {
+            // Auto-currying: create a partial application
+            let mut partial_args = Vec::with_capacity(argc);
+            for i in 0..argc {
+                partial_args.push(self.peek(argc - 1 - i).clone());
+            }
+
+            // Pop arguments and function from stack
+            for _ in 0..=argc {
+                self.pop();
+            }
+
+            // Push the partial application
+            self.push(Value::PartialApplication {
+                closure,
+                args: partial_args,
+            });
+            return Ok(());
+        }
+
+        if argc > arity {
             return Err(self.error(format!("Expected {} arguments but got {}", arity, argc)));
         }
 
@@ -1247,6 +1271,58 @@ impl VM {
 
         self.frames
             .push(CallFrame::new(closure, self.stack.len() - argc));
+        Ok(())
+    }
+
+    fn call_partial_application(
+        &mut self,
+        closure: Rc<Closure>,
+        partial_args: Vec<Value>,
+        new_argc: usize,
+    ) -> Result<(), RuntimeError> {
+        let arity = closure.function.arity as usize;
+        let total_args = partial_args.len() + new_argc;
+
+        if total_args < arity {
+            // Still need more args - create new partial application
+            let mut all_args = partial_args;
+            for i in 0..new_argc {
+                all_args.push(self.peek(new_argc - 1 - i).clone());
+            }
+
+            // Pop new arguments and callee from stack
+            for _ in 0..=new_argc {
+                self.pop();
+            }
+
+            self.push(Value::PartialApplication {
+                closure,
+                args: all_args,
+            });
+            return Ok(());
+        }
+
+        if total_args > arity {
+            return Err(self.error(format!("Expected {} arguments but got {}", arity, total_args)));
+        }
+
+        if self.frames.len() >= 64 {
+            return Err(self.error("Stack overflow"));
+        }
+
+        // Remove the partial application from stack
+        let stack_base = self.stack.len() - new_argc - 1;
+        self.stack.remove(stack_base);
+
+        // Push partial args first (they come before the new args)
+        // We need to insert them at the right position
+        let insert_pos = self.stack.len() - new_argc;
+        for (i, arg) in partial_args.into_iter().enumerate() {
+            self.stack.insert(insert_pos + i, arg);
+        }
+
+        self.frames
+            .push(CallFrame::new(closure, self.stack.len() - arity));
         Ok(())
     }
 
@@ -1398,6 +1474,35 @@ impl VM {
     /// Get the arity of a closure
     fn closure_arity(&self, closure: &Rc<Closure>) -> usize {
         closure.function.arity as usize
+    }
+
+    /// Get the effective arity of a callable (function or partial application)
+    fn callable_arity(&self, callable: &Value) -> usize {
+        match callable {
+            Value::Function(c) => c.function.arity as usize,
+            Value::PartialApplication { closure, args } => {
+                (closure.function.arity as usize).saturating_sub(args.len())
+            }
+            _ => 0,
+        }
+    }
+
+    /// Call any callable value (Function or PartialApplication) with arguments
+    fn call_callable_sync(
+        &mut self,
+        callable: &Value,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        match callable {
+            Value::Function(closure) => self.call_closure_sync(closure, args),
+            Value::PartialApplication { closure, args: partial_args } => {
+                // Combine partial args with new args
+                let mut all_args = partial_args.clone();
+                all_args.extend(args);
+                self.call_closure_sync(closure, all_args)
+            }
+            _ => Err(self.error(format!("Cannot call {}", callable.type_name()))),
+        }
     }
 
     /// Get the next element from a lazy sequence, handling callbacks
@@ -1560,20 +1665,21 @@ impl VM {
         let mapper = &args[0];
         let collection = &args[1];
 
-        let closure = match mapper {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "map expects Function as first argument, got {}",
-                        mapper.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        // Validate mapper is callable
+        if !matches!(mapper, Value::Function(_) | Value::PartialApplication { .. }) {
+            return Err(RuntimeError::new(
+                format!(
+                    "map expects Function as first argument, got {}",
+                    mapper.type_name()
+                ),
+                line,
+            ));
+        }
 
-        let arity = self.closure_arity(&closure);
+        let arity = self.callable_arity(mapper);
+
+        // Clone mapper for use in closures
+        let mapper = mapper.clone();
 
         match collection {
             Value::List(list) => {
@@ -1584,7 +1690,7 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    let mapped = self.call_callable_sync(&mapper, call_args)?;
                     result.push_back(mapped);
                 }
                 Ok(Value::List(result))
@@ -1592,7 +1698,7 @@ impl VM {
             Value::Set(set) => {
                 let mut result = HashSet::new();
                 for elem in set.iter() {
-                    let mapped = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    let mapped = self.call_callable_sync(&mapper, vec![elem.clone()])?;
                     if !mapped.is_hashable() {
                         return Err(RuntimeError::new(
                             format!("Cannot add {} to set (not hashable)", mapped.type_name()),
@@ -1611,7 +1717,7 @@ impl VM {
                     } else {
                         vec![value.clone()]
                     };
-                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    let mapped = self.call_callable_sync(&mapper, call_args)?;
                     result.insert(key.clone(), mapped);
                 }
                 Ok(Value::Dict(result))
@@ -1626,7 +1732,7 @@ impl VM {
                     } else {
                         vec![elem]
                     };
-                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    let mapped = self.call_callable_sync(&mapper, call_args)?;
                     result.push_back(mapped);
                 }
                 Ok(Value::List(result))
@@ -1636,7 +1742,38 @@ impl VM {
                 end,
                 inclusive,
             } => {
-                // Range maps to LazySequence (for now, materialize to list for bounded)
+                // For ranges with partial application, eagerly evaluate
+                if let Value::PartialApplication { closure, args } = &mapper {
+                    let mut result = Vector::new();
+                    match end {
+                        Some(e) => {
+                            let actual_end = if *inclusive { *e } else { e - 1 };
+                            let mut all_args = args.clone();
+                            if start <= &actual_end {
+                                for i in *start..=actual_end {
+                                    all_args.push(Value::Integer(i));
+                                    let mapped = self.call_closure_sync(closure, all_args.clone())?;
+                                    result.push_back(mapped);
+                                    all_args.pop();
+                                }
+                            }
+                        }
+                        None => {
+                            return Err(RuntimeError::new(
+                                "Cannot lazily map over unbounded range with partial application".to_string(),
+                                line,
+                            ));
+                        }
+                    }
+                    return Ok(Value::List(result));
+                }
+
+                // Regular function - can use lazy evaluation
+                let closure = match &mapper {
+                    Value::Function(c) => c.clone(),
+                    _ => unreachable!(),
+                };
+
                 match end {
                     Some(e) => {
                         let mut result = Vector::new();
@@ -1682,6 +1819,17 @@ impl VM {
                 }
             }
             Value::LazySequence(lazy_seq) => {
+                // For lazy sequences with partial application, error for now
+                if let Value::PartialApplication { .. } = &mapper {
+                    return Err(RuntimeError::new(
+                        "Cannot lazily map over lazy sequence with partial application".to_string(),
+                        line,
+                    ));
+                }
+                let closure = match &mapper {
+                    Value::Function(c) => c.clone(),
+                    _ => unreachable!(),
+                };
                 // Wrap in LazySeq::Map for lazy composition
                 Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Map {
                     source: lazy_seq.clone(),
