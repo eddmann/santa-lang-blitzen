@@ -4733,4 +4733,42 @@ mod runtime_tests {
             Ok(Value::String(Rc::new(String::new())))
         );
     }
+
+    // ===== Nested Pattern Destructuring Tests =====
+
+    #[test]
+    fn nested_pattern_in_lambda_params() {
+        // Nested list pattern like |[[x1, y1], [x2, y2]]|
+        assert_eq!(
+            eval(r#"{ let f = |[[x1, y1], [x2, y2]]| x1 + x2 + y1 + y2; f([[1, 2], [3, 4]]) }"#),
+            Ok(Value::Integer(10))
+        );
+    }
+
+    #[test]
+    fn nested_pattern_in_map() {
+        // Nested patterns with map
+        assert_eq!(
+            eval(r#"[[[1, 2], [3, 4]], [[5, 6], [7, 8]]] |> map(|[[a, b], [c, d]]| a + b + c + d)"#),
+            Ok(Value::List(vec![Value::Integer(10), Value::Integer(26)].into_iter().collect()))
+        );
+    }
+
+    #[test]
+    fn nested_pattern_three_levels() {
+        // Three levels of nesting
+        assert_eq!(
+            eval(r#"{ let f = |[[[a]]]| a; f([[[42]]]) }"#),
+            Ok(Value::Integer(42))
+        );
+    }
+
+    #[test]
+    fn nested_pattern_mixed_with_identifier() {
+        // Mix of nested patterns and identifiers
+        assert_eq!(
+            eval(r#"{ let f = |[a, [b, c]]| a + b + c; f([1, [2, 3]]) }"#),
+            Ok(Value::Integer(6))
+        );
+    }
 }

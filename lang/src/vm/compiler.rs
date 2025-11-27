@@ -2100,7 +2100,7 @@ impl Compiler {
     }
 
     /// Compile parameter pattern destructuring
-    /// For function parameters like |[a, b]|, destructure the parameter into locals
+    /// For function parameters like |[a, b]| or |[[x1, y1], [x2, y2]]|, destructure into locals
     fn compile_param_pattern_destructuring(
         &mut self,
         pattern: &Pattern,
@@ -2109,49 +2109,88 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         match pattern {
             Pattern::List(patterns) => {
-                // For each element in the list pattern, extract and bind
-                for (i, elem_pattern) in patterns.iter().enumerate() {
-                    match elem_pattern {
-                        Pattern::Identifier(name) => {
-                            // Get the list parameter
-                            self.emit_with_operand(OpCode::GetLocal, param_idx);
-                            // Index into it
-                            self.emit_constant(Value::Integer(i as i64))?;
-                            self.emit(OpCode::Index);
-                            // Add as local (value is on stack)
-                            self.add_local(name.clone(), false);
-                        }
-                        Pattern::Wildcard => {
-                            // Don't need to extract or bind wildcards
-                        }
-                        Pattern::RestIdentifier(name) => {
-                            // Get the rest of the list starting at position i
-                            self.emit_with_operand(OpCode::GetLocal, param_idx);
-                            self.emit_constant(Value::Integer(i as i64))?;
-                            let end_count = patterns.len() - i - 1;
-                            if end_count == 0 {
-                                self.emit(OpCode::Nil);
-                            } else {
-                                self.emit_constant(Value::Integer(-(end_count as i64)))?;
-                            }
-                            self.emit(OpCode::Slice);
-                            self.add_local(name.clone(), false);
-                        }
-                        _ => {
-                            return Err(CompileError::new(
-                                "Nested patterns in function parameters not yet supported",
-                                span,
-                            ));
-                        }
-                    }
-                }
-                Ok(())
+                // Recursively destructure the list pattern
+                self.compile_nested_pattern_destructuring(patterns, param_idx, &[], span)
             }
             _ => Err(CompileError::new(
                 "Only list patterns supported in function parameters",
                 span,
             )),
         }
+    }
+
+    /// Recursively compile nested pattern destructuring
+    /// index_path is the sequence of indices to access the current nested element
+    fn compile_nested_pattern_destructuring(
+        &mut self,
+        patterns: &[Pattern],
+        param_idx: u8,
+        index_path: &[usize],
+        span: Span,
+    ) -> Result<(), CompileError> {
+        for (i, elem_pattern) in patterns.iter().enumerate() {
+            // Build the full index path for this element
+            let mut current_path = index_path.to_vec();
+            current_path.push(i);
+
+            match elem_pattern {
+                Pattern::Identifier(name) => {
+                    // Emit code to access the nested element
+                    self.emit_nested_access(param_idx, &current_path)?;
+                    // Add as local (value is on stack)
+                    self.add_local(name.clone(), false);
+                }
+                Pattern::Wildcard => {
+                    // Don't need to extract or bind wildcards
+                }
+                Pattern::RestIdentifier(name) => {
+                    // Get the rest of the list starting at position i
+                    // First access up to the parent
+                    if index_path.is_empty() {
+                        self.emit_with_operand(OpCode::GetLocal, param_idx);
+                    } else {
+                        self.emit_nested_access(param_idx, index_path)?;
+                    }
+                    self.emit_constant(Value::Integer(i as i64))?;
+                    let end_count = patterns.len() - i - 1;
+                    if end_count == 0 {
+                        self.emit(OpCode::Nil);
+                    } else {
+                        self.emit_constant(Value::Integer(-(end_count as i64)))?;
+                    }
+                    self.emit(OpCode::Slice);
+                    self.add_local(name.clone(), false);
+                }
+                Pattern::List(nested_patterns) => {
+                    // Recursively handle nested list patterns
+                    self.compile_nested_pattern_destructuring(
+                        nested_patterns,
+                        param_idx,
+                        &current_path,
+                        span,
+                    )?;
+                }
+                _ => {
+                    return Err(CompileError::new(
+                        format!("Pattern type {:?} not supported in function parameters", elem_pattern),
+                        span,
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Emit code to access a nested element via a sequence of indices
+    fn emit_nested_access(&mut self, param_idx: u8, index_path: &[usize]) -> Result<(), CompileError> {
+        // Get the parameter
+        self.emit_with_operand(OpCode::GetLocal, param_idx);
+        // Apply each index in the path
+        for &idx in index_path {
+            self.emit_constant(Value::Integer(idx as i64))?;
+            self.emit(OpCode::Index);
+        }
+        Ok(())
     }
 
     /// Compile a match expression
