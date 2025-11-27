@@ -1280,10 +1280,13 @@ impl Compiler {
         value: &SpannedExpr,
         span: Span,
     ) -> Result<(), CompileError> {
+        // At global scope (depth 0), use globals instead of locals
+        let is_global_scope = self.scope_depth == 0;
+
         // For simple identifier patterns, check if already declared (forward reference support)
         if let Pattern::Identifier(name) = pattern {
             // Only check for pre-declaration if this block actually did pre-declare
-            let is_predeclared = if self.did_predeclare_block {
+            let is_predeclared = if self.did_predeclare_block && !is_global_scope {
                 // Check if this local was already pre-declared in the CURRENT scope
                 self.locals.iter().rev().find(|l| l.name == *name)
                     .map(|l| l.depth == self.scope_depth)
@@ -1301,8 +1304,21 @@ impl Compiler {
                 self.emit(OpCode::Pop);
                 // Push it back (let statements should leave value on stack)
                 self.emit_with_operand(OpCode::GetLocal, idx as u8);
+            } else if is_global_scope {
+                // Global scope - compile value then emit SetGlobal
+                self.expression(value)?;
+                let name_idx = self.chunk().add_constant(Value::String(
+                    std::rc::Rc::new(name.clone())
+                ));
+                if name_idx > 255 {
+                    return Err(CompileError::new("Too many global names", span));
+                }
+                self.emit_with_operand(OpCode::SetGlobal, name_idx as u8);
+                // SetGlobal consumes the value, but let should leave it on stack
+                // So emit GetGlobal to retrieve it
+                self.emit_with_operand(OpCode::GetGlobal, name_idx as u8);
             } else {
-                // Not pre-declared - add local first (for self-recursion)
+                // Local scope - add local first (for self-recursion)
                 self.add_local(name.clone(), mutable);
                 // Compile the value expression (can now reference the name)
                 self.expression(value)?;
@@ -1323,10 +1339,25 @@ impl Compiler {
         mutable: bool,
         span: Span,
     ) -> Result<(), CompileError> {
+        let is_global_scope = self.scope_depth == 0;
+
         match pattern {
             Pattern::Identifier(name) => {
-                // Simple binding - add local (value is on stack)
-                self.add_local(name.clone(), mutable);
+                if is_global_scope {
+                    // Global binding - emit SetGlobal (value is on stack)
+                    let name_idx = self.chunk().add_constant(Value::String(
+                        std::rc::Rc::new(name.clone())
+                    ));
+                    if name_idx > 255 {
+                        return Err(CompileError::new("Too many global names", span));
+                    }
+                    self.emit_with_operand(OpCode::SetGlobal, name_idx as u8);
+                    // SetGlobal consumes the value, push it back
+                    self.emit_with_operand(OpCode::GetGlobal, name_idx as u8);
+                } else {
+                    // Local binding - add local (value is on stack)
+                    self.add_local(name.clone(), mutable);
+                }
             }
             Pattern::Wildcard => {
                 // Discard the value
@@ -1360,6 +1391,8 @@ impl Compiler {
         mutable: bool,
         span: Span,
     ) -> Result<(), CompileError> {
+        let is_global_scope = self.scope_depth == 0;
+
         // Value to destructure is on stack.
         // We make it a temporary anonymous local so we can access it via GetLocal
         // for each element extraction.
@@ -1389,7 +1422,21 @@ impl Compiler {
                     };
                     self.emit_constant(Value::Integer(idx))?;
                     self.emit(OpCode::Index);
-                    self.add_local(name.clone(), mutable);
+
+                    if is_global_scope {
+                        // Global binding
+                        let name_idx = self.chunk().add_constant(Value::String(
+                            std::rc::Rc::new(name.clone())
+                        ));
+                        if name_idx > 255 {
+                            return Err(CompileError::new("Too many global names", span));
+                        }
+                        self.emit_with_operand(OpCode::SetGlobal, name_idx as u8);
+                        self.emit_with_operand(OpCode::GetGlobal, name_idx as u8);
+                    } else {
+                        // Local binding
+                        self.add_local(name.clone(), mutable);
+                    }
                 }
                 Pattern::Wildcard => {
                     // Skip this element - don't bind it
@@ -1407,7 +1454,21 @@ impl Compiler {
                         self.emit_constant(Value::Integer(-(end_count as i64)))?;
                     }
                     self.emit(OpCode::Slice);
-                    self.add_local(name.clone(), mutable);
+
+                    if is_global_scope {
+                        // Global binding
+                        let name_idx = self.chunk().add_constant(Value::String(
+                            std::rc::Rc::new(name.clone())
+                        ));
+                        if name_idx > 255 {
+                            return Err(CompileError::new("Too many global names", span));
+                        }
+                        self.emit_with_operand(OpCode::SetGlobal, name_idx as u8);
+                        self.emit_with_operand(OpCode::GetGlobal, name_idx as u8);
+                    } else {
+                        // Local binding
+                        self.add_local(name.clone(), mutable);
+                    }
                 }
                 Pattern::List(inner) => {
                     // Nested destructuring: get element, then recursively destructure

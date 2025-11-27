@@ -105,27 +105,119 @@ impl Parser {
 
         self.expect(TokenKind::Colon)?;
 
-        let expr = self.parse_expression()?;
-
         match name.as_str() {
-            "input" => Ok(Section::Input(expr)),
-            "part_one" => Ok(Section::PartOne(expr)),
-            "part_two" => Ok(Section::PartTwo(expr)),
             "test" => {
-                // test section expects a block with input, part_one?, part_two?
-                // For now, treat the expression as input
-                // This is simplified - full implementation would parse the test block structure
-                Ok(Section::Test {
-                    input: expr,
-                    part_one: None,
-                    part_two: None,
-                })
+                // test section has special block structure with input:, part_one:, part_two:
+                // Parse it directly instead of as a normal expression
+                self.parse_test_block()
             }
-            _ => Err(ParseError::new(
-                format!("Unknown section: {name}"),
-                name_token.span,
-            )),
+            _ => {
+                // For other sections, parse as normal expression
+                let expr = self.parse_expression()?;
+                match name.as_str() {
+                    "input" => Ok(Section::Input(expr)),
+                    "part_one" => Ok(Section::PartOne(expr)),
+                    "part_two" => Ok(Section::PartTwo(expr)),
+                    _ => Err(ParseError::new(
+                        format!("Unknown section: {name}"),
+                        name_token.span,
+                    )),
+                }
+            }
         }
+    }
+
+    fn parse_test_block(&mut self) -> Result<Section, ParseError> {
+        // Test block has special syntax: test: { input: expr, part_one: expr, part_two: expr }
+        // Expect a left brace
+        let brace_token = self.expect(TokenKind::LeftBrace)?;
+
+        let mut input_expr = None;
+        let mut part_one_expr = None;
+        let mut part_two_expr = None;
+
+        // Parse field: expression pairs until we hit }
+        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            // Parse identifier
+            let field_token = self.advance().ok_or_else(|| {
+                ParseError::new("Expected field name in test block".to_string(), brace_token.span)
+            })?;
+
+            let field_name = match &field_token.kind {
+                TokenKind::Identifier(name) => name.clone(),
+                _ => {
+                    return Err(ParseError::new(
+                        format!("Expected field name, got {:?}", field_token.kind),
+                        field_token.span,
+                    ));
+                }
+            };
+
+            // Expect colon
+            self.expect(TokenKind::Colon)?;
+
+            // Parse expression
+            let expr = self.parse_expression()?;
+
+            // Store in appropriate field
+            match field_name.as_str() {
+                "input" => {
+                    if input_expr.is_some() {
+                        return Err(ParseError::new(
+                            "Duplicate 'input' field in test block".to_string(),
+                            field_token.span,
+                        ));
+                    }
+                    input_expr = Some(expr);
+                }
+                "part_one" => {
+                    if part_one_expr.is_some() {
+                        return Err(ParseError::new(
+                            "Duplicate 'part_one' field in test block".to_string(),
+                            field_token.span,
+                        ));
+                    }
+                    part_one_expr = Some(expr);
+                }
+                "part_two" => {
+                    if part_two_expr.is_some() {
+                        return Err(ParseError::new(
+                            "Duplicate 'part_two' field in test block".to_string(),
+                            field_token.span,
+                        ));
+                    }
+                    part_two_expr = Some(expr);
+                }
+                _ => {
+                    return Err(ParseError::new(
+                        format!("Unknown field '{field_name}' in test block. Expected 'input', 'part_one', or 'part_two'"),
+                        field_token.span,
+                    ));
+                }
+            }
+
+            // Optional semicolon between fields
+            if self.check(&TokenKind::Semicolon) {
+                self.advance();
+            }
+        }
+
+        // Expect closing brace
+        self.expect(TokenKind::RightBrace)?;
+
+        // input is required
+        let input = input_expr.ok_or_else(|| {
+            ParseError::new(
+                "Test block must have an 'input' field".to_string(),
+                brace_token.span,
+            )
+        })?;
+
+        Ok(Section::Test {
+            input,
+            part_one: part_one_expr,
+            part_two: part_two_expr,
+        })
     }
 
     pub fn parse_expression(&mut self) -> Result<SpannedExpr, ParseError> {

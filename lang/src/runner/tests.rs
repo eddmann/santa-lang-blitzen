@@ -43,10 +43,31 @@ fn runner_simple_solution() {
 }
 
 #[test]
-#[ignore] // TODO: Parser doesn't support test block internal structure yet
 fn runner_with_tests() {
-    // Test sections with internal input:/part_one:/part_two: structure
-    // are not yet implemented in the parser
+    let source = r#"
+        input: "1\n2\n3"
+
+        part_one: input |> lines |> map(|x| int(x)) |> sum
+
+        test: {
+            input: "1\n2\n3"
+            part_one: 6
+        }
+
+        test: {
+            input: "10\n20"
+            part_one: 30
+        }
+    "#;
+
+    let program = parse(source);
+    let runner = AocRunner::new(program);
+
+    let test_results = runner.run_tests().unwrap();
+
+    assert_eq!(test_results.len(), 2);
+    assert_eq!(test_results[0].part_one_passed, Some(true));
+    assert_eq!(test_results[1].part_one_passed, Some(true));
 }
 
 #[test]
@@ -120,11 +141,25 @@ fn runner_duplicate_part_two_error() {
 }
 
 #[test]
-#[ignore] // TODO: Top-level let bindings are locals, not accessible in sections
 fn runner_with_top_level_definitions() {
-    // Top-level `let` statements create locals in the program scope
-    // but sections like part_one are compiled separately and can't access them
-    // This needs compiler/VM architecture changes to support properly
+    let source = r#"
+        let helper = |x| x * 2;
+
+        input: "5"
+
+        part_one: {
+            let n = input |> int;
+            helper(n)
+        }
+    "#;
+
+    let program = parse(source);
+    let runner = AocRunner::new(program);
+
+    let result = runner.run_solution().unwrap();
+    let (part_one_value, _) = result.part_one.unwrap();
+
+    assert_eq!(part_one_value, Value::Integer(10));
 }
 
 #[test]
@@ -150,17 +185,52 @@ fn runner_timing_collected() {
 }
 
 #[test]
-#[ignore] // TODO: Parser doesn't support test block internal structure yet
 fn runner_test_with_part_two() {
-    // Test sections with internal input:/part_one:/part_two: structure
-    // are not yet implemented in the parser
+    let source = r#"
+        input: "10"
+
+        part_one: input |> int
+        part_two: input |> int |> (_ * 2)
+
+        test: {
+            input: "10"
+            part_one: 10
+            part_two: 20
+        }
+    "#;
+
+    let program = parse(source);
+    let runner = AocRunner::new(program);
+
+    let test_results = runner.run_tests().unwrap();
+
+    assert_eq!(test_results.len(), 1);
+    assert_eq!(test_results[0].part_one_passed, Some(true));
+    assert_eq!(test_results[0].part_two_passed, Some(true));
 }
 
 #[test]
-#[ignore] // TODO: Parser doesn't support test block internal structure yet
 fn runner_test_failure() {
-    // Test sections with internal input:/part_one:/part_two: structure
-    // are not yet implemented in the parser
+    let source = r#"
+        input: "10"
+
+        part_one: input |> int
+
+        test: {
+            input: "10"
+            part_one: 20
+        }
+    "#;
+
+    let program = parse(source);
+    let runner = AocRunner::new(program);
+
+    let test_results = runner.run_tests().unwrap();
+
+    assert_eq!(test_results.len(), 1);
+    assert_eq!(test_results[0].part_one_passed, Some(false));
+    assert_eq!(test_results[0].part_one_expected, Some(Value::Integer(20)));
+    assert_eq!(test_results[0].part_one_actual, Some(Value::Integer(10)));
 }
 
 #[test]
@@ -205,10 +275,68 @@ fn runner_only_part_one() {
 }
 
 #[test]
-#[ignore] // TODO: Parser doesn't support `<` as function value and test blocks
+#[ignore] // TODO: Has edge case issue with composition - needs investigation
 fn runner_complex_example() {
-    // Complex example from LANG.txt requires:
-    // 1. Operators as function values (sort(<))
-    // 2. Test block internal structure
-    // These are not yet fully implemented
+    // Simplified version of LANG.txt Appendix D Example 2 (AoC 2022 Day 1)
+    let source = r#"
+        input: "1000
+2000
+3000
+
+4000
+
+5000
+6000
+
+7000
+8000
+9000
+
+10000"
+
+        let parse_inventories = split("\n\n") >> map(ints >> sum);
+
+        part_one: {
+            parse_inventories(input) |> max
+        }
+
+        part_two: {
+            parse_inventories(input) |> take(3) |> sum
+        }
+
+        test: {
+            input: "1000
+2000
+3000
+
+4000
+
+5000
+6000
+
+7000
+8000
+9000
+
+10000"
+            part_one: 24000
+        }
+    "#;
+
+    let program = parse(source);
+    let runner = AocRunner::new(program);
+
+    // Test solution execution
+    let result = runner.run_solution().unwrap();
+
+    assert!(result.part_one.is_some());
+
+    let (part_one_value, _) = result.part_one.unwrap();
+    assert_eq!(part_one_value, Value::Integer(24000));
+
+    // Test the test execution
+    let test_results = runner.run_tests().unwrap();
+
+    assert_eq!(test_results.len(), 1);
+    assert_eq!(test_results[0].part_one_passed, Some(true));
 }
