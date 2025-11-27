@@ -1244,7 +1244,7 @@ fn runner_duplicate_section_error() { ... }
 - [x] Timing information is collected
 - [x] Script mode (no sections) works
 - [x] Duplicate sections produce errors
-- [x] All tests pass (12 passing, 1 ignored for edge case investigation)
+- [x] All tests pass (13 passing, including complex LANG.txt §12.3 example)
 - [x] `cargo clippy` clean
 
 **Phase 16 Complete! All core features implemented:**
@@ -1254,8 +1254,15 @@ fn runner_duplicate_section_error() { ... }
 - ✅ Test execution compares actual vs expected results
 - ✅ Script mode for non-AOC programs
 - ✅ Comprehensive error detection for duplicate sections
+- ✅ Composition operator works correctly with builtin functions and function calls
 
-**Compiler Enhancement:** Modified compiler to treat top-level `let` statements as global variable assignments rather than locals, enabling proper variable sharing between program scope and part sections.
+**Compiler Enhancements:**
+1. Modified compiler to treat top-level `let` statements as global variable assignments rather than locals, enabling proper variable sharing between program scope and part sections.
+2. Fixed composition operator (`>>`) to handle builtin functions correctly per LANG.txt §4.8 and §8.7:
+   - `f >> g` creates `|x| g(f(x))`
+   - `f >> g(a, b)` creates `|x| g(a, b, f(x))` (appends result as last argument)
+   - Properly handles builtin functions via `CallBuiltin` opcode instead of attempting variable lookup
+   - Supports all combinations: builtin identifiers, builtin calls, and user-defined functions
 
 **Parser Enhancement:** Implemented special parsing for test block structure to handle `test: { input: expr, part_one: expr, part_two: expr }` syntax per LANG.txt §12.2.
 
