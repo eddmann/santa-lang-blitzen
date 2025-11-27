@@ -1115,7 +1115,17 @@ Generate bytecode for pattern matching:
   - Update compiler to emit destructuring code for pattern parameters
   - Update `fold_s` test to use proper destructuring syntax: `|[a, b], _| [b, a + b]`
 
-### 15.3 Tests
+### 15.3 Parser Bug Fixes
+
+- **Operators as function references**: `reduce(+, [1, 2])` per LANG.txt
+  - Parse `+`, `-`, `*`, `/`, `%` as expressions when in argument position
+  - Each operator becomes a 2-arity function value
+  - Update `reduce` tests to use operator syntax instead of lambdas
+- **Single-element set ambiguity**: `{2}` parses as block, not set
+  - Disambiguate `{expr}` vs `{expr, ...}` in parser
+  - Single-element sets require trailing comma: `{2,}` or use `set([2])`
+
+### 15.4 Tests
 
 ```rust
 #[test]
@@ -1136,6 +1146,10 @@ fn pattern_guard() { ... }
 fn destructuring_let() { ... }
 #[test]
 fn destructuring_param() { ... }  // |[a, b]| a + b
+#[test]
+fn operator_as_function() { ... }  // reduce(+, [1, 2])
+#[test]
+fn single_element_set() { ... }  // {2,} or set([2])
 ```
 
 ### Release Gate 15
@@ -1147,6 +1161,8 @@ fn destructuring_param() { ... }  // |[a, b]| a + b
 - [ ] Guards evaluate correctly
 - [ ] Match returns nil if no arm matches
 - [ ] Function parameter destructuring works (`|[a, b]| ...`)
+- [ ] Operators as function references work (`reduce(+, ...)`)
+- [ ] Single-element sets parse correctly (`{2,}`)
 - [ ] All tests pass
 - [ ] `cargo clippy` clean
 
