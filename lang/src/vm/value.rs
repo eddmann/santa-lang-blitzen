@@ -47,6 +47,12 @@ pub enum Value {
         end: Option<i64>,
         inclusive: bool,
     },
+
+    // TODO: Add MemoizedFunction variant for memoize builtin (Phase 14+)
+    // See PLAN.md "Future Work: memoize Implementation" for details
+    // Will require:
+    //   MemoizedFunction(Rc<RefCell<MemoizedFunction>>),
+    // Where MemoizedFunction contains: function + HashMap<Vec<Value>, Value> cache
 }
 
 /// Closure wraps a compiled function with its captured upvalues

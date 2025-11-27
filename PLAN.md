@@ -1485,3 +1485,123 @@ Additional validation:
 | 20    | Integration          | Final polish & verification |
 
 Each phase builds on previous phases. Release gates ensure quality before proceeding.
+
+---
+
+## Future Work: memoize Implementation
+
+The `memoize` builtin function (LANG.txt §11.16) is currently stubbed and requires VM-level implementation.
+
+### Requirements
+
+Per LANG.txt §11.16, `memoize(function)` returns a memoized version of a function that caches results based on arguments.
+
+**Example:**
+```santa
+let fib = memoize |n| {
+  if n > 1 { fib(n - 1) + fib(n - 2) } else { n }
+};
+fib(50)  // Should be fast due to caching
+```
+
+### Implementation Plan
+
+#### 1. Extend Value Type (lang/src/vm/value.rs)
+Add a new variant to the `Value` enum:
+```rust
+pub enum Value {
+    // ... existing variants
+    MemoizedFunction(Rc<RefCell<MemoizedFunction>>),
+}
+
+pub struct MemoizedFunction {
+    function: Rc<Closure>,
+    cache: im::HashMap<Vec<Value>, Value>,  // args -> result
+}
+```
+
+**Note:** This requires `Value` to implement `Hash` and `Eq` for all variants to be used as cache keys. Currently only some variants are hashable (per LANG.txt §3.11).
+
+#### 2. Update VM Runtime (lang/src/vm/runtime.rs)
+In the `call_value` method, add special handling for `Value::MemoizedFunction`:
+```rust
+Value::MemoizedFunction(memoized) => {
+    let mut memo = memoized.borrow_mut();
+    let cache_key: Vec<Value> = args.to_vec();
+    
+    // Check cache
+    if let Some(cached_result) = memo.cache.get(&cache_key) {
+        return Ok(cached_result.clone());
+    }
+    
+    // Call original function
+    let result = self.call_closure(&memo.function, args)?;
+    
+    // Cache result
+    memo.cache.insert(cache_key, result.clone());
+    
+    Ok(result)
+}
+```
+
+#### 3. Implement memoize Builtin (lang/src/vm/builtins.rs)
+Move `memoize` out of the callback-only section and implement:
+```rust
+fn builtin_memoize(func: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match func {
+        Value::Function(closure) => {
+            Ok(Value::MemoizedFunction(Rc::new(RefCell::new(
+                MemoizedFunction {
+                    function: closure.clone(),
+                    cache: im::HashMap::new(),
+                }
+            ))))
+        }
+        _ => Err(RuntimeError::new(
+            format!("memoize expects Function, got {}", func.type_name()),
+            line,
+        ))
+    }
+}
+```
+
+#### 4. Challenges
+
+**Cache Key Hashing:**
+- Need to ensure all `Value` types used as function arguments are hashable
+- Currently non-hashable: `Dict`, `LazySequence`, `Function` (per LANG.txt §3.11)
+- If function is called with non-hashable args, either:
+  - Return error: "Cannot memoize function with non-hashable arguments"
+  - Or skip caching and call function directly
+
+**Recursive Memoization:**
+- The example shows `fib` calling itself recursively
+- The memoized version needs to be bound before the function can reference it
+- This works naturally with `let fib = memoize |n| { fib(...) }` due to closure capture
+
+**Memory Management:**
+- Cache grows unbounded - consider adding eviction policy or size limit in future
+- For now, unlimited cache is acceptable per spec
+
+### Testing Requirements
+
+Tests should verify:
+1. Basic memoization: second call with same args is instant
+2. Different arguments produce different cached results
+3. Recursive functions (fibonacci example from LANG.txt)
+4. Multi-argument functions
+5. Error handling for non-function inputs
+6. Performance improvement (fib(50) should complete quickly)
+
+### Suggested Phase
+
+This work should be completed in **Phase 14 or later** when TCO and function optimization work is being done, as it relates to function call performance.
+
+### Status
+- [ ] Value::MemoizedFunction variant added
+- [ ] VM runtime handles MemoizedFunction calls with caching
+- [ ] builtin_memoize implemented
+- [ ] Tests for basic memoization
+- [ ] Tests for recursive memoization (fibonacci)
+- [ ] Documentation updated
+
