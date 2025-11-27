@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap as StdHashMap;
 use std::rc::Rc;
 
+use super::builtins::{call_builtin, BuiltinId};
 use super::bytecode::{Chunk, CompiledFunction, OpCode};
 use super::value::{Closure, Upvalue, Value};
 
@@ -448,12 +449,28 @@ impl VM {
                     // If falsy, value is discarded and we continue to evaluate next operand
                 }
 
-                // Built-ins (stub for now)
+                // Built-ins
                 Ok(OpCode::CallBuiltin) => {
-                    let _builtin_id = self.read_u16();
-                    let _argc = self.read_byte();
-                    // TODO: Implement built-in functions in Phase 9
-                    return Err(self.error("Built-in functions not yet implemented"));
+                    let builtin_id = self.read_u16();
+                    let argc = self.read_byte() as usize;
+
+                    // Collect arguments from stack
+                    let mut args = Vec::with_capacity(argc);
+                    for i in 0..argc {
+                        args.push(self.peek(argc - 1 - i).clone());
+                    }
+
+                    // Pop arguments from stack
+                    for _ in 0..argc {
+                        self.pop();
+                    }
+
+                    // Execute built-in
+                    let line = self.current_frame().current_line();
+                    let id = BuiltinId::try_from(builtin_id)
+                        .map_err(|_| self.error(format!("Unknown builtin id: {}", builtin_id)))?;
+                    let result = call_builtin(id, &args, line)?;
+                    self.push(result);
                 }
 
                 // Special

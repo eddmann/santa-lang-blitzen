@@ -6,6 +6,7 @@ use crate::parser::ast::{
     SpannedStmt, Stmt,
 };
 
+use super::builtins::BuiltinId;
 use super::bytecode::{Chunk, CompiledFunction, OpCode};
 use super::value::Value;
 
@@ -873,6 +874,25 @@ impl Compiler {
             return Err(CompileError::new("Too many arguments (max 255)", span));
         }
 
+        // Check if this is a built-in function call
+        if let Expr::Identifier(name) = &function.node
+            && let Some(builtin_id) = BuiltinId::from_name(name)
+            && self.resolve_local(name).is_none()
+            && self.resolve_upvalue(name).is_none()
+        {
+            // Compile arguments
+            for arg in args {
+                self.expression(arg)?;
+            }
+
+            // Emit CallBuiltin instruction
+            self.emit(OpCode::CallBuiltin);
+            self.chunk().write_operand_u16(builtin_id as u16);
+            self.chunk().write_operand(args.len() as u8);
+            return Ok(());
+        }
+
+        // Regular function call
         // Compile function expression
         self.expression(function)?;
 

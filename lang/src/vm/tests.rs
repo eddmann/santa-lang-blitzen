@@ -2454,4 +2454,338 @@ mod runtime_tests {
             Ok(Value::Integer(15))
         );
     }
+
+    // ============================================================
+    // §11.1 Built-in Type Conversion Functions - Phase 9
+    // ============================================================
+
+    #[test]
+    fn eval_builtin_int_from_integer() {
+        assert_eq!(eval("int(5)"), Ok(Value::Integer(5)));
+        assert_eq!(eval("int(-42)"), Ok(Value::Integer(-42)));
+    }
+
+    #[test]
+    fn eval_builtin_int_from_decimal() {
+        // Rounds to nearest, half away from zero
+        assert_eq!(eval("int(3.7)"), Ok(Value::Integer(4)));
+        assert_eq!(eval("int(3.5)"), Ok(Value::Integer(4)));
+        assert_eq!(eval("int(3.2)"), Ok(Value::Integer(3)));
+        assert_eq!(eval("int(-3.5)"), Ok(Value::Integer(-4)));
+        assert_eq!(eval("int(-3.7)"), Ok(Value::Integer(-4)));
+    }
+
+    #[test]
+    fn eval_builtin_int_from_string() {
+        assert_eq!(eval(r#"int("42")"#), Ok(Value::Integer(42)));
+        assert_eq!(eval(r#"int("-17")"#), Ok(Value::Integer(-17)));
+        assert_eq!(eval(r#"int("abc")"#), Ok(Value::Integer(0)));
+    }
+
+    #[test]
+    fn eval_builtin_int_from_boolean() {
+        assert_eq!(eval("int(true)"), Ok(Value::Integer(1)));
+        assert_eq!(eval("int(false)"), Ok(Value::Integer(0)));
+    }
+
+    #[test]
+    fn eval_builtin_ints() {
+        let result = eval(r#"ints("1,2,3")"#).unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 3);
+                assert_eq!(v[0], Value::Integer(1));
+                assert_eq!(v[1], Value::Integer(2));
+                assert_eq!(v[2], Value::Integer(3));
+            }
+            _ => panic!("Expected list"),
+        }
+
+        let result = eval(r#"ints("x: 10, y: -5")"#).unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], Value::Integer(10));
+                assert_eq!(v[1], Value::Integer(-5));
+            }
+            _ => panic!("Expected list"),
+        }
+
+        assert_eq!(
+            eval(r#"ints("no numbers")"#),
+            Ok(Value::List(Vector::new()))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_list_from_list() {
+        let result = eval("list([1, 2, 3])").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 3);
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_list_from_set() {
+        let result = eval("list({1, 2, 3})").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 3);
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_list_from_string() {
+        let result = eval(r#"list("ab")"#).unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], Value::String(Rc::new("a".to_string())));
+                assert_eq!(v[1], Value::String(Rc::new("b".to_string())));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_list_from_range() {
+        let result = eval("list(1..5)").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 4);
+                assert_eq!(v[0], Value::Integer(1));
+                assert_eq!(v[3], Value::Integer(4));
+            }
+            _ => panic!("Expected list"),
+        }
+
+        let result = eval("list(1..=5)").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 5);
+                assert_eq!(v[4], Value::Integer(5));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_set_from_list() {
+        let result = eval("set([1, 2, 2, 3])").unwrap();
+        match result {
+            Value::Set(s) => {
+                assert_eq!(s.len(), 3);
+            }
+            _ => panic!("Expected set"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_set_from_string() {
+        let result = eval(r#"set("aab")"#).unwrap();
+        match result {
+            Value::Set(s) => {
+                assert_eq!(s.len(), 2);
+            }
+            _ => panic!("Expected set"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_dict_from_list() {
+        let result = eval("dict([[1, 2], [3, 4]])").unwrap();
+        match result {
+            Value::Dict(d) => {
+                assert_eq!(d.len(), 2);
+                assert_eq!(d.get(&Value::Integer(1)), Some(&Value::Integer(2)));
+                assert_eq!(d.get(&Value::Integer(3)), Some(&Value::Integer(4)));
+            }
+            _ => panic!("Expected dict"),
+        }
+    }
+
+    // ============================================================
+    // §11.2 Built-in Collection Access Functions - Phase 9
+    // ============================================================
+
+    #[test]
+    fn eval_builtin_get_list() {
+        assert_eq!(eval("get(1, [1, 2, 3])"), Ok(Value::Integer(2)));
+        assert_eq!(eval("get(5, [1, 2])"), Ok(Value::Nil));
+        assert_eq!(eval("get(-1, [1, 2, 3])"), Ok(Value::Integer(3)));
+    }
+
+    #[test]
+    fn eval_builtin_get_dict() {
+        assert_eq!(eval(r#"get("a", #{"a": 1, "b": 2})"#), Ok(Value::Integer(1)));
+        assert_eq!(eval(r#"get("c", #{"a": 1})"#), Ok(Value::Nil));
+    }
+
+    #[test]
+    fn eval_builtin_get_string() {
+        assert_eq!(
+            eval(r#"get(1, "ab")"#),
+            Ok(Value::String(Rc::new("b".to_string())))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_get_set() {
+        assert_eq!(eval("get(1, {1, 2})"), Ok(Value::Integer(1)));
+        assert_eq!(eval("get(3, {1, 2})"), Ok(Value::Nil));
+    }
+
+    #[test]
+    fn eval_builtin_size_list() {
+        assert_eq!(eval("size([1, 2, 3])"), Ok(Value::Integer(3)));
+        assert_eq!(eval("size([])"), Ok(Value::Integer(0)));
+    }
+
+    #[test]
+    fn eval_builtin_size_set() {
+        assert_eq!(eval("size({1, 2, 3})"), Ok(Value::Integer(3)));
+    }
+
+    #[test]
+    fn eval_builtin_size_dict() {
+        assert_eq!(eval(r#"size(#{"a": 1, "b": 2})"#), Ok(Value::Integer(2)));
+    }
+
+    #[test]
+    fn eval_builtin_size_string() {
+        assert_eq!(eval(r#"size("hello")"#), Ok(Value::Integer(5)));
+    }
+
+    #[test]
+    fn eval_builtin_size_range() {
+        assert_eq!(eval("size(1..5)"), Ok(Value::Integer(4)));
+        assert_eq!(eval("size(1..=5)"), Ok(Value::Integer(5)));
+    }
+
+    #[test]
+    fn eval_builtin_first() {
+        assert_eq!(eval("first([1, 2, 3])"), Ok(Value::Integer(1)));
+        assert_eq!(eval("first([])"), Ok(Value::Nil));
+        assert_eq!(
+            eval(r#"first("hello")"#),
+            Ok(Value::String(Rc::new("h".to_string())))
+        );
+        assert_eq!(eval("first(1..5)"), Ok(Value::Integer(1)));
+    }
+
+    #[test]
+    fn eval_builtin_second() {
+        assert_eq!(eval("second([1, 2, 3])"), Ok(Value::Integer(2)));
+        assert_eq!(eval("second([1])"), Ok(Value::Nil));
+        assert_eq!(
+            eval(r#"second("hello")"#),
+            Ok(Value::String(Rc::new("e".to_string())))
+        );
+        assert_eq!(eval("second(1..5)"), Ok(Value::Integer(2)));
+    }
+
+    #[test]
+    fn eval_builtin_rest() {
+        let result = eval("rest([1, 2, 3])").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], Value::Integer(2));
+                assert_eq!(v[1], Value::Integer(3));
+            }
+            _ => panic!("Expected list"),
+        }
+
+        assert_eq!(eval("rest([])"), Ok(Value::List(Vector::new())));
+    }
+
+    #[test]
+    fn eval_builtin_rest_string() {
+        assert_eq!(
+            eval(r#"rest("hello")"#),
+            Ok(Value::String(Rc::new("ello".to_string())))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_keys() {
+        let result = eval(r#"keys(#{"a": 1, "b": 2})"#).unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 2);
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_values() {
+        let result = eval(r#"values(#{"a": 1, "b": 2})"#).unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 2);
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    // ============================================================
+    // §11.3 Built-in Collection Modification Functions - Phase 9
+    // ============================================================
+
+    #[test]
+    fn eval_builtin_push_list() {
+        let result = eval("push(3, [1, 2])").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 3);
+                assert_eq!(v[2], Value::Integer(3));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_push_set() {
+        let result = eval("push(3, {1, 2})").unwrap();
+        match result {
+            Value::Set(s) => {
+                assert_eq!(s.len(), 3);
+                assert!(s.contains(&Value::Integer(3)));
+            }
+            _ => panic!("Expected set"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_assoc_list() {
+        let result = eval("assoc(0, 10, [1, 2])").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v[0], Value::Integer(10));
+                assert_eq!(v[1], Value::Integer(2));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_assoc_dict() {
+        let result = eval(r#"assoc("c", 3, #{"a": 1, "b": 2})"#).unwrap();
+        match result {
+            Value::Dict(d) => {
+                assert_eq!(d.len(), 3);
+                assert_eq!(
+                    d.get(&Value::String(Rc::new("c".to_string()))),
+                    Some(&Value::Integer(3))
+                );
+            }
+            _ => panic!("Expected dict"),
+        }
+    }
 }
