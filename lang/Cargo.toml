@@ -1,0 +1,13 @@
+[package]
+name = "lang"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+im = { git = "ssh://git@github.com/eddmann/im-rs.git" }
+ordered-float = "5.0"
+unicode-segmentation = "1.12"
+regex = "1.11"
+
+[dev-dependencies]
+expect-test = "1.5"
