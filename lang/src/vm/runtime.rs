@@ -722,6 +722,47 @@ impl VM {
             // Set union
             (Value::Set(x), Value::Set(y)) => Value::Set(x.clone().union(y.clone())),
 
+            // Set + List = add list elements to set
+            (Value::Set(x), Value::List(y)) => {
+                let mut result = x.clone();
+                for elem in y.iter() {
+                    if !elem.is_hashable() {
+                        return Err(self.error(format!(
+                            "Cannot add {} to set (not hashable)",
+                            elem.type_name()
+                        )));
+                    }
+                    result.insert(elem.clone());
+                }
+                Value::Set(result)
+            }
+
+            // Set + hashable scalar = add element to set
+            (Value::Set(x), y) if y.is_hashable() => {
+                let mut result = x.clone();
+                result.insert(y.clone());
+                Value::Set(result)
+            }
+
+            // List + Set = append set elements to list
+            (Value::List(x), Value::Set(y)) => {
+                let mut result = x.clone();
+                for elem in y.iter() {
+                    result.push_back(elem.clone());
+                }
+                Value::List(result)
+            }
+
+            // List + LazySequence = materialize lazy seq and append
+            (Value::List(x), Value::LazySequence(seq)) => {
+                let mut result = x.clone();
+                let mut seq_clone = seq.borrow().clone();
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    result.push_back(elem);
+                }
+                Value::List(result)
+            }
+
             // Dictionary merge (right precedence - values from y override x)
             (Value::Dict(x), Value::Dict(y)) => {
                 // union takes values from self over other, so we use y.union(x)
@@ -758,6 +799,15 @@ impl VM {
 
             // Set difference
             (Value::Set(x), Value::Set(y)) => Value::Set(x.clone().difference(y.clone())),
+
+            // Set - List = remove list elements from set
+            (Value::Set(x), Value::List(y)) => {
+                let mut result = x.clone();
+                for elem in y.iter() {
+                    result.remove(elem);
+                }
+                Value::Set(result)
+            }
 
             _ => {
                 return Err(self.error(format!(
