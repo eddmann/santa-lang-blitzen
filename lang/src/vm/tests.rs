@@ -4388,4 +4388,108 @@ mod runtime_tests {
         let code = r#"(|[a, b]| a * b)([3, 4])"#;
         assert_eq!(eval(code), Ok(Value::Integer(12)));
     }
+
+    // ============================================================
+    // §15.5 Error Handling - RuntimeErr Conditions (Phase 17)
+    // ============================================================
+
+    #[test]
+    fn error_invalid_regex_pattern() {
+        // Invalid regex patterns should throw RuntimeErr
+        assert!(eval(r#"regex_match("(unclosed", "test")"#).is_err());
+        assert!(eval(r#"regex_match("[invalid", "test")"#).is_err());
+    }
+
+    #[test]
+    fn error_type_mismatch_operations() {
+        // Type mismatches in operations should throw RuntimeErr
+        assert!(eval(r#""hello" * "world""#).is_err());
+        assert!(eval(r#""hello" / "world""#).is_err());
+        assert!(eval(r#""hello" - "world""#).is_err());
+        assert!(eval(r#"true + false"#).is_err());
+    }
+
+    #[test]
+    fn error_division_by_zero() {
+        // Division by zero should throw RuntimeErr
+        assert!(eval("10 / 0").is_err());
+        assert!(eval("10 % 0").is_err());
+        assert!(eval("5.5 / 0.0").is_err());
+    }
+
+    #[test]
+    fn error_reduce_empty_collection() {
+        // reduce on empty collection should throw RuntimeErr
+        assert!(eval("reduce(+, [])").is_err());
+        assert!(eval("reduce(|a, b| a + b, [])").is_err());
+    }
+
+    #[test]
+    fn error_identifier_not_found() {
+        // Undefined variables should throw RuntimeErr
+        assert!(eval("unknown_var").is_err());
+        assert!(eval("x + 1").is_err());
+    }
+
+    #[test]
+    fn error_non_hashable_in_set() {
+        // Functions, dicts, and lazy sequences cannot be in sets
+        // Single-element sets need trailing comma per LANG.txt
+        assert!(eval("{|x| x,}").is_err());
+        assert!(eval("{#{a: 1},}").is_err());
+    }
+
+    #[test]
+    fn error_non_hashable_dict_key() {
+        // Functions cannot be dict keys
+        assert!(eval("#{(|x| x): 1}").is_err());
+        // Dicts cannot be dict keys
+        assert!(eval("#{#{a: 1}: 2}").is_err());
+    }
+
+    #[test]
+    fn error_wrong_function_arity() {
+        // Calling function with wrong number of arguments
+        assert!(eval("{ let f = |x, y| x + y; f(1) }").is_err());
+        assert!(eval("{ let f = |x| x * 2; f(1, 2) }").is_err());
+    }
+
+    #[test]
+    fn error_call_non_function() {
+        // Calling non-functions should throw RuntimeErr
+        assert!(eval("[1, 2, 3](5)").is_err());
+        assert!(eval("42(1)").is_err());
+        assert!(eval(r#""hello"()"#).is_err());
+    }
+
+    #[test]
+    fn error_return_invalid_context() {
+        // return outside function should be caught (compile or runtime error)
+        // This might be a compile error depending on implementation
+        let result = eval("return 42");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn error_break_invalid_context() {
+        // break outside iteration should throw RuntimeErr
+        assert!(eval("break 42").is_err());
+        assert!(eval("{ let x = 1; break x }").is_err());
+    }
+
+    #[test]
+    fn error_shadow_builtin() {
+        // Shadowing built-in functions should throw RuntimeErr
+        assert!(eval("let map = 42").is_err());
+        assert!(eval("let reduce = |x| x").is_err());
+        assert!(eval("let filter = 123").is_err());
+    }
+
+    #[test]
+    fn error_invalid_evaluate_syntax() {
+        // Invalid syntax in evaluate() should throw RuntimeErr
+        assert!(eval(r#"evaluate("1 +")"#).is_err());
+        assert!(eval(r#"evaluate("let x = ")"#).is_err());
+        assert!(eval(r#"evaluate("(((")"#).is_err());
+    }
 }

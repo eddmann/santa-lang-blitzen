@@ -9,6 +9,13 @@ use super::builtins::{BuiltinId, call_builtin};
 use super::bytecode::{Chunk, CompiledFunction, OpCode};
 use super::value::{Closure, LazySeq, Upvalue, Value};
 
+/// A frame in the call stack for error reporting
+#[derive(Debug, Clone)]
+pub struct StackFrame {
+    pub function_name: Option<String>,
+    pub line: u32,
+}
+
 /// Runtime error with message and optional stack trace
 #[derive(Debug, Clone)]
 pub struct RuntimeError {
@@ -18,6 +25,8 @@ pub struct RuntimeError {
     pub is_break: bool,
     /// The value returned by break
     pub break_value: Option<Value>,
+    /// Call stack trace for debugging (boxed to keep error size small)
+    pub stack_trace: Box<Vec<StackFrame>>,
 }
 
 impl RuntimeError {
@@ -27,6 +36,7 @@ impl RuntimeError {
             line,
             is_break: false,
             break_value: None,
+            stack_trace: Box::new(Vec::new()),
         }
     }
 
@@ -37,7 +47,16 @@ impl RuntimeError {
             line,
             is_break: true,
             break_value: Some(value),
+            stack_trace: Box::new(Vec::new()),
         }
+    }
+
+    /// Add a stack frame to the trace
+    pub fn add_frame(&mut self, function_name: Option<String>, line: u32) {
+        self.stack_trace.push(StackFrame {
+            function_name,
+            line,
+        });
     }
 }
 
