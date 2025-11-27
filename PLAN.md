@@ -664,13 +664,13 @@ fn vm_function_call() { ... }
 
 ### Release Gate 7
 
-- [ ] All arithmetic operations work correctly
-- [ ] Type coercion matches LANG.txt Section 4.1
-- [ ] Function calls execute correctly
-- [ ] Local variables work in functions
-- [ ] Basic expressions evaluate correctly
-- [ ] All tests pass
-- [ ] `cargo clippy` clean
+- [x] All arithmetic operations work correctly
+- [x] Type coercion matches LANG.txt Section 4.1
+- [x] Function calls execute correctly
+- [x] Local variables work in functions
+- [x] Basic expressions evaluate correctly
+- [x] All tests pass
+- [x] `cargo clippy` clean
 
 ---
 

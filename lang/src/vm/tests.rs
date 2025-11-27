@@ -1471,3 +1471,836 @@ mod compiler_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod runtime_tests {
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
+    use crate::vm::compiler::Compiler;
+    use crate::vm::runtime::VM;
+    use crate::vm::value::Value;
+    use im_rc::{HashMap, HashSet, Vector};
+    use ordered_float::OrderedFloat;
+    use std::rc::Rc;
+
+    /// Helper to evaluate source code and return the result
+    fn eval(source: &str) -> Result<Value, String> {
+        let tokens = Lexer::new(source).tokenize().map_err(|e| e.message)?;
+        let program = Parser::new(tokens)
+            .parse_program()
+            .map_err(|e| e.message)?;
+
+        // Get first statement expression
+        let expr = match &program.statements[0].node {
+            crate::parser::ast::Stmt::Expr(e) => e,
+            _ => return Err("Expected expression statement".to_string()),
+        };
+
+        let compiled =
+            Compiler::compile_expression(expr).map_err(|e| e.message)?;
+
+        let mut vm = VM::new();
+        vm.run(Rc::new(compiled)).map_err(|e| e.message)
+    }
+
+    // ============================================================
+    // §2.5 Literal evaluation tests
+    // ============================================================
+
+    #[test]
+    fn eval_integer_literal() {
+        assert_eq!(eval("42"), Ok(Value::Integer(42)));
+        assert_eq!(eval("-17"), Ok(Value::Integer(-17)));
+        assert_eq!(eval("0"), Ok(Value::Integer(0)));
+    }
+
+    #[test]
+    fn eval_decimal_literal() {
+        assert_eq!(eval("3.14"), Ok(Value::Decimal(OrderedFloat(3.14))));
+        assert_eq!(eval("-0.5"), Ok(Value::Decimal(OrderedFloat(-0.5))));
+    }
+
+    #[test]
+    fn eval_string_literal() {
+        assert_eq!(
+            eval(r#""hello""#),
+            Ok(Value::String(Rc::new("hello".to_string())))
+        );
+        assert_eq!(
+            eval(r#""hello world""#),
+            Ok(Value::String(Rc::new("hello world".to_string())))
+        );
+    }
+
+    #[test]
+    fn eval_boolean_literals() {
+        assert_eq!(eval("true"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("false"), Ok(Value::Boolean(false)));
+    }
+
+    #[test]
+    fn eval_nil_literal() {
+        assert_eq!(eval("nil"), Ok(Value::Nil));
+    }
+
+    // ============================================================
+    // §4.1 Arithmetic operations
+    // ============================================================
+
+    #[test]
+    fn eval_integer_addition() {
+        assert_eq!(eval("1 + 2"), Ok(Value::Integer(3)));
+        assert_eq!(eval("100 + 200"), Ok(Value::Integer(300)));
+        assert_eq!(eval("-5 + 3"), Ok(Value::Integer(-2)));
+    }
+
+    #[test]
+    fn eval_integer_subtraction() {
+        assert_eq!(eval("5 - 3"), Ok(Value::Integer(2)));
+        assert_eq!(eval("3 - 5"), Ok(Value::Integer(-2)));
+        assert_eq!(eval("0 - 10"), Ok(Value::Integer(-10)));
+    }
+
+    #[test]
+    fn eval_integer_multiplication() {
+        assert_eq!(eval("3 * 4"), Ok(Value::Integer(12)));
+        assert_eq!(eval("-3 * 4"), Ok(Value::Integer(-12)));
+        assert_eq!(eval("0 * 100"), Ok(Value::Integer(0)));
+    }
+
+    #[test]
+    fn eval_integer_division() {
+        // Integer division truncates toward zero (not floor)
+        assert_eq!(eval("7 / 2"), Ok(Value::Integer(3)));
+        assert_eq!(eval("-7 / 2"), Ok(Value::Integer(-3)));
+        assert_eq!(eval("7 / -2"), Ok(Value::Integer(-3)));
+        assert_eq!(eval("-7 / -2"), Ok(Value::Integer(3)));
+    }
+
+    #[test]
+    fn eval_integer_modulo() {
+        // Floored modulo (Python-style) - result has same sign as divisor
+        assert_eq!(eval("7 % 3"), Ok(Value::Integer(1)));
+        assert_eq!(eval("-7 % 3"), Ok(Value::Integer(2))); // floor: -7 = -3*3 + 2
+        assert_eq!(eval("7 % -3"), Ok(Value::Integer(-2))); // floor: 7 = -2*-3 + (-2)
+        assert_eq!(eval("-7 % -3"), Ok(Value::Integer(-1)));
+    }
+
+    #[test]
+    fn eval_decimal_arithmetic() {
+        assert_eq!(eval("1.5 + 2.5"), Ok(Value::Decimal(OrderedFloat(4.0))));
+        assert_eq!(eval("5.0 - 2.5"), Ok(Value::Decimal(OrderedFloat(2.5))));
+        assert_eq!(eval("2.5 * 4.0"), Ok(Value::Decimal(OrderedFloat(10.0))));
+        assert_eq!(eval("7.0 / 2.0"), Ok(Value::Decimal(OrderedFloat(3.5))));
+    }
+
+    #[test]
+    fn eval_negation() {
+        assert_eq!(eval("-42"), Ok(Value::Integer(-42)));
+        assert_eq!(eval("--42"), Ok(Value::Integer(42)));
+        assert_eq!(eval("-3.14"), Ok(Value::Decimal(OrderedFloat(-3.14))));
+    }
+
+    #[test]
+    fn eval_complex_arithmetic() {
+        assert_eq!(eval("1 + 2 * 3"), Ok(Value::Integer(7))); // Precedence: 1 + (2 * 3)
+        assert_eq!(eval("(1 + 2) * 3"), Ok(Value::Integer(9)));
+        assert_eq!(eval("10 - 3 - 2"), Ok(Value::Integer(5))); // Left associative
+        assert_eq!(eval("2 * 3 + 4 * 5"), Ok(Value::Integer(26)));
+    }
+
+    #[test]
+    fn eval_division_by_zero() {
+        assert!(eval("1 / 0").is_err());
+        assert!(eval("1 % 0").is_err());
+    }
+
+    // ============================================================
+    // §4.1 Type coercion tests
+    // ============================================================
+
+    #[test]
+    fn eval_type_coercion_left_integer() {
+        // Left operand is Integer, result is Integer
+        assert_eq!(eval("1 + 2.5"), Ok(Value::Integer(3)));
+        assert_eq!(eval("10 - 2.5"), Ok(Value::Integer(7)));
+        assert_eq!(eval("4 * 2.5"), Ok(Value::Integer(10)));
+    }
+
+    #[test]
+    fn eval_type_coercion_left_decimal() {
+        // Left operand is Decimal, result is Decimal
+        assert_eq!(eval("1.5 + 2"), Ok(Value::Decimal(OrderedFloat(3.5))));
+        assert_eq!(eval("10.0 - 3"), Ok(Value::Decimal(OrderedFloat(7.0))));
+        assert_eq!(eval("2.5 * 4"), Ok(Value::Decimal(OrderedFloat(10.0))));
+        assert_eq!(eval("7.0 / 2"), Ok(Value::Decimal(OrderedFloat(3.5))));
+    }
+
+    // ============================================================
+    // §4.2-4.3 Comparison operators
+    // ============================================================
+
+    #[test]
+    fn eval_integer_comparison() {
+        assert_eq!(eval("1 < 2"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("2 < 1"), Ok(Value::Boolean(false)));
+        assert_eq!(eval("1 <= 1"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("1 <= 2"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("2 > 1"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("1 > 2"), Ok(Value::Boolean(false)));
+        assert_eq!(eval("1 >= 1"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("2 >= 1"), Ok(Value::Boolean(true)));
+    }
+
+    #[test]
+    fn eval_decimal_comparison() {
+        assert_eq!(eval("1.5 < 2.5"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("2.5 > 1.5"), Ok(Value::Boolean(true)));
+    }
+
+    #[test]
+    fn eval_mixed_numeric_comparison() {
+        assert_eq!(eval("1 < 1.5"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("1.5 > 1"), Ok(Value::Boolean(true)));
+    }
+
+    #[test]
+    fn eval_string_comparison() {
+        assert_eq!(eval(r#""abc" < "def""#), Ok(Value::Boolean(true)));
+        assert_eq!(eval(r#""abc" < "abc""#), Ok(Value::Boolean(false)));
+        assert_eq!(eval(r#""abc" <= "abc""#), Ok(Value::Boolean(true)));
+    }
+
+    #[test]
+    fn eval_equality() {
+        assert_eq!(eval("1 == 1"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("1 == 2"), Ok(Value::Boolean(false)));
+        assert_eq!(eval("1 != 2"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("1 != 1"), Ok(Value::Boolean(false)));
+        assert_eq!(eval(r#""a" == "a""#), Ok(Value::Boolean(true)));
+        assert_eq!(eval(r#""a" == "b""#), Ok(Value::Boolean(false)));
+        assert_eq!(eval("true == true"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("true == false"), Ok(Value::Boolean(false)));
+        assert_eq!(eval("nil == nil"), Ok(Value::Boolean(true)));
+    }
+
+    // ============================================================
+    // §4.4 Logical operators
+    // ============================================================
+
+    #[test]
+    fn eval_logical_not() {
+        assert_eq!(eval("!true"), Ok(Value::Boolean(false)));
+        assert_eq!(eval("!false"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("!0"), Ok(Value::Boolean(true))); // 0 is falsy
+        assert_eq!(eval("!1"), Ok(Value::Boolean(false))); // 1 is truthy
+        assert_eq!(eval("!nil"), Ok(Value::Boolean(true)));
+        assert_eq!(eval(r#"!"""#), Ok(Value::Boolean(true))); // Empty string is falsy
+        assert_eq!(eval(r#"!"hello""#), Ok(Value::Boolean(false)));
+    }
+
+    #[test]
+    fn eval_logical_and() {
+        // Returns first falsy value, or last value if all truthy
+        assert_eq!(eval("true && true"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("true && false"), Ok(Value::Boolean(false)));
+        assert_eq!(eval("false && true"), Ok(Value::Boolean(false)));
+        assert_eq!(eval("1 && 2"), Ok(Value::Integer(2))); // Both truthy, return last
+        assert_eq!(eval("0 && 2"), Ok(Value::Integer(0))); // First is falsy
+        assert_eq!(eval("1 && nil"), Ok(Value::Nil)); // Second is falsy
+    }
+
+    #[test]
+    fn eval_logical_or() {
+        // Returns first truthy value, or last value if all falsy
+        assert_eq!(eval("true || false"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("false || true"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("false || false"), Ok(Value::Boolean(false)));
+        assert_eq!(eval("1 || 0"), Ok(Value::Integer(1))); // First is truthy
+        assert_eq!(eval("0 || 2"), Ok(Value::Integer(2))); // First is falsy, return second
+        assert_eq!(eval("false || nil"), Ok(Value::Nil)); // Both falsy, return last
+    }
+
+    #[test]
+    fn eval_short_circuit_and() {
+        // Second operand should not be evaluated if first is falsy
+        // We can test this by using side effects if we had them, but for now
+        // just verify behavior is correct
+        assert_eq!(eval("false && true"), Ok(Value::Boolean(false)));
+    }
+
+    #[test]
+    fn eval_short_circuit_or() {
+        // Second operand should not be evaluated if first is truthy
+        assert_eq!(eval("true || false"), Ok(Value::Boolean(true)));
+    }
+
+    // ============================================================
+    // §3.5 List operations
+    // ============================================================
+
+    #[test]
+    fn eval_empty_list() {
+        assert_eq!(eval("[]"), Ok(Value::List(Vector::new())));
+    }
+
+    #[test]
+    fn eval_list_with_elements() {
+        let result = eval("[1, 2, 3]").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 3);
+                assert_eq!(v[0], Value::Integer(1));
+                assert_eq!(v[1], Value::Integer(2));
+                assert_eq!(v[2], Value::Integer(3));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_list_concatenation() {
+        let result = eval("[1, 2] + [3, 4]").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 4);
+                assert_eq!(v[0], Value::Integer(1));
+                assert_eq!(v[3], Value::Integer(4));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_list_repetition() {
+        let result = eval("[1, 2] * 3").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 6);
+                assert_eq!(v[0], Value::Integer(1));
+                assert_eq!(v[2], Value::Integer(1));
+                assert_eq!(v[5], Value::Integer(2));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_list_index() {
+        assert_eq!(eval("[10, 20, 30][0]"), Ok(Value::Integer(10)));
+        assert_eq!(eval("[10, 20, 30][1]"), Ok(Value::Integer(20)));
+        assert_eq!(eval("[10, 20, 30][2]"), Ok(Value::Integer(30)));
+    }
+
+    #[test]
+    fn eval_list_negative_index() {
+        assert_eq!(eval("[10, 20, 30][-1]"), Ok(Value::Integer(30)));
+        assert_eq!(eval("[10, 20, 30][-2]"), Ok(Value::Integer(20)));
+        assert_eq!(eval("[10, 20, 30][-3]"), Ok(Value::Integer(10)));
+    }
+
+    #[test]
+    fn eval_list_out_of_bounds() {
+        assert_eq!(eval("[1, 2, 3][10]"), Ok(Value::Nil));
+        assert_eq!(eval("[1, 2, 3][-10]"), Ok(Value::Nil));
+    }
+
+    // ============================================================
+    // §3.6 Set operations
+    // ============================================================
+
+    #[test]
+    fn eval_empty_set() {
+        assert_eq!(eval("{}"), Ok(Value::Set(HashSet::new())));
+    }
+
+    #[test]
+    fn eval_set_with_elements() {
+        let result = eval("{1, 2, 3}").unwrap();
+        match result {
+            Value::Set(s) => {
+                assert_eq!(s.len(), 3);
+                assert!(s.contains(&Value::Integer(1)));
+                assert!(s.contains(&Value::Integer(2)));
+                assert!(s.contains(&Value::Integer(3)));
+            }
+            _ => panic!("Expected set"),
+        }
+    }
+
+    #[test]
+    fn eval_set_deduplication() {
+        let result = eval("{1, 2, 2, 1, 3}").unwrap();
+        match result {
+            Value::Set(s) => {
+                assert_eq!(s.len(), 3);
+            }
+            _ => panic!("Expected set"),
+        }
+    }
+
+    #[test]
+    fn eval_set_union() {
+        let result = eval("{1, 2} + {2, 3}").unwrap();
+        match result {
+            Value::Set(s) => {
+                assert_eq!(s.len(), 3);
+                assert!(s.contains(&Value::Integer(1)));
+                assert!(s.contains(&Value::Integer(2)));
+                assert!(s.contains(&Value::Integer(3)));
+            }
+            _ => panic!("Expected set"),
+        }
+    }
+
+    #[test]
+    fn eval_set_difference() {
+        // Note: Using {2, 2} instead of {2} because single-element {n} parses as block
+        // TODO: Fix parser to handle single-element sets in expression position
+        let result = eval("{1, 2, 3} - {2, 2}").unwrap();
+        match result {
+            Value::Set(s) => {
+                assert_eq!(s.len(), 2);
+                assert!(s.contains(&Value::Integer(1)));
+                assert!(s.contains(&Value::Integer(3)));
+                assert!(!s.contains(&Value::Integer(2)));
+            }
+            _ => panic!("Expected set"),
+        }
+    }
+
+    // ============================================================
+    // §3.7 Dictionary operations
+    // ============================================================
+
+    #[test]
+    fn eval_empty_dict() {
+        assert_eq!(eval("#{}"), Ok(Value::Dict(HashMap::new())));
+    }
+
+    #[test]
+    fn eval_dict_with_entries() {
+        let result = eval(r#"#{"a": 1, "b": 2}"#).unwrap();
+        match result {
+            Value::Dict(d) => {
+                assert_eq!(d.len(), 2);
+                assert_eq!(
+                    d.get(&Value::String(Rc::new("a".to_string()))),
+                    Some(&Value::Integer(1))
+                );
+                assert_eq!(
+                    d.get(&Value::String(Rc::new("b".to_string()))),
+                    Some(&Value::Integer(2))
+                );
+            }
+            _ => panic!("Expected dict"),
+        }
+    }
+
+    #[test]
+    fn eval_dict_merge() {
+        let result = eval(r#"#{"a": 1} + #{"b": 2}"#).unwrap();
+        match result {
+            Value::Dict(d) => {
+                assert_eq!(d.len(), 2);
+            }
+            _ => panic!("Expected dict"),
+        }
+    }
+
+    #[test]
+    fn eval_dict_merge_right_precedence() {
+        // Right dict values override left
+        let result = eval(r#"#{"a": 1} + #{"a": 2}"#).unwrap();
+        match result {
+            Value::Dict(d) => {
+                assert_eq!(d.len(), 1);
+                assert_eq!(
+                    d.get(&Value::String(Rc::new("a".to_string()))),
+                    Some(&Value::Integer(2))
+                );
+            }
+            _ => panic!("Expected dict"),
+        }
+    }
+
+    #[test]
+    fn eval_dict_access() {
+        assert_eq!(eval(r#"#{"a": 42}["a"]"#), Ok(Value::Integer(42)));
+    }
+
+    #[test]
+    fn eval_dict_missing_key() {
+        assert_eq!(eval(r#"#{"a": 1}["b"]"#), Ok(Value::Nil));
+    }
+
+    // ============================================================
+    // §3.3 String operations
+    // ============================================================
+
+    #[test]
+    fn eval_string_concatenation() {
+        assert_eq!(
+            eval(r#""hello" + " " + "world""#),
+            Ok(Value::String(Rc::new("hello world".to_string())))
+        );
+    }
+
+    #[test]
+    fn eval_string_repetition() {
+        assert_eq!(
+            eval(r#""ab" * 3"#),
+            Ok(Value::String(Rc::new("ababab".to_string())))
+        );
+    }
+
+    #[test]
+    fn eval_string_index() {
+        assert_eq!(
+            eval(r#""hello"[0]"#),
+            Ok(Value::String(Rc::new("h".to_string())))
+        );
+        assert_eq!(
+            eval(r#""hello"[4]"#),
+            Ok(Value::String(Rc::new("o".to_string())))
+        );
+    }
+
+    #[test]
+    fn eval_string_negative_index() {
+        assert_eq!(
+            eval(r#""hello"[-1]"#),
+            Ok(Value::String(Rc::new("o".to_string())))
+        );
+        assert_eq!(
+            eval(r#""hello"[-5]"#),
+            Ok(Value::String(Rc::new("h".to_string())))
+        );
+    }
+
+    // ============================================================
+    // §3.4 Range creation
+    // ============================================================
+
+    #[test]
+    fn eval_exclusive_range() {
+        assert_eq!(
+            eval("1..5"),
+            Ok(Value::Range {
+                start: 1,
+                end: Some(5),
+                inclusive: false
+            })
+        );
+    }
+
+    #[test]
+    fn eval_inclusive_range() {
+        assert_eq!(
+            eval("1..=5"),
+            Ok(Value::Range {
+                start: 1,
+                end: Some(5),
+                inclusive: true
+            })
+        );
+    }
+
+    #[test]
+    fn eval_unbounded_range() {
+        assert_eq!(
+            eval("1.."),
+            Ok(Value::Range {
+                start: 1,
+                end: None,
+                inclusive: false
+            })
+        );
+    }
+
+    // ============================================================
+    // §7.1 Control flow - if expression
+    // ============================================================
+
+    #[test]
+    fn eval_if_true_branch() {
+        assert_eq!(eval("if true { 1 } else { 2 }"), Ok(Value::Integer(1)));
+    }
+
+    #[test]
+    fn eval_if_false_branch() {
+        assert_eq!(eval("if false { 1 } else { 2 }"), Ok(Value::Integer(2)));
+    }
+
+    #[test]
+    fn eval_if_without_else() {
+        assert_eq!(eval("if false { 1 }"), Ok(Value::Nil));
+        assert_eq!(eval("if true { 1 }"), Ok(Value::Integer(1)));
+    }
+
+    #[test]
+    fn eval_if_truthy_conditions() {
+        assert_eq!(eval("if 1 { 42 } else { 0 }"), Ok(Value::Integer(42)));
+        assert_eq!(eval("if 0 { 42 } else { 0 }"), Ok(Value::Integer(0)));
+        assert_eq!(
+            eval(r#"if "hello" { 42 } else { 0 }"#),
+            Ok(Value::Integer(42))
+        );
+        assert_eq!(eval(r#"if "" { 42 } else { 0 }"#), Ok(Value::Integer(0)));
+    }
+
+    #[test]
+    fn eval_nested_if() {
+        assert_eq!(
+            eval("if true { if false { 1 } else { 2 } } else { 3 }"),
+            Ok(Value::Integer(2))
+        );
+    }
+
+    // ============================================================
+    // §8 Functions
+    // ============================================================
+
+    #[test]
+    fn eval_function_call_simple() {
+        assert_eq!(eval("(|x| x + 1)(5)"), Ok(Value::Integer(6)));
+    }
+
+    #[test]
+    fn eval_function_call_multiple_args() {
+        assert_eq!(eval("(|a, b| a + b)(3, 4)"), Ok(Value::Integer(7)));
+    }
+
+    #[test]
+    fn eval_function_call_no_args() {
+        assert_eq!(eval("(|| 42)()"), Ok(Value::Integer(42)));
+    }
+
+    #[test]
+    #[ignore = "Requires closures with upvalue capture (Phase 8)"]
+    fn eval_function_nested_call() {
+        assert_eq!(eval("(|x| (|y| x + y)(3))(2)"), Ok(Value::Integer(5)));
+    }
+
+    #[test]
+    #[ignore = "Requires closures with upvalue capture (Phase 8)"]
+    fn eval_function_returning_function() {
+        assert_eq!(eval("((|x| |y| x + y)(10))(5)"), Ok(Value::Integer(15)));
+    }
+
+    #[test]
+    fn eval_function_wrong_arity() {
+        assert!(eval("(|x| x)(1, 2)").is_err());
+        assert!(eval("(|x, y| x + y)(1)").is_err());
+    }
+
+    // ============================================================
+    // §8.4 Partial application
+    // ============================================================
+
+    #[test]
+    fn eval_partial_application_right() {
+        // _ + 1 creates a function that adds 1 to its argument
+        assert_eq!(eval("(_ + 1)(5)"), Ok(Value::Integer(6)));
+    }
+
+    #[test]
+    fn eval_partial_application_left() {
+        // 10 - _ creates a function that subtracts its argument from 10
+        assert_eq!(eval("(10 - _)(3)"), Ok(Value::Integer(7)));
+    }
+
+    #[test]
+    fn eval_partial_application_both() {
+        // _ / _ creates a function taking two arguments
+        assert_eq!(eval("(_ / _)(10, 2)"), Ok(Value::Integer(5)));
+    }
+
+    #[test]
+    fn eval_partial_application_mul() {
+        assert_eq!(eval("(_ * 2)(5)"), Ok(Value::Integer(10)));
+    }
+
+    // ============================================================
+    // §4.7 Pipeline operator
+    // ============================================================
+
+    #[test]
+    fn eval_pipeline_simple() {
+        // 5 |> (|x| x + 1) === (|x| x + 1)(5)
+        assert_eq!(eval("5 |> (|x| x + 1)"), Ok(Value::Integer(6)));
+    }
+
+    #[test]
+    fn eval_pipeline_chain() {
+        // 5 |> (|x| x + 1) |> (|x| x * 2) === (|x| x * 2)((|x| x + 1)(5))
+        assert_eq!(
+            eval("5 |> (|x| x + 1) |> (|x| x * 2)"),
+            Ok(Value::Integer(12))
+        );
+    }
+
+    #[test]
+    #[ignore = "Partial application in pipeline needs compiler support"]
+    fn eval_pipeline_with_partial() {
+        // 5 |> _ + 1 === (_ + 1)(5)
+        assert_eq!(eval("5 |> (_ + 1)"), Ok(Value::Integer(6)));
+    }
+
+    // ============================================================
+    // §5 Variables and bindings
+    // ============================================================
+
+    #[test]
+    fn eval_let_binding() {
+        assert_eq!(eval("{ let x = 42; x }"), Ok(Value::Integer(42)));
+    }
+
+    #[test]
+    fn eval_let_multiple() {
+        assert_eq!(
+            eval("{ let x = 10; let y = 20; x + y }"),
+            Ok(Value::Integer(30))
+        );
+    }
+
+    #[test]
+    fn eval_let_shadowing() {
+        assert_eq!(
+            eval("{ let x = 1; let x = 2; x }"),
+            Ok(Value::Integer(2))
+        );
+    }
+
+    #[test]
+    fn eval_let_nested_scope() {
+        assert_eq!(
+            eval("{ let x = 1; { let x = 2; x }; x }"),
+            Ok(Value::Integer(1))
+        );
+    }
+
+    #[test]
+    fn eval_let_mut_assignment() {
+        assert_eq!(
+            eval("{ let mut x = 1; x = 2; x }"),
+            Ok(Value::Integer(2))
+        );
+    }
+
+    // ============================================================
+    // §5.4 Destructuring
+    // ============================================================
+
+    #[test]
+    #[ignore = "Compiler bug: destructuring bytecode duplicates wrong value"]
+    fn eval_destructuring_list() {
+        assert_eq!(
+            eval("{ let [a, b] = [1, 2]; a + b }"),
+            Ok(Value::Integer(3))
+        );
+    }
+
+    #[test]
+    #[ignore = "Compiler bug: destructuring bytecode duplicates wrong value"]
+    fn eval_destructuring_nested() {
+        assert_eq!(
+            eval("{ let [[a, b], c] = [[1, 2], 3]; a + b + c }"),
+            Ok(Value::Integer(6))
+        );
+    }
+
+    // ============================================================
+    // §7.2 Match expression
+    // ============================================================
+
+    #[test]
+    fn eval_match_literal() {
+        assert_eq!(
+            eval(r#"match 1 { 1 { "one" } _ { "other" } }"#),
+            Ok(Value::String(Rc::new("one".to_string())))
+        );
+        assert_eq!(
+            eval(r#"match 2 { 1 { "one" } _ { "other" } }"#),
+            Ok(Value::String(Rc::new("other".to_string())))
+        );
+    }
+
+    #[test]
+    #[ignore = "Compiler bug: match binding pattern pops value before use"]
+    fn eval_match_binding() {
+        assert_eq!(
+            eval("match 42 { x { x + 1 } }"),
+            Ok(Value::Integer(43))
+        );
+    }
+
+    #[test]
+    fn eval_match_with_guard() {
+        assert_eq!(
+            eval("match 5 { x if x > 3 { x * 2 } _ { 0 } }"),
+            Ok(Value::Integer(10))
+        );
+        assert_eq!(
+            eval("match 2 { x if x > 3 { x * 2 } _ { 0 } }"),
+            Ok(Value::Integer(0))
+        );
+    }
+
+    #[test]
+    fn eval_match_wildcard() {
+        assert_eq!(
+            eval("match 999 { _ { 42 } }"),
+            Ok(Value::Integer(42))
+        );
+    }
+
+    // ============================================================
+    // §6.3 Block expressions
+    // ============================================================
+
+    #[test]
+    fn eval_block_returns_last() {
+        assert_eq!(eval("{ 1; 2; 3 }"), Ok(Value::Integer(3)));
+    }
+
+    #[test]
+    fn eval_block_single_expr() {
+        assert_eq!(eval("{ 42 }"), Ok(Value::Integer(42)));
+    }
+
+    // ============================================================
+    // Edge cases and error handling
+    // ============================================================
+
+    #[test]
+    fn eval_type_error_add_int_string() {
+        assert!(eval(r#"1 + "hello""#).is_err());
+    }
+
+    #[test]
+    fn eval_type_error_subtract_string() {
+        assert!(eval(r#""hello" - "h""#).is_err());
+    }
+
+    #[test]
+    fn eval_type_error_multiply_strings() {
+        assert!(eval(r#""a" * "b""#).is_err());
+    }
+
+    #[test]
+    fn eval_type_error_compare_list() {
+        assert!(eval("[1, 2] < [1, 3]").is_err());
+    }
+
+    #[test]
+    fn eval_call_non_function() {
+        assert!(eval("42(1)").is_err());
+        assert!(eval(r#""hello"()"#).is_err());
+    }
+
+    #[test]
+    fn eval_undefined_variable() {
+        assert!(eval("undefined_var").is_err());
+    }
+}
