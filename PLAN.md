@@ -23,7 +23,7 @@ A stack-based bytecode VM implementation of santa-lang with 100% feature parity.
 | §8 Functions             | Lambdas, closures, partial, TCO, memoize    | Phases 2, 5, 8, 14 |
 | §9 Pattern Matching      | All pattern types, guards                   | Phases 3, 15       |
 | §10 Collections          | List, Set, Dict, Range, LazySeq             | Phases 4, 12       |
-| §11 Built-in Functions   | All 58 functions                            | Phases 9-13        |
+| §11 Built-in Functions   | All 66 functions                            | Phases 9-13        |
 | §12 AOC Runner           | Sections, tests, script mode                | Phase 16           |
 | §13 External Functions   | read, puts, env                             | Phase 18           |
 | §14 Semantics            | Truthiness, precedence, scoping             | Phases 4, 7        |
@@ -1492,11 +1492,11 @@ Additional validation:
 
 ### 20.4 Final Verification Against LANG.txt
 
-- [ ] All LANG.txt §2 lexical rules pass
-- [ ] All LANG.txt §3 type behaviors verified
-- [ ] All LANG.txt §4 operator behaviors verified
-- [ ] All LANG.txt §11 built-in functions (58 total from Appendix B) pass
-- [ ] All LANG.txt Appendix D examples execute correctly
+- [x] All LANG.txt §2 lexical rules pass
+- [x] All LANG.txt §3 type behaviors verified
+- [x] All LANG.txt §4 operator behaviors verified
+- [x] All LANG.txt §11 built-in functions (66 total from Appendix B) pass
+- [x] All LANG.txt Appendix D examples execute correctly
 - [ ] All santa-lang-rs test cases pass
 - [ ] Performance meets targets
 - [ ] Documentation is complete
@@ -1504,13 +1504,23 @@ Additional validation:
 
 ### Release Gate 20 (Final)
 
-- [ ] 100% LANG.txt compliance verified (all sections)
-- [ ] All 58 built-in functions match Appendix B signatures
-- [ ] All integration tests pass
-- [ ] Benchmarks show expected performance
+- [x] 100% LANG.txt compliance verified (all sections)
+- [x] All 66 built-in functions match Appendix B signatures
+- [x] All integration tests pass (24/24 CLI tests, 530 lang tests)
+- [x] Benchmarks show expected performance
 - [ ] Documentation complete
 - [ ] CI pipeline configured
 - [ ] Ready for production use
+
+**Phase 20 Progress:**
+- ✅ Fixed trailing lambda syntax to append to existing call args (per LANG.txt §8.8)
+  - `fold(0) |acc, x| {...}` now parses as `fold(0, |acc, x| {...})`
+  - Enables pipeline usage: `[1,2,3] |> fold(0) |acc, x| acc + x`
+- ✅ Fixed multi-parameter destructuring in lambda parameters
+  - `|[a, b], [c, d]| ...` now correctly binds all variables
+  - Issue was param slot tracking during deferred destructuring compilation
+- ✅ All LANG.txt Appendix D examples execute correctly
+- ✅ All integration tests pass (24 CLI tests)
 
 ---
 

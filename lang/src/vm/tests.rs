@@ -1303,20 +1303,24 @@ mod compiler_tests {
                 0002 [   1] Dup
                 0003 [   1] Constant 1 (0)
                 0005 [   1] Eq
-                0006 [   1] JumpIfFalse -> 15
+                0006 [   1] JumpIfFalse -> 16
                 0009 [   1] Pop
-                0010 [   1] Constant 2 ("zero")
-                0012 [   1] Jump -> 31
-                0015 [   1] Dup
-                0016 [   1] Constant 3 (1)
-                0018 [   1] Eq
-                0019 [   1] JumpIfFalse -> 28
-                0022 [   1] Pop
-                0023 [   1] Constant 4 ("one")
-                0025 [   1] Jump -> 31
-                0028 [   1] Pop
-                0029 [   1] Constant 5 ("other")
-                0031 [   1] Return
+                0010 [   1] Pop
+                0011 [   1] Constant 2 ("zero")
+                0013 [   1] Jump -> 35
+                0016 [   1] Pop
+                0017 [   1] Dup
+                0018 [   1] Constant 3 (1)
+                0020 [   1] Eq
+                0021 [   1] JumpIfFalse -> 31
+                0024 [   1] Pop
+                0025 [   1] Pop
+                0026 [   1] Constant 4 ("one")
+                0028 [   1] Jump -> 35
+                0031 [   1] Pop
+                0032 [   1] Pop
+                0033 [   1] Constant 5 ("other")
+                0035 [   1] Return
             "#]],
         );
     }
@@ -1350,10 +1354,11 @@ mod compiler_tests {
                 0007 [   1] JumpIfFalse -> 17
                 0010 [   1] GetLocal 0
                 0012 [   1] PopN 1
-                0014 [   1] Jump -> 20
+                0014 [   1] Jump -> 21
                 0017 [   1] Pop
-                0018 [   1] Constant 2 (0)
-                0020 [   1] Return
+                0018 [   1] Pop
+                0019 [   1] Constant 2 (0)
+                0021 [   1] Return
             "#]],
         );
     }
@@ -1367,25 +1372,62 @@ mod compiler_tests {
                 0000 [   1] Constant 0 (1)
                 0002 [   1] Constant 1 (2)
                 0004 [   1] MakeList 2
-                0006 [   1] Dup
-                0007 [   1] Size
-                0008 [   1] Constant 2 (2)
-                0010 [   1] Eq
-                0011 [   1] JumpIfFalse -> 32
-                0014 [   1] Dup
-                0015 [   1] Constant 3 (0)
-                0017 [   1] Index
-                0018 [   1] Dup
-                0019 [   1] Constant 4 (1)
-                0021 [   1] Index
-                0022 [   1] GetLocal 0
-                0024 [   1] GetLocal 1
-                0026 [   1] Add
-                0027 [   1] PopN 2
-                0029 [   1] Jump -> 35
-                0032 [   1] Pop
-                0033 [   1] Constant 5 (0)
-                0035 [   1] Return
+                0006 [   1] GetLocal 0
+                0008 [   1] Size
+                0009 [   1] Constant 2 (2)
+                0011 [   1] Eq
+                0012 [   1] JumpIfFalse -> 36
+                0015 [   1] Pop
+                0016 [   1] GetLocal 0
+                0018 [   1] Constant 3 (0)
+                0020 [   1] Index
+                0021 [   1] GetLocal 0
+                0023 [   1] Constant 4 (1)
+                0025 [   1] Index
+                0026 [   1] GetLocal 1
+                0028 [   1] GetLocal 2
+                0030 [   1] Add
+                0031 [   1] PopN 3
+                0033 [   1] Jump -> 40
+                0036 [   1] Pop
+                0037 [   1] Pop
+                0038 [   1] Constant 5 (0)
+                0040 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_match_list_pattern_single_arm() {
+        // Single arm, no fallback - tests bytecode generation
+        check_bytecode(
+            "match [1, 2] { [a, b] { a + b } }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Constant 0 (1)
+                0002 [   1] Constant 1 (2)
+                0004 [   1] MakeList 2
+                0006 [   1] GetLocal 0
+                0008 [   1] Size
+                0009 [   1] Constant 2 (2)
+                0011 [   1] Eq
+                0012 [   1] JumpIfFalse -> 36
+                0015 [   1] Pop
+                0016 [   1] GetLocal 0
+                0018 [   1] Constant 3 (0)
+                0020 [   1] Index
+                0021 [   1] GetLocal 0
+                0023 [   1] Constant 4 (1)
+                0025 [   1] Index
+                0026 [   1] GetLocal 1
+                0028 [   1] GetLocal 2
+                0030 [   1] Add
+                0031 [   1] PopN 3
+                0033 [   1] Jump -> 39
+                0036 [   1] Pop
+                0037 [   1] Pop
+                0038 [   1] Nil
+                0039 [   1] Return
             "#]],
         );
     }
@@ -1399,19 +1441,23 @@ mod compiler_tests {
                 0000 [   1] Constant 0 (5)
                 0002 [   1] Dup
                 0003 [   1] RangeCheck 1 3 true
-                0009 [   1] JumpIfFalse -> 18
+                0009 [   1] JumpIfFalse -> 19
                 0012 [   1] Pop
-                0013 [   1] Constant 1 ("low")
-                0015 [   1] Jump -> 37
-                0018 [   1] Dup
-                0019 [   1] RangeCheck 4 10 false
-                0025 [   1] JumpIfFalse -> 34
-                0028 [   1] Pop
-                0029 [   1] Constant 2 ("mid")
-                0031 [   1] Jump -> 37
-                0034 [   1] Pop
-                0035 [   1] Constant 3 ("high")
-                0037 [   1] Return
+                0013 [   1] Pop
+                0014 [   1] Constant 1 ("low")
+                0016 [   1] Jump -> 41
+                0019 [   1] Pop
+                0020 [   1] Dup
+                0021 [   1] RangeCheck 4 10 false
+                0027 [   1] JumpIfFalse -> 37
+                0030 [   1] Pop
+                0031 [   1] Pop
+                0032 [   1] Constant 2 ("mid")
+                0034 [   1] Jump -> 41
+                0037 [   1] Pop
+                0038 [   1] Pop
+                0039 [   1] Constant 3 ("high")
+                0041 [   1] Return
             "#]],
         );
     }
@@ -1426,26 +1472,27 @@ mod compiler_tests {
                 0000 [   1] Constant 0 (1)
                 0002 [   1] Constant 1 (2)
                 0004 [   1] MakeList 2
-                0006 [   1] Dup
-                0007 [   1] Size
-                0008 [   1] Constant 2 (2)
-                0010 [   1] Eq
-                0011 [   1] JumpIfFalse -> 33
-                0014 [   1] Dup
-                0015 [   1] Constant 3 (0)
-                0017 [   1] Index
-                0018 [   1] Dup
-                0019 [   1] Constant 4 (1)
-                0021 [   1] Index
-                0022 [   1] Pop
-                0023 [   1] GetLocal 0
-                0025 [   1] GetLocal 1
-                0027 [   1] Add
-                0028 [   1] PopN 2
-                0030 [   1] Jump -> 36
-                0033 [   1] Pop
-                0034 [   1] Constant 5 (0)
-                0036 [   1] Return
+                0006 [   1] GetLocal 0
+                0008 [   1] Size
+                0009 [   1] Constant 2 (2)
+                0011 [   1] Eq
+                0012 [   1] JumpIfFalse -> 37
+                0015 [   1] Pop
+                0016 [   1] GetLocal 0
+                0018 [   1] Constant 3 (0)
+                0020 [   1] Index
+                0021 [   1] GetLocal 0
+                0023 [   1] Constant 4 (1)
+                0025 [   1] Index
+                0026 [   1] Pop
+                0027 [   1] GetLocal 1
+                0029 [   1] GetLocal 2
+                0031 [   1] Add
+                0032 [   1] PopN 3
+                0034 [   1] Jump -> 40
+                0037 [   1] Pop
+                0038 [   1] Constant 5 (0)
+                0040 [   1] Return
             "#]],
         );
     }
@@ -2259,6 +2306,37 @@ mod runtime_tests {
     #[test]
     fn eval_match_wildcard() {
         assert_eq!(eval("match 999 { _ { 42 } }"), Ok(Value::Integer(42)));
+    }
+
+    #[test]
+    fn eval_match_list_pattern() {
+        // Simple list pattern with two elements
+        assert_eq!(
+            eval("match [1, 2] { [a, b] { a + b } _ { 0 } }"),
+            Ok(Value::Integer(3))
+        );
+    }
+
+    #[test]
+    fn eval_match_list_pattern_via_statements() {
+        // Test via compile_statements (as CLI does)
+        let tokens = Lexer::new("match [1, 2] { [a, b] { a + b } _ { 0 } }").tokenize().unwrap();
+        let program = Parser::new(tokens).parse_program().unwrap();
+        let compiled = Compiler::compile_statements(&program.statements).unwrap();
+        let mut vm = VM::new();
+        let result = vm.run(Rc::new(compiled));
+        assert_eq!(result.map_err(|e| e.message), Ok(Value::Integer(3)));
+    }
+
+    #[test]
+    fn eval_match_list_pattern_no_fallback() {
+        // Test without wildcard fallback
+        let tokens = Lexer::new("match [1, 2] { [a, b] { a + b } }").tokenize().unwrap();
+        let program = Parser::new(tokens).parse_program().unwrap();
+        let compiled = Compiler::compile_statements(&program.statements).unwrap();
+        let mut vm = VM::new();
+        let result = vm.run(Rc::new(compiled));
+        assert_eq!(result.map_err(|e| e.message), Ok(Value::Integer(3)));
     }
 
     // ============================================================

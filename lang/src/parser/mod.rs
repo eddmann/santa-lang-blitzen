@@ -525,13 +525,25 @@ impl Parser {
                     line: left.span.line,
                     column: left.span.column,
                 };
-                Ok(Spanned::new(
-                    Expr::Call {
-                        function: Box::new(left),
-                        args: vec![lambda],
-                    },
-                    span,
-                ))
+                // If left is already a Call (e.g., fold(0)), append the lambda to its args
+                // rather than creating a nested call. This allows fold(0) |acc, x| {...}
+                // to parse as fold(0, |acc, x| {...}) per LANG.txt §8.8.
+                match left.node {
+                    Expr::Call { function, mut args } => {
+                        args.push(lambda);
+                        Ok(Spanned::new(Expr::Call { function, args }, span))
+                    }
+                    _ => {
+                        // For non-call expressions, wrap as a call with the lambda as arg
+                        Ok(Spanned::new(
+                            Expr::Call {
+                                function: Box::new(left),
+                                args: vec![lambda],
+                            },
+                            span,
+                        ))
+                    }
+                }
             }
 
             // Infix function call with backticks

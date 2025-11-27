@@ -169,3 +169,250 @@ fn cli_no_args_shows_help() {
         .code(1)
         .stdout(predicate::str::contains("USAGE:"));
 }
+
+// ============================================================================
+// LANG.txt Appendix D Integration Tests
+// ============================================================================
+
+// Example 1: Fibonacci Sequence (requires memoize - skipped)
+// The memoize builtin is not yet implemented. Once implemented, enable this test:
+// ```santa
+// let fib = memoize |n| {
+//   if n > 1 { fib(n - 1) + fib(n - 2) } else { n }
+// };
+// fib(50)
+// ```
+
+// Alternative: Non-memoized fibonacci for small n (to test recursion)
+#[test]
+fn integration_fibonacci_recursive() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, r#"
+        let fib = |n| {{
+            if n > 1 {{ fib(n - 1) + fib(n - 2) }}
+            else {{ n }}
+        }};
+        fib(20)
+    "#).unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("6765"));
+}
+
+// Example 2: AOC 2022 Day 1 pattern (simplified - no read() for aoc://)
+#[test]
+fn integration_aoc_day1_style() {
+    let mut file = NamedTempFile::new().unwrap();
+    // Input has 3 groups: (1000+2000+3000=6000), (4000), (5000+6000=11000)
+    // Part 1: max = 11000
+    // Part 2: top 3 sums = 11000 + 6000 + 4000 = 21000
+    writeln!(file, r#"
+        input: "1000\n2000\n3000\n\n4000\n\n5000\n6000"
+
+        let parse_inventories = split("\n\n") >> map(ints >> sum);
+
+        part_one: {{
+            parse_inventories(input) |> max;
+        }}
+
+        part_two: {{
+            parse_inventories(input)
+                |> sort(<)
+                |> reverse
+                |> take(3)
+                |> sum;
+        }}
+
+        test: {{
+            input: "1000\n2000\n3000\n\n4000\n\n5000\n6000"
+            part_one: 11000
+            part_two: 21000
+        }}
+    "#).unwrap();
+
+    santa_cli()
+        .arg("-t")
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("All tests passed!"));
+}
+
+// Example 3: Word Frequency Counter (simplified - inline input)
+#[test]
+fn integration_word_frequency() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, r#"
+        let text = "hello world hello santa hello world";
+
+        text
+            |> split(" ")
+            |> fold(#{{}}) |freq, word| {{
+                update_d(word, 0, _ + 1, freq)
+            }}
+            |> list
+            |> sort(|[_, a], [_, b]| a > b)
+            |> take(3)
+    "#).unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        // "hello" appears 3 times, "world" 2 times
+        .stdout(predicate::str::contains("hello"))
+        .stdout(predicate::str::contains("3"));
+}
+
+// Example 4: Prime Numbers (lazy infinite sequences)
+#[test]
+fn integration_prime_numbers() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, r#"
+        let is_prime = |n| {{
+            if n < 2 {{ return false }};
+            (2..n) |> all?(|d| n % d != 0)
+        }};
+
+        (1..) |> filter(is_prime) |> take(10) |> list
+    "#).unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        // First 10 primes: 2, 3, 5, 7, 11, 13, 17, 19, 23, 29
+        .stdout(predicate::str::contains("2"))
+        .stdout(predicate::str::contains("29"));
+}
+
+// Example 5: Recursive List Sum (pattern matching)
+#[test]
+fn integration_recursive_list_sum() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, r#"
+        let sum_list = |list| match list {{
+            [] {{ 0 }}
+            [head, ..tail] {{ head + sum_list(tail) }}
+        }};
+
+        sum_list([1, 2, 3, 4, 5])
+    "#).unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("15"));
+}
+
+// Additional integration tests for LANG.txt compliance
+
+#[test]
+fn integration_lazy_range_unbounded() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, r#"
+        (1..) |> take(5) |> list
+    "#).unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[1, 2, 3, 4, 5]"));
+}
+
+#[test]
+fn integration_operator_as_function() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, r#"
+        reduce(+, [1, 2, 3, 4, 5])
+    "#).unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("15"));
+}
+
+#[test]
+fn integration_function_composition() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, r#"
+        let double = |x| x * 2;
+        let add10 = |x| x + 10;
+        let composed = double >> add10;
+        composed(5)
+    "#).unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("20"));
+}
+
+#[test]
+fn integration_partial_application() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, r#"
+        let add10 = _ + 10;
+        add10(5)
+    "#).unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("15"));
+}
+
+#[test]
+fn integration_tail_call_optimization() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, r#"
+        let sum_to = |n, acc| if n == 0 {{ acc }} else {{ sum_to(n - 1, acc + n) }};
+        sum_to(10000, 0)
+    "#).unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("50005000"));
+}
+
+#[test]
+fn integration_pattern_destructuring() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(file, r#"
+        let [a, b, ..rest] = [1, 2, 3, 4, 5];
+        a + b + sum(rest)
+    "#).unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("15"));
+}
+
+#[test]
+fn integration_string_grapheme_indexing() {
+    let mut file = NamedTempFile::new().unwrap();
+    // Test grapheme cluster indexing per LANG.txt §3.3
+    writeln!(file, r#"
+        let s = "hello";
+        s[0]
+    "#).unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("h"));
+}

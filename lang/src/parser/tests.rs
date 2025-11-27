@@ -658,9 +658,19 @@ fn parse_assignment() {
 
 #[test]
 fn parse_trailing_lambda() {
+    // Trailing lambda appends to call args: each(list) |x| ... => each(list, |x| ...)
     check(
         "each(list) |x| x + 1",
-        expect!["((each(list))(|x| (x + 1)))"],
+        expect!["(each(list, |x| (x + 1)))"],
+    );
+}
+
+#[test]
+fn parse_trailing_lambda_fold() {
+    // fold(0) |acc, x| ... => fold(0, |acc, x| ...)
+    check(
+        "fold(0) |acc, x| acc + x",
+        expect!["(fold(0, |acc, x| (acc + x)))"],
     );
 }
 

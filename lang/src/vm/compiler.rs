@@ -1097,7 +1097,13 @@ impl Compiler {
         *self = Compiler::new_function(None, regular_param_count as u8, enclosing);
 
         // Add parameter locals and compile destructuring if needed
+        // Track pattern params and their local slots for deferred destructuring
+        let mut pattern_params: Vec<(&Pattern, u8, Span)> = Vec::new();
+
         for (param_idx, param) in params.iter().enumerate() {
+            // Record the local slot for this parameter (before adding)
+            let local_slot = self.locals.len() as u8;
+
             match &param.name {
                 ParamKind::Identifier(name) => {
                     self.locals.push(Local {
@@ -1124,18 +1130,22 @@ impl Compiler {
                     });
                 }
                 ParamKind::Pattern(pattern) => {
-                    // Pattern parameter: the parameter value is on stack at param_idx
-                    // First add a temporary local for the pattern parameter itself
+                    // Pattern parameter: add a placeholder local at the param slot
                     self.locals.push(Local {
                         name: format!("__pattern_param_{}", param_idx),
                         depth: 0,
                         mutable: false,
                         captured: false,
                     });
-                    // Now compile destructuring to extract pattern variables
-                    self.compile_param_pattern_destructuring(pattern, param_idx as u8, param.span)?;
+                    // Defer destructuring until all params are added
+                    pattern_params.push((pattern, local_slot, param.span));
                 }
             }
+        }
+
+        // Now compile pattern destructuring with correct local slots
+        for (pattern, local_slot, span) in pattern_params {
+            self.compile_param_pattern_destructuring(pattern, local_slot, span)?;
         }
 
         // Compile body in tail position
@@ -1752,19 +1762,34 @@ impl Compiler {
                 }
             }
 
-            // Jump to end
-            if !is_last {
+            // Check if we need to emit failure handling code for this arm
+            let has_failure_code = guard_jump.is_some() || next_arm_jump.is_some();
+
+            // Jump to end - needed if not last OR if last arm has failure handling code
+            if !is_last || has_failure_code {
                 end_jumps.push(self.emit_jump(OpCode::Jump));
             }
 
             // Patch guard jump to next arm if guard failed
             if let Some(gj) = guard_jump {
                 self.patch_jump(gj);
+                // Pop the guard result (boolean) in the failure path
+                self.emit(OpCode::Pop);
             }
 
             // Patch pattern match failure jump
             if let Some(pj) = next_arm_jump {
                 self.patch_jump(pj);
+                // Pop the pattern test result (boolean) in the failure path
+                self.emit(OpCode::Pop);
+            }
+
+            // If this is the last arm and pattern/guard might fail, we need a fallback value
+            if is_last && has_failure_code {
+                // Pop the subject that's still on stack
+                self.emit(OpCode::Pop);
+                // Return nil as the match result when no pattern matches
+                self.emit(OpCode::Nil);
             }
         }
 
@@ -1817,7 +1842,10 @@ impl Compiler {
                     LiteralPattern::Nil => self.emit(OpCode::Nil),
                 }
                 self.emit(OpCode::Eq);
-                Ok(Some(self.emit_jump(OpCode::JumpIfFalse)))
+                let fail_jump = self.emit_jump(OpCode::JumpIfFalse);
+                // Pop the boolean result in the success path
+                self.emit(OpCode::Pop);
+                Ok(Some(fail_jump))
             }
             Pattern::Range {
                 start,
@@ -1836,7 +1864,10 @@ impl Compiler {
                 self.chunk().write_operand((end_val & 0xFF) as u8);
                 // Write inclusive flag
                 self.chunk().write_operand(if *inclusive { 1 } else { 0 });
-                Ok(Some(self.emit_jump(OpCode::JumpIfFalse)))
+                let fail_jump = self.emit_jump(OpCode::JumpIfFalse);
+                // Pop the boolean result in the success path
+                self.emit(OpCode::Pop);
+                Ok(Some(fail_jump))
             }
             Pattern::List(patterns) => self.compile_list_pattern_test(patterns, span),
             Pattern::RestIdentifier(_) => Err(CompileError::new(
@@ -1852,6 +1883,11 @@ impl Compiler {
         patterns: &[Pattern],
         span: Span,
     ) -> Result<Option<usize>, CompileError> {
+        // The subject (list) is on top of stack. We need to register it as a temporary
+        // local so we can access it by index while binding other elements.
+        let subject_local_idx = self.locals.len() as u8;
+        self.add_local("__match_subject".to_string(), false);
+
         // Check size first (unless there's a rest pattern)
         let has_rest = patterns
             .iter()
@@ -1862,8 +1898,8 @@ impl Compiler {
             patterns.len()
         };
 
-        // Dup and check size
-        self.emit(OpCode::Dup);
+        // Get subject and check size
+        self.emit_with_operand(OpCode::GetLocal, subject_local_idx);
         self.emit(OpCode::Size);
         self.emit_constant(Value::Integer(required_len as i64))?;
         if has_rest {
@@ -1872,6 +1908,8 @@ impl Compiler {
             self.emit(OpCode::Eq);
         }
         let size_fail_jump = self.emit_jump(OpCode::JumpIfFalse);
+        // Pop the boolean result (JumpIfFalse does NOT pop, so we need to pop in the success path)
+        self.emit(OpCode::Pop);
 
         // Extract and bind each element
         let rest_pos = patterns
@@ -1881,7 +1919,7 @@ impl Compiler {
         for (i, pattern) in patterns.iter().enumerate() {
             match pattern {
                 Pattern::Identifier(name) => {
-                    self.emit(OpCode::Dup);
+                    self.emit_with_operand(OpCode::GetLocal, subject_local_idx);
                     let idx = self.calc_pattern_index(i, rest_pos, patterns.len());
                     self.emit_constant(Value::Integer(idx))?;
                     self.emit(OpCode::Index);
@@ -1891,7 +1929,7 @@ impl Compiler {
                     // Skip - don't need to extract
                 }
                 Pattern::RestIdentifier(name) => {
-                    self.emit(OpCode::Dup);
+                    self.emit_with_operand(OpCode::GetLocal, subject_local_idx);
                     self.emit_constant(Value::Integer(i as i64))?;
                     let end_count = patterns.len() - i - 1;
                     if end_count == 0 {
@@ -1904,7 +1942,7 @@ impl Compiler {
                 }
                 Pattern::Literal(lit) => {
                     // Extract and compare
-                    self.emit(OpCode::Dup);
+                    self.emit_with_operand(OpCode::GetLocal, subject_local_idx);
                     let idx = self.calc_pattern_index(i, rest_pos, patterns.len());
                     self.emit_constant(Value::Integer(idx))?;
                     self.emit(OpCode::Index);
@@ -1926,12 +1964,13 @@ impl Compiler {
                         LiteralPattern::Nil => self.emit(OpCode::Nil),
                     }
                     self.emit(OpCode::Eq);
-                    // If not equal, fail
+                    // If not equal, fail - but first pop the compare result in success path
                     let fail_jump = self.emit_jump(OpCode::JumpIfFalse);
+                    self.emit(OpCode::Pop);
                     return Ok(Some(fail_jump));
                 }
                 Pattern::List(inner) => {
-                    self.emit(OpCode::Dup);
+                    self.emit_with_operand(OpCode::GetLocal, subject_local_idx);
                     let idx = self.calc_pattern_index(i, rest_pos, patterns.len());
                     self.emit_constant(Value::Integer(idx))?;
                     self.emit(OpCode::Index);
