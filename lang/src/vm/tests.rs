@@ -3068,15 +3068,36 @@ mod runtime_tests {
 
     #[test]
     fn eval_builtin_flat_map_nested() {
-        // flat_map(_ * 2, [[1, 2], [3, 4]]) => [2, 4, 6, 8]
-        let result = eval("flat_map(_ * 2, [[1, 2], [3, 4]])").unwrap();
+        // flat_map applies mapper to each element, then flattens results
+        // flat_map(|x| [x, x * 2], [1, 2]) => [1, 2, 2, 4]
+        let result = eval("flat_map(|x| [x, x * 2], [1, 2])").unwrap();
         match result {
             Value::List(v) => {
                 assert_eq!(v.len(), 4);
-                assert_eq!(v[0], Value::Integer(2));
-                assert_eq!(v[1], Value::Integer(4));
-                assert_eq!(v[2], Value::Integer(6));
-                assert_eq!(v[3], Value::Integer(8));
+                assert_eq!(v[0], Value::Integer(1));
+                assert_eq!(v[1], Value::Integer(2));
+                assert_eq!(v[2], Value::Integer(2));
+                assert_eq!(v[3], Value::Integer(4));
+            }
+            _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_flat_map_with_pairs() {
+        // flat_map should work with zip pairs without unwrapping them
+        let result = eval("zip(0..3, [\"a\", \"b\", \"c\"]) |> flat_map(|[i, v]| [[i, v]])").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 3);
+                // First element is [0, "a"]
+                match &v[0] {
+                    Value::List(pair) => {
+                        assert_eq!(pair[0], Value::Integer(0));
+                        assert_eq!(pair[1], Value::String(std::rc::Rc::new("a".to_string())));
+                    }
+                    _ => panic!("Expected list pair"),
+                }
             }
             _ => panic!("Expected list"),
         }

@@ -2034,33 +2034,20 @@ impl VM {
         match collection {
             Value::List(list) => {
                 for (idx, elem) in list.iter().enumerate() {
-                    // If element is a list, map the function over its elements
-                    // then flatten into result (this gives flat_map its special behavior)
-                    match elem {
-                        Value::List(inner_list) => {
-                            for inner_elem in inner_list.iter() {
-                                let mapped =
-                                    self.call_closure_sync(&closure, vec![inner_elem.clone()])?;
-                                result.push_back(mapped);
+                    // Apply mapper to each element, then flatten if result is a list
+                    let call_args = if arity >= 2 {
+                        vec![elem.clone(), Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem.clone()]
+                    };
+                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    match mapped {
+                        Value::List(inner) => {
+                            for item in inner.iter() {
+                                result.push_back(item.clone());
                             }
                         }
-                        _ => {
-                            // For non-list elements, apply mapper and flatten if result is a list
-                            let call_args = if arity >= 2 {
-                                vec![elem.clone(), Value::Integer(idx as i64)]
-                            } else {
-                                vec![elem.clone()]
-                            };
-                            let mapped = self.call_closure_sync(&closure, call_args)?;
-                            match mapped {
-                                Value::List(inner) => {
-                                    for item in inner.iter() {
-                                        result.push_back(item.clone());
-                                    }
-                                }
-                                _ => result.push_back(mapped),
-                            }
-                        }
+                        _ => result.push_back(mapped),
                     }
                 }
             }
