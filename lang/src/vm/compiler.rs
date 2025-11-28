@@ -142,8 +142,10 @@ impl Compiler {
             } else {
                 // Non-last statements - compile and pop their values
                 compiler.statement(stmt)?;
-                // Pop the value if it's an expression statement (to avoid stack buildup)
-                if matches!(&stmt.node, Stmt::Expr(_)) {
+                // Pop the value to avoid stack buildup. Both expression statements
+                // and let statements (at global scope) leave values on the stack
+                // that we don't need.
+                if matches!(&stmt.node, Stmt::Expr(_) | Stmt::Let { .. }) {
                     compiler.emit(OpCode::Pop);
                 }
             }
@@ -2348,9 +2350,7 @@ impl Compiler {
                     return Err(CompileError::new("Too many global names", span));
                 }
                 self.emit_with_operand(OpCode::SetGlobal, name_idx as u8);
-                // SetGlobal consumes the value, but let should leave it on stack
-                // So emit GetGlobal to retrieve it
-                self.emit_with_operand(OpCode::GetGlobal, name_idx as u8);
+                // Note: SetGlobal only peeks, doesn't pop, so value stays on stack
             } else {
                 // Local scope - add local first (for self-recursion)
                 self.add_local(name.clone(), mutable);
@@ -2387,8 +2387,7 @@ impl Compiler {
                         return Err(CompileError::new("Too many global names", span));
                     }
                     self.emit_with_operand(OpCode::SetGlobal, name_idx as u8);
-                    // SetGlobal consumes the value, push it back
-                    self.emit_with_operand(OpCode::GetGlobal, name_idx as u8);
+                    // Note: SetGlobal only peeks, doesn't pop, so value stays on stack
                 } else {
                     // Local binding - add local (value is on stack)
                     self.add_local(name.clone(), mutable);
@@ -2459,7 +2458,8 @@ impl Compiler {
                     self.emit(OpCode::Index);
 
                     if is_global_scope {
-                        // Global binding
+                        // Global binding - register so it's found before builtins
+                        self.global_names.insert(name.clone());
                         let name_idx = self.chunk().add_constant(Value::String(
                             std::rc::Rc::new(name.clone())
                         ));
@@ -2467,7 +2467,9 @@ impl Compiler {
                             return Err(CompileError::new("Too many global names", span));
                         }
                         self.emit_with_operand(OpCode::SetGlobal, name_idx as u8);
-                        self.emit_with_operand(OpCode::GetGlobal, name_idx as u8);
+                        // SetGlobal only peeks, doesn't pop. Pop the value since we don't
+                        // need it on the stack during destructuring.
+                        self.emit(OpCode::Pop);
                     } else {
                         // Local binding
                         self.add_local(name.clone(), mutable);
@@ -2475,6 +2477,8 @@ impl Compiler {
                 }
                 Pattern::Wildcard => {
                     // Skip this element - don't bind it
+                    // We need to pop the value that was extracted for this position
+                    // Actually, wildcards don't extract a value - we just skip them
                 }
                 Pattern::RestIdentifier(name) => {
                     // Get a slice of the middle elements
@@ -2491,7 +2495,8 @@ impl Compiler {
                     self.emit(OpCode::Slice);
 
                     if is_global_scope {
-                        // Global binding
+                        // Global binding - register so it's found before builtins
+                        self.global_names.insert(name.clone());
                         let name_idx = self.chunk().add_constant(Value::String(
                             std::rc::Rc::new(name.clone())
                         ));
@@ -2499,7 +2504,9 @@ impl Compiler {
                             return Err(CompileError::new("Too many global names", span));
                         }
                         self.emit_with_operand(OpCode::SetGlobal, name_idx as u8);
-                        self.emit_with_operand(OpCode::GetGlobal, name_idx as u8);
+                        // SetGlobal only peeks, doesn't pop. Pop the value since we don't
+                        // need it on the stack during destructuring.
+                        self.emit(OpCode::Pop);
                     } else {
                         // Local binding
                         self.add_local(name.clone(), mutable);
@@ -2511,6 +2518,11 @@ impl Compiler {
                     self.emit_constant(Value::Integer(i as i64))?;
                     self.emit(OpCode::Index);
                     self.compile_list_destructuring(inner, mutable, span)?;
+                    // At global scope, pop the inner list's anonymous local after recursion
+                    // so the stack returns to just having our outer list.
+                    if is_global_scope {
+                        self.emit(OpCode::Pop);
+                    }
                 }
                 Pattern::Literal(_) | Pattern::Range { .. } => {
                     return Err(CompileError::new(
@@ -2684,17 +2696,39 @@ impl Compiler {
             }
 
             // Patch guard jump to next arm if guard failed
-            if let Some(gj) = guard_jump {
+            let guard_skip_jump = if let Some(gj) = guard_jump {
                 self.patch_jump(gj);
                 // Pop the guard result (boolean) in the failure path
                 self.emit(OpCode::Pop);
-            }
+                // Pop any locals bound by the pattern EXCEPT the first one (the subject).
+                // The subject was already on the stack before pattern matching and needs to
+                // remain for the next arm to try matching.
+                // NOTE: We use individual Pop instructions instead of PopN because PopN
+                // preserves the top value (designed for returning results from blocks),
+                // but here we just want to discard the bound locals.
+                for _ in 1..locals_bound {
+                    self.emit(OpCode::Pop);
+                }
+                // If there's also pattern failure code, we need to jump past it
+                if next_arm_jump.is_some() {
+                    Some(self.emit_jump(OpCode::Jump))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
 
             // Patch pattern match failure jump
             if let Some(pj) = next_arm_jump {
                 self.patch_jump(pj);
                 // Pop the pattern test result (boolean) in the failure path
                 self.emit(OpCode::Pop);
+            }
+
+            // Patch the guard skip jump to here (after pattern failure handling)
+            if let Some(gsj) = guard_skip_jump {
+                self.patch_jump(gsj);
             }
 
             // If this is the last arm and pattern/guard might fail, we need a fallback value
@@ -2801,8 +2835,10 @@ impl Compiler {
         let subject_local_idx = self.locals.len() as u8;
         self.add_local("__match_subject".to_string(), false);
 
-        // Collect all fail jumps - they all need to go to the same failure handler
-        let mut fail_jumps = Vec::new();
+        // Collect jumps that need their boolean popped in failure path
+        let mut conditional_fail_jumps: Vec<usize> = Vec::new();
+        // Collect jumps that have already cleaned up (just need to jump to common point)
+        let mut unconditional_fail_jumps: Vec<usize> = Vec::new();
 
         // Check size first (unless there's a rest pattern)
         let has_rest = patterns
@@ -2823,7 +2859,7 @@ impl Compiler {
         } else {
             self.emit(OpCode::Eq);
         }
-        fail_jumps.push(self.emit_jump(OpCode::JumpIfFalse));
+        conditional_fail_jumps.push(self.emit_jump(OpCode::JumpIfFalse));
         // Pop the boolean result (JumpIfFalse does NOT pop, so we need to pop in the success path)
         self.emit(OpCode::Pop);
 
@@ -2881,7 +2917,7 @@ impl Compiler {
                     }
                     self.emit(OpCode::Eq);
                     // If not equal, fail - collect jump to patch later
-                    fail_jumps.push(self.emit_jump(OpCode::JumpIfFalse));
+                    conditional_fail_jumps.push(self.emit_jump(OpCode::JumpIfFalse));
                     self.emit(OpCode::Pop);
                     // Continue processing remaining patterns (don't return early!)
                 }
@@ -2890,8 +2926,22 @@ impl Compiler {
                     let idx = self.calc_pattern_index(i, rest_pos, patterns.len());
                     self.emit_constant(Value::Integer(idx))?;
                     self.emit(OpCode::Index);
-                    if let Some(jump) = self.compile_list_pattern_test(inner, span)? {
-                        fail_jumps.push(jump);
+                    if let Some(inner_fail_jump) = self.compile_list_pattern_test(inner, span)? {
+                        // The inner pattern failed. We need to clean up both the failure
+                        // boolean AND the element we pushed via Index before jumping to
+                        // our failure handler.
+                        // Jump past cleanup code if success
+                        let success_jump = self.emit_jump(OpCode::Jump);
+                        // Patch inner failure to here
+                        self.patch_jump(inner_fail_jump);
+                        // Pop the failure boolean from inner pattern check
+                        self.emit(OpCode::Pop);
+                        // Pop the element we pushed for this nested pattern
+                        self.emit(OpCode::Pop);
+                        // Now jump to our failure point (already cleaned up)
+                        unconditional_fail_jumps.push(self.emit_jump(OpCode::Jump));
+                        // Patch success to continue
+                        self.patch_jump(success_jump);
                     }
                 }
                 Pattern::Range { .. } => {
@@ -2903,22 +2953,34 @@ impl Compiler {
             }
         }
 
-        // If we have multiple fail jumps, chain them to a common fail point
-        // Return the first fail_jump - the caller will patch it, and we chain the rest
-        if fail_jumps.is_empty() {
+        // Handle failure jumps. There are two types:
+        // - conditional_fail_jumps: JumpIfFalse from size/literal checks, need to pop boolean
+        // - unconditional_fail_jumps: Jump from nested pattern cleanup, already cleaned up
+        let total_fails = conditional_fail_jumps.len() + unconditional_fail_jumps.len();
+
+        if total_fails == 0 {
             Ok(None)
-        } else if fail_jumps.len() == 1 {
-            Ok(Some(fail_jumps[0]))
+        } else if total_fails == 1 && unconditional_fail_jumps.is_empty() {
+            // Single conditional failure - let caller handle the pop
+            Ok(Some(conditional_fail_jumps[0]))
         } else {
-            // All fail jumps after the first one need to jump to where the first one goes
-            // Jump past success path to the fail handler
+            // Multiple failures or mixed types - need a common failure point
+            // Jump past failure handling code
             let success_jump = self.emit_jump(OpCode::Jump);
 
-            // Patch all fail jumps to here (common fail point)
-            for jump in &fail_jumps {
+            // Handle conditional failures: patch each to pop its boolean, then jump to common point
+            for jump in &conditional_fail_jumps {
+                self.patch_jump(*jump);
+                self.emit(OpCode::Pop); // Pop the boolean from the check
+            }
+            // All conditional failures now fall through to the common point
+
+            // Handle unconditional failures: patch them to the common point
+            for jump in &unconditional_fail_jumps {
                 self.patch_jump(*jump);
             }
-            // Push a dummy boolean on stack (the caller expects to pop this in failure path)
+
+            // Common failure exit: push a dummy boolean for the caller to pop
             self.emit(OpCode::False);
             let final_fail_jump = self.emit_jump(OpCode::JumpIfFalse);
 

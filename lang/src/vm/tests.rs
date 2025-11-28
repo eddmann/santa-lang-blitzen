@@ -2306,6 +2306,34 @@ mod runtime_tests {
     }
 
     #[test]
+    fn eval_match_list_pattern_with_guard() {
+        // Guard succeeds - binds from first arm
+        assert_eq!(
+            eval("match [10, 20] { [start, end] if start > 5 { start + end } _ { 0 } }"),
+            Ok(Value::Integer(30))
+        );
+        // Guard fails - falls through to second arm with list pattern
+        assert_eq!(
+            eval("match [10, 20] { [start, end] if start > 100 { start } [a, b] { a + b } }"),
+            Ok(Value::Integer(30))
+        );
+        // Guard fails - falls through to wildcard
+        assert_eq!(
+            eval("match [10, 20] { [start, end] if start > 100 { start } x { x } }"),
+            Ok(Value::List(Vector::from(vec![Value::Integer(10), Value::Integer(20)])))
+        );
+    }
+
+    #[test]
+    fn eval_match_nested_list_pattern_size_mismatch() {
+        // Outer size doesn't match - fall through to second arm
+        assert_eq!(
+            eval("match [[1, 2], [3, 4], [5, 6]] { [[a, b], _] { a } [[x, y], ..rest] { x + y } }"),
+            Ok(Value::Integer(3))
+        );
+    }
+
+    #[test]
     fn eval_match_wildcard() {
         assert_eq!(eval("match 999 { _ { 42 } }"), Ok(Value::Integer(42)));
     }
@@ -4988,5 +5016,57 @@ mod runtime_tests {
             eval(r#"{ let sub = |a, b| a - b; let subFrom10 = sub(10); subFrom10(3) }"#),
             Ok(Value::Integer(7))  // 10 - 3 = 7
         );
+    }
+
+    #[test]
+    fn eval_let_destructuring_nested_lists_global() {
+        // Test that destructuring at global scope correctly extracts nested elements
+        let source = r#"let [first, second] = [[1, 2], [3, 4]];
+first"#;
+        let tokens = Lexer::new(source).tokenize().unwrap();
+        let program = Parser::new(tokens).parse_program().unwrap();
+        let compiled = Compiler::compile_statements(&program.statements).unwrap();
+        let mut vm = VM::new();
+        let result = vm.run(Rc::new(compiled));
+
+        let expected = Value::List(Vector::from(vec![Value::Integer(1), Value::Integer(2)]));
+        assert_eq!(result.map_err(|e| e.message), Ok(expected));
+    }
+
+    #[test]
+    fn eval_let_destructuring_deeply_nested_literal() {
+        // Deeply nested destructuring with direct literal
+        let source = r#"let [[a, b], ..rest] = [[1, 2], [3, 4]];
+b"#;
+        let tokens = Lexer::new(source).tokenize().unwrap();
+        let program = Parser::new(tokens).parse_program().unwrap();
+        let compiled = Compiler::compile_statements(&program.statements).unwrap();
+        let mut vm = VM::new();
+        let result = vm.run(Rc::new(compiled));
+
+        assert_eq!(result.map_err(|e| e.message), Ok(Value::Integer(2)));
+    }
+
+    #[test]
+    fn eval_let_destructuring_deeply_nested_variable() {
+        // Deeply nested destructuring with variable - tests that globals don't
+        // leave extra values on stack that interfere with local slot calculations
+        let source = r#"let sorted = [[1, 2], [3, 4]];
+let [[a, b], ..rest] = sorted;
+[a, b, rest]"#;
+        let tokens = Lexer::new(source).tokenize().unwrap();
+        let program = Parser::new(tokens).parse_program().unwrap();
+        let compiled = Compiler::compile_statements(&program.statements).unwrap();
+        let mut vm = VM::new();
+        let result = vm.run(Rc::new(compiled));
+
+        let expected = Value::List(Vector::from(vec![
+            Value::Integer(1),
+            Value::Integer(2),
+            Value::List(Vector::from(vec![
+                Value::List(Vector::from(vec![Value::Integer(3), Value::Integer(4)]))
+            ])),
+        ]));
+        assert_eq!(result.map_err(|e| e.message), Ok(expected));
     }
 }
