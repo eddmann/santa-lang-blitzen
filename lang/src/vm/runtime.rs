@@ -2074,6 +2074,20 @@ impl VM {
                     }
                 }
             }
+            LazySeq::FilterMap { source, mapper } => {
+                loop {
+                    match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
+                        Some(value) => {
+                            let mapped = self.call_closure_sync(mapper, vec![value])?;
+                            if mapped.is_truthy() {
+                                return Ok(Some(mapped));
+                            }
+                            // Not truthy, continue to next element
+                        }
+                        None => return Ok(None),
+                    }
+                }
+            }
             LazySeq::Skip { source, remaining } => {
                 while *remaining > 0 {
                     match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
@@ -2647,15 +2661,12 @@ impl VM {
                 Ok(Value::List(result))
             }
             Value::LazySequence(seq) => {
-                let mut result = Vector::new();
-                let mut seq_clone = seq.borrow().clone();
-                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
-                    let mapped = self.call_closure_sync(&closure, vec![elem])?;
-                    if mapped.is_truthy() {
-                        result.push_back(mapped);
-                    }
-                }
-                Ok(Value::List(result))
+                // Return a lazy FilterMap sequence instead of eagerly consuming
+                let lazy_filter_map = LazySeq::FilterMap {
+                    source: seq.clone(),
+                    mapper: closure,
+                };
+                Ok(Value::LazySequence(Rc::new(RefCell::new(lazy_filter_map))))
             }
             _ => Err(RuntimeError::new(
                 format!("filter_map does not support {}", collection.type_name()),
@@ -4462,11 +4473,52 @@ impl VM {
                 }
             }
             Value::LazySequence(seq) => {
-                // Return a Skip(1) lazy sequence to maintain laziness
-                Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Skip {
-                    source: seq.clone(),
-                    remaining: 1,
-                }))))
+                // Optimize rest for specific LazySeq types to avoid O(n) Skip accumulation
+                let seq_borrowed = seq.borrow();
+                let new_seq = match &*seq_borrowed {
+                    // Cycle: directly advance the index (O(1) instead of O(n) via Skip)
+                    LazySeq::Cycle { source, index } => LazySeq::Cycle {
+                        source: source.clone(),
+                        index: index + 1,
+                    },
+                    // Range: advance the current position
+                    LazySeq::Range {
+                        current,
+                        end,
+                        inclusive,
+                    } => {
+                        let step = match end {
+                            Some(e) if *e < *current => -1,
+                            _ => 1,
+                        };
+                        LazySeq::Range {
+                            current: current + step,
+                            end: *end,
+                            inclusive: *inclusive,
+                        }
+                    }
+                    // RangeStep: advance by step
+                    LazySeq::RangeStep { current, end, step } => LazySeq::RangeStep {
+                        current: current + step,
+                        end: *end,
+                        step: *step,
+                    },
+                    // Flatten Skip chains to avoid deep recursion
+                    LazySeq::Skip {
+                        source: inner_source,
+                        remaining: inner_remaining,
+                    } => LazySeq::Skip {
+                        source: inner_source.clone(),
+                        remaining: inner_remaining + 1,
+                    },
+                    // Default: wrap in Skip(1)
+                    _ => LazySeq::Skip {
+                        source: seq.clone(),
+                        remaining: 1,
+                    },
+                };
+                drop(seq_borrowed);
+                Ok(Value::LazySequence(Rc::new(RefCell::new(new_seq))))
             }
             _ => Err(RuntimeError::new(
                 format!("rest not supported for {}", collection.type_name()),

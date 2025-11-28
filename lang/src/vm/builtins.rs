@@ -2186,6 +2186,10 @@ impl Clone for LazySeq {
                 source: Rc::new(RefCell::new(source.borrow().clone())),
                 predicate: predicate.clone(),
             },
+            LazySeq::FilterMap { source, mapper } => LazySeq::FilterMap {
+                source: Rc::new(RefCell::new(source.borrow().clone())),
+                mapper: mapper.clone(),
+            },
             LazySeq::Skip { source, remaining } => LazySeq::Skip {
                 source: Rc::new(RefCell::new(source.borrow().clone())),
                 remaining: *remaining,
@@ -2311,12 +2315,13 @@ fn lazy_seq_next_simple(seq: &mut LazySeq) -> Result<Option<Value>, RuntimeError
         }
         LazySeq::Empty => Ok(None),
         // Callback-requiring sequences cannot be iterated without VM
-        LazySeq::Iterate { .. } | LazySeq::Map { .. } | LazySeq::Filter { .. } => {
-            Err(RuntimeError::new(
-                "Cannot iterate callback-based lazy sequence in this context",
-                0,
-            ))
-        }
+        LazySeq::Iterate { .. }
+        | LazySeq::Map { .. }
+        | LazySeq::Filter { .. }
+        | LazySeq::FilterMap { .. } => Err(RuntimeError::new(
+            "Cannot iterate callback-based lazy sequence in this context",
+            0,
+        )),
         LazySeq::Skip { source, remaining } => {
             // Skip remaining elements first
             while *remaining > 0 {

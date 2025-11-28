@@ -121,6 +121,11 @@ pub enum LazySeq {
         source: Rc<RefCell<LazySeq>>,
         predicate: Rc<Closure>,
     },
+    /// filter_map over lazy sequence (lazy version)
+    FilterMap {
+        source: Rc<RefCell<LazySeq>>,
+        mapper: Rc<Closure>,
+    },
     /// skip n elements
     Skip {
         source: Rc<RefCell<LazySeq>>,
