@@ -3620,6 +3620,20 @@ impl VM {
                     ))
                 }
             },
+            Value::String(s) => {
+                for (idx, grapheme) in s.graphemes(true).enumerate() {
+                    let elem = Value::String(Rc::new(grapheme.to_string()));
+                    let call_args = if arity >= 2 {
+                        vec![elem, Value::Integer(idx as i64)]
+                    } else {
+                        vec![elem]
+                    };
+                    let result = self.call_closure_sync(&closure, call_args)?;
+                    if result.is_truthy() {
+                        count += 1;
+                    }
+                }
+            }
             _ => {
                 return Err(RuntimeError::new(
                     format!("count does not support {}", collection.type_name()),

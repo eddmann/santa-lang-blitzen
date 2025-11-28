@@ -1184,7 +1184,13 @@ impl Compiler {
             }
             Expr::List(elems) => elems.iter().any(Self::contains_placeholder),
             Expr::Call { function, args } => {
-                Self::contains_placeholder(function) || args.iter().any(Self::contains_placeholder)
+                // Only check if function itself is a placeholder, or if args are DIRECTLY placeholders.
+                // Don't recurse into args - placeholders inside arg expressions create partials
+                // for those args only, which are consumed by the call.
+                Self::contains_placeholder(function)
+                    || args
+                        .iter()
+                        .any(|arg| matches!(arg.node, Expr::Placeholder))
             }
             Expr::Index { collection, index } => {
                 Self::contains_placeholder(collection) || Self::contains_placeholder(index)
