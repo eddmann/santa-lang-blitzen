@@ -86,7 +86,7 @@ fn run_script(path: &str) -> Result<(), ExitCode> {
     })?;
 
     let mut vm = create_vm(session_token.as_deref());
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     // Check if this is a script (no AOC sections) or an AOC solution
     if runner.is_script_mode() {
@@ -144,7 +144,7 @@ fn run_tests(path: &str) -> Result<(), ExitCode> {
         ExitCode::RuntimeError
     })?;
 
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     // Create VM factory for tests
     let vm_factory = || create_vm(session_token.as_deref());

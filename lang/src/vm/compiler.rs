@@ -116,6 +116,19 @@ impl Compiler {
         Ok(compiler.function)
     }
 
+    /// Compile a single expression with known global names (for sections that reference
+    /// globals defined in top-level statements)
+    pub fn compile_expression_with_globals(
+        expr: &SpannedExpr,
+        global_names: &std::collections::HashSet<String>,
+    ) -> Result<CompiledFunction, CompileError> {
+        let mut compiler = Compiler::new();
+        compiler.global_names = global_names.clone();
+        compiler.expression(expr)?;
+        compiler.emit(OpCode::Return);
+        Ok(compiler.function)
+    }
+
     /// Compile a block of statements
     /// The last statement's value is returned, or Nil if the last statement doesn't produce a value
     pub fn compile_statements(stmts: &[SpannedStmt]) -> Result<CompiledFunction, CompileError> {
@@ -162,6 +175,56 @@ impl Compiler {
 
         compiler.emit(OpCode::Return);
         Ok(compiler.function)
+    }
+
+    /// Compile statements and return both the function and the global names discovered.
+    /// This is used by the runner to pass global names to subsequent expression compilations.
+    pub fn compile_statements_with_globals(
+        stmts: &[SpannedStmt],
+    ) -> Result<(CompiledFunction, std::collections::HashSet<String>), CompileError> {
+        let mut compiler = Compiler::new();
+
+        if stmts.is_empty() {
+            // Empty program returns nil
+            compiler.emit_constant(Value::Nil)?;
+            compiler.emit(OpCode::Return);
+            return Ok((compiler.function, compiler.global_names));
+        }
+
+        // Compile all statements
+        for (i, stmt) in stmts.iter().enumerate() {
+            let is_last = i == stmts.len() - 1;
+
+            if is_last {
+                // For the last statement, we want to leave its value on the stack
+                match &stmt.node {
+                    Stmt::Expr(expr) => {
+                        // Expression statement - compile and leave value on stack
+                        compiler.expression(expr)?;
+                    }
+                    _ => {
+                        // Other statements (Let, Return, Break) - compile normally
+                        compiler.statement(stmt)?;
+                        // If it's not an expression, push nil as the return value
+                        if !matches!(&stmt.node, Stmt::Expr(_)) {
+                            compiler.emit_constant(Value::Nil)?;
+                        }
+                    }
+                }
+            } else {
+                // Non-last statements - compile and pop their values
+                compiler.statement(stmt)?;
+                // Pop the value to avoid stack buildup. Both expression statements
+                // and let statements (at global scope) leave values on the stack
+                // that we don't need.
+                if matches!(&stmt.node, Stmt::Expr(_) | Stmt::Let { .. }) {
+                    compiler.emit(OpCode::Pop);
+                }
+            }
+        }
+
+        compiler.emit(OpCode::Return);
+        Ok((compiler.function, compiler.global_names))
     }
 
     /// Get the current chunk
@@ -260,9 +323,15 @@ impl Compiler {
                 if has_direct_placeholder {
                     self.compile_partial_application(expr)?;
                 } else {
+                    // List elements are never in tail position - they need to be collected
+                    // to build the list, so any function calls inside must use regular Call
+                    // (not TailCall) even if the list itself is in tail position.
+                    let saved_tail = self.in_tail_position;
+                    self.in_tail_position = false;
                     for elem in elements {
                         self.expression(elem)?;
                     }
+                    self.in_tail_position = saved_tail;
                     if elements.len() > 255 {
                         return Err(CompileError::new(
                             "List literal too large (max 255 elements)",
@@ -274,9 +343,13 @@ impl Compiler {
             }
 
             Expr::Set(elements) => {
+                // Set elements are never in tail position
+                let saved_tail = self.in_tail_position;
+                self.in_tail_position = false;
                 for elem in elements {
                     self.expression(elem)?;
                 }
+                self.in_tail_position = saved_tail;
                 if elements.len() > 255 {
                     return Err(CompileError::new(
                         "Set literal too large (max 255 elements)",
@@ -287,10 +360,14 @@ impl Compiler {
             }
 
             Expr::Dict(entries) => {
+                // Dict keys and values are never in tail position
+                let saved_tail = self.in_tail_position;
+                self.in_tail_position = false;
                 for (key, value) in entries {
                     self.expression(key)?;
                     self.expression(value)?;
                 }
+                self.in_tail_position = saved_tail;
                 if entries.len() > 255 {
                     return Err(CompileError::new(
                         "Dict literal too large (max 255 entries)",
@@ -365,7 +442,12 @@ impl Compiler {
                 } else {
                     // Check if this is a builtin - if so, emit CallBuiltin directly
                     // (avoids the wrapper closure for better performance and variadic support)
-                    if let Some(builtin_id) = BuiltinId::from_name(function) {
+                    // Only use builtin if no local, upvalue, or global shadows it
+                    if let Some(builtin_id) = BuiltinId::from_name(function)
+                        && self.resolve_local(function).is_none()
+                        && self.resolve_upvalue(function).is_none()
+                        && !self.global_names.contains(function)
+                    {
                         // Check arity for the builtin
                         let (min_arity, _max_arity) = builtin_id.arity();
                         if min_arity > 2 {
@@ -582,10 +664,12 @@ impl Compiler {
                 let has_placeholder_arg = args.iter().any(|a| matches!(a.node, Expr::Placeholder));
 
                 // Check if function is a builtin call
+                // Only use builtin if no local, upvalue, or global shadows it
                 if let Expr::Identifier(name) = &function.node
                     && let Some(builtin_id) = BuiltinId::from_name(name)
                     && self.resolve_local(name).is_none()
                     && self.resolve_upvalue(name).is_none()
+                    && !self.global_names.contains(name)
                 {
                     if has_placeholder_arg {
                         // Replace placeholder with left: builtin(args with _ replaced by left)
@@ -640,9 +724,11 @@ impl Compiler {
             }
             Expr::Identifier(name) => {
                 // Check if it's a builtin
+                // Only use builtin if no local, upvalue, or global shadows it
                 if let Some(builtin_id) = BuiltinId::from_name(name)
                     && self.resolve_local(name).is_none()
                     && self.resolve_upvalue(name).is_none()
+                    && !self.global_names.contains(name)
                 {
                     // Compile: builtin(left)
                     self.expression(left)?;
@@ -893,11 +979,13 @@ impl Compiler {
                     false
                 };
 
-                // Check if any args contain placeholders
-                // In composition context, placeholders represent "where the left(x) result goes"
-                let has_placeholders = args.iter().any(Self::contains_placeholder);
+                // Check if any args are DIRECT placeholders (not nested inside expressions)
+                // In composition context: f >> g(_, b) means put left(x) in place of _
+                // But f >> g(_ + 1) means g creates a partial, and we call that with left(x)
+                let has_direct_placeholders =
+                    args.iter().any(|arg| matches!(arg.node, Expr::Placeholder));
 
-                if has_placeholders {
+                if has_direct_placeholders {
                     // f >> g(_, b) creates |x| g(f(x), b)
                     // First compile left(x) and store in a temporary
                     match &left.node {
@@ -1881,10 +1969,12 @@ impl Compiler {
         }
 
         // Check if this is a built-in function call
+        // Only use builtin if no local, upvalue, or global shadows it
         if let Expr::Identifier(name) = &function.node
             && let Some(builtin_id) = BuiltinId::from_name(name)
             && self.resolve_local(name).is_none()
             && self.resolve_upvalue(name).is_none()
+            && !self.global_names.contains(name)
         {
             let (min_arity, _max_arity) = builtin_id.arity();
 
@@ -1952,10 +2042,12 @@ impl Compiler {
         let mut placeholder_idx = 0u8;
 
         // Check if this is a builtin call
+        // Only use builtin if no local, upvalue, or global shadows it
         if let Expr::Identifier(name) = &function.node
             && let Some(builtin_id) = BuiltinId::from_name(name)
             && self.resolve_local(name).is_none()
             && self.resolve_upvalue(name).is_none()
+            && !self.global_names.contains(name)
         {
             // Compile arguments with placeholder substitution
             for arg in args {
@@ -2929,9 +3021,13 @@ impl Compiler {
         self.add_local("__match_subject".to_string(), false);
 
         // Collect jumps that need their boolean popped in failure path
-        let mut conditional_fail_jumps: Vec<usize> = Vec::new();
+        // Each entry is (jump_offset, bound_values_at_failure) so we know how many
+        // identifier values to pop when cleaning up
+        let mut conditional_fail_jumps: Vec<(usize, usize)> = Vec::new();
         // Collect jumps that have already cleaned up (just need to jump to common point)
         let mut unconditional_fail_jumps: Vec<usize> = Vec::new();
+        // Track how many values have been bound (identifiers/rest patterns)
+        let mut bound_values: usize = 0;
 
         // Check size first (unless there's a rest pattern)
         let has_rest = patterns
@@ -2952,7 +3048,7 @@ impl Compiler {
         } else {
             self.emit(OpCode::Eq);
         }
-        conditional_fail_jumps.push(self.emit_jump(OpCode::JumpIfFalse));
+        conditional_fail_jumps.push((self.emit_jump(OpCode::JumpIfFalse), bound_values));
         // Pop the boolean result (JumpIfFalse does NOT pop, so we need to pop in the success path)
         self.emit(OpCode::Pop);
 
@@ -2969,6 +3065,7 @@ impl Compiler {
                     self.emit_constant(Value::Integer(idx))?;
                     self.emit(OpCode::Index);
                     self.add_local(name.clone(), false);
+                    bound_values += 1;
                 }
                 Pattern::Wildcard => {
                     // Skip - don't need to extract
@@ -2984,6 +3081,7 @@ impl Compiler {
                     }
                     self.emit(OpCode::Slice);
                     self.add_local(name.clone(), false);
+                    bound_values += 1;
                 }
                 Pattern::Literal(lit) => {
                     // Extract and compare
@@ -3009,8 +3107,9 @@ impl Compiler {
                         LiteralPattern::Nil => self.emit(OpCode::Nil),
                     }
                     self.emit(OpCode::Eq);
-                    // If not equal, fail - collect jump to patch later
-                    conditional_fail_jumps.push(self.emit_jump(OpCode::JumpIfFalse));
+                    // If not equal, fail - collect jump with bound count for cleanup
+                    conditional_fail_jumps
+                        .push((self.emit_jump(OpCode::JumpIfFalse), bound_values));
                     self.emit(OpCode::Pop);
                     // Continue processing remaining patterns (don't return early!)
                 }
@@ -3058,41 +3157,55 @@ impl Compiler {
                     self.chunk().write_operand((end_val & 0xFF) as u8);
                     // Write inclusive flag
                     self.chunk().write_operand(if *inclusive { 1 } else { 0 });
-                    // If not in range, fail - collect jump to patch later
-                    conditional_fail_jumps.push(self.emit_jump(OpCode::JumpIfFalse));
+                    // If not in range, fail - collect jump with bound count for cleanup
+                    conditional_fail_jumps
+                        .push((self.emit_jump(OpCode::JumpIfFalse), bound_values));
                     self.emit(OpCode::Pop);
                 }
             }
         }
 
         // Handle failure jumps. There are two types:
-        // - conditional_fail_jumps: JumpIfFalse from size/literal checks, need to pop boolean
+        // - conditional_fail_jumps: JumpIfFalse from size/literal/range checks, need to pop
+        //   boolean AND any bound values
         // - unconditional_fail_jumps: Jump from nested pattern cleanup, already cleaned up
         let total_fails = conditional_fail_jumps.len() + unconditional_fail_jumps.len();
 
         if total_fails == 0 {
             Ok(None)
-        } else if total_fails == 1 && unconditional_fail_jumps.is_empty() {
-            // Single conditional failure - let caller handle the pop
-            Ok(Some(conditional_fail_jumps[0]))
+        } else if total_fails == 1
+            && unconditional_fail_jumps.is_empty()
+            && conditional_fail_jumps[0].1 == 0
+        {
+            // Single conditional failure with no bound values - let caller handle the pop
+            Ok(Some(conditional_fail_jumps[0].0))
         } else {
-            // Multiple failures or mixed types - need a common failure point
+            // Multiple failures or failures with bound values - need proper cleanup
             // Jump past failure handling code
             let success_jump = self.emit_jump(OpCode::Jump);
 
-            // Handle conditional failures: emit ONE Pop, then patch ALL jumps to it.
-            // Each conditional failure has a boolean on stack that needs to be popped.
-            // All jumps go to the same Pop instruction, then fall through to common exit.
-            self.emit(OpCode::Pop);
-            let pop_location = self.chunk().code.len() - 1;
-            for jump in &conditional_fail_jumps {
-                self.patch_jump_to(*jump, pop_location);
+            // Emit cleanup code for each conditional failure point
+            // Each needs to: pop boolean, pop bound values, jump to common exit
+            let mut cleanup_exits: Vec<usize> = Vec::new();
+            for (jump, values_bound) in conditional_fail_jumps {
+                self.patch_jump(jump);
+                // Pop the boolean from the comparison
+                self.emit(OpCode::Pop);
+                // Pop any bound values (identifiers/rest patterns)
+                for _ in 0..values_bound {
+                    self.emit(OpCode::Pop);
+                }
+                cleanup_exits.push(self.emit_jump(OpCode::Jump));
             }
 
-            // Handle unconditional failures: patch them to here (after the Pop)
-            // These have already cleaned up their stack, so they skip the Pop
+            // Handle unconditional failures: they already cleaned up, just need to get here
             for jump in &unconditional_fail_jumps {
                 self.patch_jump(*jump);
+            }
+
+            // Patch all cleanup exits to here
+            for exit in cleanup_exits {
+                self.patch_jump(exit);
             }
 
             // Common failure exit: push a dummy boolean for the caller to pop

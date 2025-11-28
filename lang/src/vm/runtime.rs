@@ -1386,6 +1386,35 @@ impl VM {
             // Dictionary lookup
             (Value::Dict(dict), key) => dict.get(key).cloned().unwrap_or(Value::Nil),
 
+            // Range indexing with Integer
+            // Note: Negative indices are not supported for ranges (return nil)
+            (Value::Range { start, end, inclusive }, Value::Integer(idx)) => {
+                // Negative indices not supported for ranges
+                if *idx < 0 {
+                    Value::Nil
+                } else {
+                    let actual_idx = start + idx;
+
+                    // Check bounds
+                    let in_bounds = match end {
+                        Some(e) => {
+                            if *inclusive {
+                                actual_idx <= *e
+                            } else {
+                                actual_idx < *e
+                            }
+                        }
+                        None => true, // Unbounded: always in bounds for positive index
+                    };
+
+                    if in_bounds {
+                        Value::Integer(actual_idx)
+                    } else {
+                        Value::Nil
+                    }
+                }
+            }
+
             _ => {
                 return Err(self.error(format!(
                     "Cannot index {} with {}",
@@ -1581,7 +1610,7 @@ impl VM {
             return Err(self.error(format!("Expected {} arguments but got {}", arity, argc)));
         }
 
-        if self.frames.len() >= 64 {
+        if self.frames.len() >= 256 {
             return Err(self.error("Stack overflow"));
         }
 
@@ -1651,7 +1680,7 @@ impl VM {
             return Err(self.error(format!("Expected {} arguments but got {}", arity, total_args)));
         }
 
-        if self.frames.len() >= 64 {
+        if self.frames.len() >= 256 {
             return Err(self.error("Stack overflow"));
         }
 
@@ -1830,7 +1859,7 @@ impl VM {
         }
 
         // Create new frame
-        if self.frames.len() >= 64 {
+        if self.frames.len() >= 256 {
             return Err(self.error("Stack overflow"));
         }
 

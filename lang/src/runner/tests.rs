@@ -32,7 +32,7 @@ fn runner_simple_solution() {
     "#;
 
     let program = parse(source);
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     let mut vm = VM::new();
     let result = runner.run_solution(&mut vm).unwrap();
@@ -66,7 +66,7 @@ fn runner_with_tests() {
     "#;
 
     let program = parse(source);
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     let test_results = runner.run_tests(&vm_factory).unwrap();
 
@@ -84,7 +84,7 @@ fn runner_script_mode() {
     "#;
 
     let program = parse(source);
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     assert!(runner.is_script_mode());
 
@@ -103,7 +103,7 @@ fn runner_duplicate_input_error() {
     "#;
 
     let program = parse(source);
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     let mut vm = VM::new();
     let result = runner.run_solution(&mut vm);
@@ -121,7 +121,7 @@ fn runner_duplicate_part_one_error() {
     "#;
 
     let program = parse(source);
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     let mut vm = VM::new();
     let result = runner.run_solution(&mut vm);
@@ -139,7 +139,7 @@ fn runner_duplicate_part_two_error() {
     "#;
 
     let program = parse(source);
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     let mut vm = VM::new();
     let result = runner.run_solution(&mut vm);
@@ -163,7 +163,7 @@ fn runner_with_top_level_definitions() {
     "#;
 
     let program = parse(source);
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     let mut vm = VM::new();
     let result = runner.run_solution(&mut vm).unwrap();
@@ -180,7 +180,7 @@ fn runner_timing_collected() {
     "#;
 
     let program = parse(source);
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     let mut vm = VM::new();
     let result = runner.run_solution(&mut vm).unwrap();
@@ -211,7 +211,7 @@ fn runner_test_with_part_two() {
     "#;
 
     let program = parse(source);
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     let test_results = runner.run_tests(&vm_factory).unwrap();
 
@@ -234,7 +234,7 @@ fn runner_test_failure() {
     "#;
 
     let program = parse(source);
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     let test_results = runner.run_tests(&vm_factory).unwrap();
 
@@ -252,7 +252,7 @@ fn runner_no_input_section() {
     "#;
 
     let program = parse(source);
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     let mut vm = VM::new();
     let result = runner.run_solution(&mut vm).unwrap();
@@ -275,7 +275,7 @@ fn runner_only_part_one() {
     "#;
 
     let program = parse(source);
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     let mut vm = VM::new();
     let result = runner.run_solution(&mut vm).unwrap();
@@ -340,7 +340,7 @@ fn runner_complex_example() {
     "#;
 
     let program = parse(source);
-    let runner = AocRunner::new(program);
+    let mut runner = AocRunner::new(program);
 
     // Test solution execution
     let mut vm = VM::new();

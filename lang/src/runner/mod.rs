@@ -14,6 +14,8 @@ mod tests;
 
 pub struct AocRunner {
     program: Program,
+    /// Global names discovered during statement compilation (for builtin shadowing)
+    global_names: std::collections::HashSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -35,17 +37,22 @@ pub struct SolutionResult {
 
 impl AocRunner {
     pub fn new(program: Program) -> Self {
-        Self { program }
+        Self {
+            program,
+            global_names: std::collections::HashSet::new(),
+        }
     }
 
-    pub fn run_solution(&self, vm: &mut VM) -> Result<SolutionResult, RuntimeError> {
+    pub fn run_solution(&mut self, vm: &mut VM) -> Result<SolutionResult, RuntimeError> {
 
         // Check for duplicate sections
         self.check_duplicate_sections()?;
 
         // Execute top-level statements (all together to preserve globals)
+        // Also capture global names for use in section compilation
         if !self.program.statements.is_empty() {
-            self.compile_and_execute_stmts(vm, &self.program.statements)?;
+            let stmts = self.program.statements.clone();
+            self.compile_and_execute_stmts_tracking_globals(vm, &stmts)?;
         }
 
         // Get input section if present
@@ -63,11 +70,18 @@ impl AocRunner {
         })
     }
 
-    pub fn run_tests(&self, vm_factory: &dyn Fn() -> VM) -> Result<Vec<TestResult>, RuntimeError> {
+    pub fn run_tests(&mut self, vm_factory: &dyn Fn() -> VM) -> Result<Vec<TestResult>, RuntimeError> {
         let mut results = Vec::new();
 
         // Check for duplicate sections
         self.check_duplicate_sections()?;
+
+        // Pre-compute global names from statements (same for all tests)
+        if !self.program.statements.is_empty() {
+            let (_, globals) = Compiler::compile_statements_with_globals(&self.program.statements)
+                .map_err(|e| RuntimeError::new(e.message, e.span.start as u32))?;
+            self.global_names = globals;
+        }
 
         // Get test sections
         let test_sections: Vec<_> = self.program.sections.iter()
@@ -239,8 +253,21 @@ impl AocRunner {
         vm.run(Rc::new(compiled))
     }
 
+    /// Compile and execute statements, storing the discovered global names
+    fn compile_and_execute_stmts_tracking_globals(
+        &mut self,
+        vm: &mut VM,
+        stmts: &[SpannedStmt],
+    ) -> Result<Value, RuntimeError> {
+        let (compiled, globals) = Compiler::compile_statements_with_globals(stmts)
+            .map_err(|e| RuntimeError::new(e.message, e.span.start as u32))?;
+        self.global_names = globals;
+        vm.run(Rc::new(compiled))
+    }
+
     fn compile_and_execute_expr(&self, vm: &mut VM, expr: &SpannedExpr) -> Result<Value, RuntimeError> {
-        let compiled = Compiler::compile_expression(expr)
+        // Use global names from statement compilation to ensure proper builtin shadowing
+        let compiled = Compiler::compile_expression_with_globals(expr, &self.global_names)
             .map_err(|e| RuntimeError::new(e.message, e.span.start as u32))?;
         vm.run(Rc::new(compiled))
     }
