@@ -1787,7 +1787,22 @@ impl VM {
             .push(CallFrame::new(closure.clone(), stack_base));
 
         // Execute until we return to current depth
-        self.execute_until(return_depth)
+        match self.execute_until(return_depth) {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                // On error (including break), clean up the frame we pushed
+                // The frame might already be popped if Return was executed
+                if self.frames.len() > return_depth {
+                    let frame = self.frames.pop().unwrap();
+                    self.close_upvalues(frame.stack_base);
+                    // Pop locals from the stack
+                    while self.stack.len() > frame.stack_base {
+                        self.pop();
+                    }
+                }
+                Err(e)
+            }
+        }
     }
 
     /// Get the arity of a closure
