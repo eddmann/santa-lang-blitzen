@@ -2666,6 +2666,7 @@ impl Compiler {
             self.expression(&arm.body)?;
 
             // Clean up any locals bound by the pattern
+            // PopN will close any upvalues referencing these slots before popping
             if locals_bound > 0 {
                 self.emit_with_operand(OpCode::PopN, locals_bound as u8);
                 // Remove from compiler's local list
@@ -2800,6 +2801,9 @@ impl Compiler {
         let subject_local_idx = self.locals.len() as u8;
         self.add_local("__match_subject".to_string(), false);
 
+        // Collect all fail jumps - they all need to go to the same failure handler
+        let mut fail_jumps = Vec::new();
+
         // Check size first (unless there's a rest pattern)
         let has_rest = patterns
             .iter()
@@ -2819,7 +2823,7 @@ impl Compiler {
         } else {
             self.emit(OpCode::Eq);
         }
-        let size_fail_jump = self.emit_jump(OpCode::JumpIfFalse);
+        fail_jumps.push(self.emit_jump(OpCode::JumpIfFalse));
         // Pop the boolean result (JumpIfFalse does NOT pop, so we need to pop in the success path)
         self.emit(OpCode::Pop);
 
@@ -2876,10 +2880,10 @@ impl Compiler {
                         LiteralPattern::Nil => self.emit(OpCode::Nil),
                     }
                     self.emit(OpCode::Eq);
-                    // If not equal, fail - but first pop the compare result in success path
-                    let fail_jump = self.emit_jump(OpCode::JumpIfFalse);
+                    // If not equal, fail - collect jump to patch later
+                    fail_jumps.push(self.emit_jump(OpCode::JumpIfFalse));
                     self.emit(OpCode::Pop);
-                    return Ok(Some(fail_jump));
+                    // Continue processing remaining patterns (don't return early!)
                 }
                 Pattern::List(inner) => {
                     self.emit_with_operand(OpCode::GetLocal, subject_local_idx);
@@ -2887,7 +2891,7 @@ impl Compiler {
                     self.emit_constant(Value::Integer(idx))?;
                     self.emit(OpCode::Index);
                     if let Some(jump) = self.compile_list_pattern_test(inner, span)? {
-                        return Ok(Some(jump));
+                        fail_jumps.push(jump);
                     }
                 }
                 Pattern::Range { .. } => {
@@ -2899,7 +2903,30 @@ impl Compiler {
             }
         }
 
-        Ok(Some(size_fail_jump))
+        // If we have multiple fail jumps, chain them to a common fail point
+        // Return the first fail_jump - the caller will patch it, and we chain the rest
+        if fail_jumps.is_empty() {
+            Ok(None)
+        } else if fail_jumps.len() == 1 {
+            Ok(Some(fail_jumps[0]))
+        } else {
+            // All fail jumps after the first one need to jump to where the first one goes
+            // Jump past success path to the fail handler
+            let success_jump = self.emit_jump(OpCode::Jump);
+
+            // Patch all fail jumps to here (common fail point)
+            for jump in &fail_jumps {
+                self.patch_jump(*jump);
+            }
+            // Push a dummy boolean on stack (the caller expects to pop this in failure path)
+            self.emit(OpCode::False);
+            let final_fail_jump = self.emit_jump(OpCode::JumpIfFalse);
+
+            // Patch success jump to continue
+            self.patch_jump(success_jump);
+
+            Ok(Some(final_fail_jump))
+        }
     }
 
     /// Calculate index for pattern element

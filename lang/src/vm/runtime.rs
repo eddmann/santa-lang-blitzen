@@ -254,6 +254,9 @@ impl VM {
                     let n = self.read_byte() as usize;
                     // Keep the top value, pop n values below it
                     let top = self.pop();
+                    // Close any upvalues that reference the slots we're about to pop
+                    let from_slot = self.stack.len() - n;
+                    self.close_upvalues(from_slot);
                     for _ in 0..n {
                         self.pop();
                     }

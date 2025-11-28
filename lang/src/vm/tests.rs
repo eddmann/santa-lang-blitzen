@@ -2341,6 +2341,24 @@ mod runtime_tests {
         assert_eq!(result.map_err(|e| e.message), Ok(Value::Integer(3)));
     }
 
+    #[test]
+    fn eval_match_list_pattern_literal_and_identifier() {
+        // Test list pattern with literal followed by identifier binding
+        assert_eq!(
+            eval(r#"match ["+", 42] { ["+", v] { v } }"#),
+            Ok(Value::Integer(42))
+        );
+    }
+
+    #[test]
+    fn eval_match_list_pattern_closure_capture() {
+        // Test that identifiers bound in list patterns can be captured by closures
+        assert_eq!(
+            eval(r#"(|x| match x { [a, v] { _ + v } })(["+", 10])(5)"#),
+            Ok(Value::Integer(15))
+        );
+    }
+
     // ============================================================
     // §6.3 Block expressions
     // ============================================================
