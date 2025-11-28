@@ -358,11 +358,33 @@ impl Compiler {
                 if Self::contains_placeholder(left) || Self::contains_placeholder(right) {
                     self.compile_partial_infix_call(function, left, right, expr.span)?;
                 } else {
-                    // Compile as: function(left, right)
-                    self.compile_identifier(function, expr.span)?;
-                    self.expression(left)?;
-                    self.expression(right)?;
-                    self.emit_with_operand(OpCode::Call, 2);
+                    // Check if this is a builtin - if so, emit CallBuiltin directly
+                    // (avoids the wrapper closure for better performance and variadic support)
+                    if let Some(builtin_id) = BuiltinId::from_name(function) {
+                        // Check arity for the builtin
+                        let (min_arity, _max_arity) = builtin_id.arity();
+                        if min_arity > 2 {
+                            return Err(CompileError::new(
+                                format!(
+                                    "Builtin '{}' requires at least {} arguments",
+                                    function, min_arity
+                                ),
+                                expr.span,
+                            ));
+                        }
+                        // Compile arguments and call builtin directly
+                        self.expression(left)?;
+                        self.expression(right)?;
+                        self.emit(OpCode::CallBuiltin);
+                        self.chunk().write_operand_u16(builtin_id as u16);
+                        self.chunk().write_operand(2);
+                    } else {
+                        // Not a builtin - compile as: function(left, right)
+                        self.compile_identifier(function, expr.span)?;
+                        self.expression(left)?;
+                        self.expression(right)?;
+                        self.emit_with_operand(OpCode::Call, 2);
+                    }
                 }
             }
 
