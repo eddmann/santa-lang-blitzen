@@ -490,13 +490,17 @@ impl TryFrom<u16> for BuiltinId {
 /// Returns the result value or an error
 pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
     let (min_arity, max_arity) = id.arity();
-    if args.len() < min_arity as usize || args.len() > max_arity as usize {
+    // max_arity == 255 means unlimited (variadic)
+    let exceeds_max = max_arity != 255 && args.len() > max_arity as usize;
+    if args.len() < min_arity as usize || exceeds_max {
         return Err(RuntimeError::new(
             format!(
                 "{} expects {} argument(s), got {}",
                 id.name(),
                 if min_arity == max_arity {
                     min_arity.to_string()
+                } else if max_arity == 255 {
+                    format!("{}+", min_arity)
                 } else {
                     format!("{}-{}", min_arity, max_arity)
                 },
