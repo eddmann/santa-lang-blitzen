@@ -1152,17 +1152,18 @@ mod compiler_tests {
     // §5.3 Mutable variables
     #[test]
     fn compile_let_mut_and_assign() {
+        // SetLocal uses peek (not pop), so the value stays on the stack after assignment.
+        // No Dup is needed before SetLocal.
         check_bytecode(
             "{ let mut x = 1; x = 2; x }",
             expect![[r#"
                 == test ==
                 0000 [   1] Constant 0 (1)
                 0002 [   1] Constant 1 (2)
-                0004 [   1] Dup
-                0005 [   1] SetLocal 0
-                0007 [   1] Pop
-                0008 [   1] GetLocal 0
-                0010 [   1] Return
+                0004 [   1] SetLocal 0
+                0006 [   1] Pop
+                0007 [   1] GetLocal 0
+                0009 [   1] Return
             "#]],
         );
     }

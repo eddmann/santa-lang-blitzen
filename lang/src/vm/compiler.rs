@@ -462,8 +462,12 @@ impl Compiler {
         }
 
         // Check for partial application (placeholder in operands)
+        // For && and ||, don't convert to partial application - placeholders in operands
+        // create their own closures, and short-circuit evaluation should still work
         if Self::contains_placeholder(left) || Self::contains_placeholder(right) {
-            return self.compile_partial_infix(left, op, right, span);
+            if op != InfixOp::And && op != InfixOp::Or {
+                return self.compile_partial_infix(left, op, right, span);
+            }
         }
 
         // Special handling for short-circuit operators
@@ -2116,8 +2120,8 @@ impl Compiler {
 
     /// Compile assignment
     fn compile_assignment(&mut self, name: &str, span: Span) -> Result<(), CompileError> {
-        // Emit dup so assignment returns the value
-        self.emit(OpCode::Dup);
+        // Set* opcodes use peek (not pop), so the value stays on the stack
+        // after assignment - no need for Dup
 
         // Check for local
         if let Some(idx) = self.resolve_local(name) {
