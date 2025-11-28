@@ -2861,28 +2861,46 @@ impl VM {
             Value::List(list) => {
                 for (idx, elem) in list.iter().enumerate() {
                     let call_args = if arity >= 3 {
-                        vec![acc, elem.clone(), Value::Integer(idx as i64)]
+                        vec![acc.clone(), elem.clone(), Value::Integer(idx as i64)]
                     } else {
-                        vec![acc, elem.clone()]
+                        vec![acc.clone(), elem.clone()]
                     };
-                    acc = self.call_callable_sync(&folder, call_args)?;
+                    match self.call_callable_sync(&folder, call_args) {
+                        Ok(v) => acc = v,
+                        Err(e) if e.is_break => {
+                            return Ok(e.break_value.unwrap_or(Value::Nil));
+                        }
+                        Err(e) => return Err(e),
+                    }
                 }
                 Ok(acc)
             }
             Value::Set(set) => {
                 for elem in set.iter() {
-                    acc = self.call_callable_sync(&folder, vec![acc, elem.clone()])?;
+                    match self.call_callable_sync(&folder, vec![acc.clone(), elem.clone()]) {
+                        Ok(v) => acc = v,
+                        Err(e) if e.is_break => {
+                            return Ok(e.break_value.unwrap_or(Value::Nil));
+                        }
+                        Err(e) => return Err(e),
+                    }
                 }
                 Ok(acc)
             }
             Value::Dict(dict) => {
                 for (key, value) in dict.iter() {
                     let call_args = if arity >= 3 {
-                        vec![acc, value.clone(), key.clone()]
+                        vec![acc.clone(), value.clone(), key.clone()]
                     } else {
-                        vec![acc, value.clone()]
+                        vec![acc.clone(), value.clone()]
                     };
-                    acc = self.call_callable_sync(&folder, call_args)?;
+                    match self.call_callable_sync(&folder, call_args) {
+                        Ok(v) => acc = v,
+                        Err(e) if e.is_break => {
+                            return Ok(e.break_value.unwrap_or(Value::Nil));
+                        }
+                        Err(e) => return Err(e),
+                    }
                 }
                 Ok(acc)
             }
@@ -2890,11 +2908,17 @@ impl VM {
                 for (idx, grapheme) in s.graphemes(true).enumerate() {
                     let elem = Value::String(Rc::new(grapheme.to_string()));
                     let call_args = if arity >= 3 {
-                        vec![acc, elem, Value::Integer(idx as i64)]
+                        vec![acc.clone(), elem, Value::Integer(idx as i64)]
                     } else {
-                        vec![acc, elem]
+                        vec![acc.clone(), elem]
                     };
-                    acc = self.call_callable_sync(&folder, call_args)?;
+                    match self.call_callable_sync(&folder, call_args) {
+                        Ok(v) => acc = v,
+                        Err(e) if e.is_break => {
+                            return Ok(e.break_value.unwrap_or(Value::Nil));
+                        }
+                        Err(e) => return Err(e),
+                    }
                 }
                 Ok(acc)
             }

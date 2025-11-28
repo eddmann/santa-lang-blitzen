@@ -3997,6 +3997,33 @@ mod runtime_tests {
     }
 
     #[test]
+    fn eval_fold_list_break() {
+        // fold with break on list
+        assert_eq!(
+            eval("fold(0, |acc, x| if x > 3 { break acc } else { acc + x }, [1, 2, 3, 4, 5])"),
+            Ok(Value::Integer(6)) // 1+2+3
+        );
+    }
+
+    #[test]
+    fn eval_fold_dict_break() {
+        // fold with break on dict - dict iteration order is undefined so we test the break mechanism
+        assert_eq!(
+            eval(r#"fold(0, |acc, v| if v > 2 { break 99 } else { acc + v }, #{"a": 1, "b": 2, "c": 3})"#),
+            Ok(Value::Integer(99)) // break returns 99 when we hit v=3
+        );
+    }
+
+    #[test]
+    fn eval_fold_string_break() {
+        // fold with break on string
+        assert_eq!(
+            eval(r#"fold("", |acc, c| if c == "c" { break acc } else { acc + c }, "abcde")"#),
+            Ok(Value::String(Rc::new("ab".to_string())))
+        );
+    }
+
+    #[test]
     fn eval_each_bounded_range() {
         // Tests that each works on bounded range and returns nil
         assert_eq!(
