@@ -1198,6 +1198,10 @@ impl Parser {
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             let arm = self.parse_match_arm()?;
             arms.push(arm);
+            // Optional trailing comma between arms
+            if self.check(&TokenKind::Comma) {
+                self.advance();
+            }
         }
 
         let end_token = self.expect(TokenKind::RightBrace)?;

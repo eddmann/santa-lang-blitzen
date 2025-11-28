@@ -399,6 +399,8 @@ impl BuiltinId {
                 | BuiltinId::Memoize
                 | BuiltinId::List
                 | BuiltinId::Set
+                | BuiltinId::Sum
+                | BuiltinId::Size
         )
     }
 }
@@ -518,14 +520,13 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
             ))
         }
         BuiltinId::Dict => builtin_dict(&args[0], line),
-        BuiltinId::Size => builtin_size(&args[0], line),
+        // Size is now handled in runtime.rs for LazySequence support
         // Get, First, Second, Rest are callback builtins for LazySequence support
         BuiltinId::Keys => builtin_keys(&args[0], line),
         BuiltinId::Values => builtin_values(&args[0], line),
         BuiltinId::Push => builtin_push(&args[0], &args[1], line),
         BuiltinId::Assoc => builtin_assoc(&args[0], &args[1], &args[2], line),
-        // Phase 11 builtins
-        BuiltinId::Sum => builtin_sum(&args[0], line),
+        // Phase 11 builtins (Sum is now handled in runtime.rs for LazySequence support)
         BuiltinId::Max => builtin_max(args, line),
         BuiltinId::Min => builtin_min(args, line),
         BuiltinId::Skip => builtin_skip(&args[0], &args[1], line),
@@ -591,7 +592,9 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         | BuiltinId::Take
         | BuiltinId::Second
         | BuiltinId::Rest
-        | BuiltinId::Memoize => {
+        | BuiltinId::Memoize
+        | BuiltinId::Sum
+        | BuiltinId::Size => {
             // TODO: memoize implementation (Phase 14+)
             // Per LANG.txt §11.16, memoize returns a cached version of a function.
             // Implementation requires:

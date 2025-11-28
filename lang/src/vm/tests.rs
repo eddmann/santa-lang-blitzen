@@ -2763,6 +2763,21 @@ mod runtime_tests {
     }
 
     #[test]
+    fn eval_builtin_size_lazy_sequence() {
+        // size on a LazySequence (from range function)
+        assert_eq!(eval("range(1, 10, 1) |> size"), Ok(Value::Integer(9)));
+    }
+
+    #[test]
+    fn eval_builtin_size_lazy_sequence_with_filter() {
+        // size on a filtered LazySequence
+        assert_eq!(
+            eval("range(1, 11, 1) |> filter(|x| x % 2 == 0) |> size"),
+            Ok(Value::Integer(5)) // 2, 4, 6, 8, 10 = 5 elements
+        );
+    }
+
+    #[test]
     fn eval_builtin_first() {
         assert_eq!(eval("first([1, 2, 3])"), Ok(Value::Integer(1)));
         assert_eq!(eval("first([])"), Ok(Value::Nil));
@@ -2960,15 +2975,39 @@ mod runtime_tests {
 
     #[test]
     fn eval_builtin_map_range() {
-        // map(_ + 1, 1..5) returns LazySequence
-        // We test by verifying the result is a LazySequence
+        // map(_ + 1, 1..5) returns List for bounded ranges (eagerly evaluated)
         let result = eval("map(_ + 1, 1..5)").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 4);
+                assert_eq!(v[0], Value::Integer(2));
+                assert_eq!(v[1], Value::Integer(3));
+                assert_eq!(v[2], Value::Integer(4));
+                assert_eq!(v[3], Value::Integer(5));
+            }
+            _ => panic!("Expected List for bounded range"),
+        }
+    }
+
+    #[test]
+    fn eval_builtin_map_unbounded_range() {
+        // map(|x| x + 1, 1..) returns LazySequence for unbounded ranges
+        let result = eval("map(|x| x + 1, 1..)").unwrap();
         match result {
             Value::LazySequence(_) => {
                 // LazySequence returned as expected
             }
-            _ => panic!("Expected LazySequence"),
+            _ => panic!("Expected LazySequence for unbounded range"),
         }
+    }
+
+    #[test]
+    fn eval_builtin_map_range_sum() {
+        // map on bounded Range literal returns List, allowing sum to work
+        assert_eq!(
+            eval("1..=4 |> map(|x| x * 2) |> sum"),
+            Ok(Value::Integer(20)) // 2 + 4 + 6 + 8 = 20
+        );
     }
 
     #[test]
@@ -3459,6 +3498,24 @@ mod runtime_tests {
         assert_eq!(
             eval("sum([1, 2.5, 3])"),
             Ok(Value::Decimal(OrderedFloat(6.5)))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_sum_lazy_sequence() {
+        // sum on a LazySequence (from range function)
+        assert_eq!(
+            eval("range(1, 5, 1) |> sum"),
+            Ok(Value::Integer(10)) // 1 + 2 + 3 + 4 = 10
+        );
+    }
+
+    #[test]
+    fn eval_builtin_sum_lazy_sequence_with_map() {
+        // sum on a mapped LazySequence
+        assert_eq!(
+            eval("range(1, 5, 1) |> map(|x| x * 2) |> sum"),
+            Ok(Value::Integer(20)) // 2 + 4 + 6 + 8 = 20
         );
     }
 
@@ -4621,6 +4678,15 @@ mod runtime_tests {
         assert_eq!(
             eval(r#"{ let d = #{"a": 1}; let f = |x| x; let composed = f >> get(_, d); composed("a") }"#),
             Ok(Value::Integer(1))
+        );
+    }
+
+    #[test]
+    fn partial_application_composition_both_sides_placeholders() {
+        // (_ + 1) >> (_ * 2) should create |x| (x + 1) * 2
+        assert_eq!(
+            eval("{ let f = (_ + 1) >> (_ * 2); f(5) }"),
+            Ok(Value::Integer(12)) // (5 + 1) * 2 = 12
         );
     }
 

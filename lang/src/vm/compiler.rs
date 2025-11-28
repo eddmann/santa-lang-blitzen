@@ -63,6 +63,8 @@ pub struct Compiler {
     in_tail_position: bool,
     /// Whether current block has pre-declared locals (for forward references)
     did_predeclare_block: bool,
+    /// Names of globals declared in this compilation unit (allows shadowing builtins)
+    global_names: std::collections::HashSet<String>,
 }
 
 impl Compiler {
@@ -76,12 +78,15 @@ impl Compiler {
             current_line: 1,
             in_tail_position: false,
             did_predeclare_block: false,
+            global_names: std::collections::HashSet::new(),
         }
     }
 
     /// Create a compiler for a nested function
     fn new_function(name: Option<String>, arity: u8, enclosing: Compiler) -> Self {
         let current_line = enclosing.current_line;
+        // Inherit global_names from enclosing - nested functions should see same globals
+        let global_names = enclosing.global_names.clone();
         Self {
             function: CompiledFunction::new(arity, name),
             locals: Vec::new(),
@@ -90,6 +95,7 @@ impl Compiler {
             current_line,
             in_tail_position: false,
             did_predeclare_block: false,
+            global_names,
         }
     }
 
@@ -231,8 +237,11 @@ impl Compiler {
 
             // Collections
             Expr::List(elements) => {
-                // Check if any element contains a placeholder (partial application)
-                if Self::contains_placeholder_expr_list(elements) {
+                // Only make the list a partial application if any element IS directly
+                // a placeholder or a simple placeholder expression (e.g., `_ + 1`).
+                // Don't trigger partial app for deeply nested placeholders like `f(g(_, x))`.
+                let has_direct_placeholder = elements.iter().any(Self::is_simple_placeholder_expr);
+                if has_direct_placeholder {
                     self.compile_partial_application(expr)?;
                 } else {
                     for elem in elements {
@@ -429,13 +438,22 @@ impl Compiler {
         right: &SpannedExpr,
         span: Span,
     ) -> Result<(), CompileError> {
-        // Pipeline and Compose have their own handling and may contain
-        // placeholders on the right side (partial application as argument)
+        // For Pipeline and Compose: only make them partial applications if the
+        // left operand is directly a placeholder (like `_ |> f`). Don't trigger
+        // for nested placeholders like `x |> update_d(..., _ + 1)`.
+        // For other operators: check for any placeholders in operands.
         match op {
             InfixOp::Pipeline => {
+                if Self::is_simple_placeholder_expr(left) {
+                    return self.compile_partial_infix(left, op, right, span);
+                }
                 return self.compile_pipeline(left, right, span);
             }
             InfixOp::Compose => {
+                // Compose with placeholder left side: `_ >> f` means `|x| f(x)`
+                if Self::is_simple_placeholder_expr(left) {
+                    return self.compile_partial_infix(left, op, right, span);
+                }
                 return self.compile_composition(left, right, span);
             }
             _ => {}
@@ -579,6 +597,189 @@ impl Compiler {
             }
         }
 
+        Ok(())
+    }
+
+    /// Compile a pipeline expression with placeholder support
+    /// Used inside partial applications where _ needs to be substituted
+    fn compile_pipeline_with_placeholders(
+        &mut self,
+        left: &SpannedExpr,
+        right: &SpannedExpr,
+        span: Span,
+        placeholder_idx: &mut u8,
+    ) -> Result<(), CompileError> {
+        // Similar to compile_pipeline but uses compile_with_placeholders for operands
+        match &right.node {
+            Expr::Call { function, args } => {
+                // Check if function is a builtin call
+                if let Expr::Identifier(name) = &function.node
+                    && let Some(builtin_id) = BuiltinId::from_name(name)
+                    && self.resolve_local(name).is_none()
+                    && self.resolve_upvalue(name).is_none()
+                {
+                    // Compile: builtin(args..., left)
+                    for arg in args {
+                        self.compile_with_placeholders(arg, placeholder_idx)?;
+                    }
+                    self.compile_with_placeholders(left, placeholder_idx)?;
+                    if args.len() + 1 > 255 {
+                        return Err(CompileError::new("Too many arguments", span));
+                    }
+                    self.emit(OpCode::CallBuiltin);
+                    self.chunk().write_operand_u16(builtin_id as u16);
+                    self.chunk().write_operand((args.len() + 1) as u8);
+                } else {
+                    // Compile: func(args..., left)
+                    self.compile_with_placeholders(function, placeholder_idx)?;
+                    for arg in args {
+                        self.compile_with_placeholders(arg, placeholder_idx)?;
+                    }
+                    self.compile_with_placeholders(left, placeholder_idx)?;
+                    if args.len() + 1 > 255 {
+                        return Err(CompileError::new("Too many arguments", span));
+                    }
+                    self.emit_with_operand(OpCode::Call, (args.len() + 1) as u8);
+                }
+            }
+            Expr::Identifier(name) => {
+                // Check if it's a builtin
+                if let Some(builtin_id) = BuiltinId::from_name(name)
+                    && self.resolve_local(name).is_none()
+                    && self.resolve_upvalue(name).is_none()
+                {
+                    // Compile: builtin(left)
+                    self.compile_with_placeholders(left, placeholder_idx)?;
+                    self.emit(OpCode::CallBuiltin);
+                    self.chunk().write_operand_u16(builtin_id as u16);
+                    self.chunk().write_operand(1);
+                } else {
+                    // Compile: func(left)
+                    self.compile_with_placeholders(right, placeholder_idx)?;
+                    self.compile_with_placeholders(left, placeholder_idx)?;
+                    self.emit_with_operand(OpCode::Call, 1);
+                }
+            }
+            Expr::Function { .. } => {
+                // Compile: func(left)
+                self.compile_with_placeholders(right, placeholder_idx)?;
+                self.compile_with_placeholders(left, placeholder_idx)?;
+                self.emit_with_operand(OpCode::Call, 1);
+            }
+            _ => {
+                // For other expressions, just call
+                self.compile_with_placeholders(right, placeholder_idx)?;
+                self.compile_with_placeholders(left, placeholder_idx)?;
+                self.emit_with_operand(OpCode::Call, 1);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Compile composition expression with placeholder support
+    /// `(_ + 1) >> (_ * 2)` creates |x| (x + 1) * 2
+    /// The left side's result flows into the right side's placeholder
+    fn compile_compose_with_placeholders(
+        &mut self,
+        left: &SpannedExpr,
+        right: &SpannedExpr,
+        span: Span,
+        placeholder_idx: &mut u8,
+    ) -> Result<(), CompileError> {
+        // For composition with placeholders:
+        // 1. Compile left side (its placeholders use the input arg)
+        // 2. Store intermediate result
+        // 3. Compile right side using the intermediate result for its placeholders
+
+        // Compile left operand with current placeholder index
+        self.compile_with_placeholders(left, placeholder_idx)?;
+
+        // Now the result of left is on the stack
+        // We need to store it in a local and use it for right side's placeholders
+
+        // Add a local slot for intermediate result
+        let result_slot = self.locals.len() as u8;
+        self.locals.push(Local {
+            name: String::from("__compose_result"),
+            depth: self.scope_depth,
+            mutable: false,
+            captured: false,
+        });
+
+        // Right side: replace its placeholders with the intermediate result
+        // We use a special compilation that references the result slot instead of arg slot
+        self.compile_expr_with_slot_substitution(right, result_slot, span)?;
+
+        // Pop the intermediate local
+        self.locals.pop();
+
+        Ok(())
+    }
+
+    /// Compile an expression substituting placeholders with a specific local slot
+    fn compile_expr_with_slot_substitution(
+        &mut self,
+        expr: &SpannedExpr,
+        slot: u8,
+        span: Span,
+    ) -> Result<(), CompileError> {
+        match &expr.node {
+            Expr::Placeholder => {
+                self.emit_with_operand(OpCode::GetLocal, slot);
+            }
+            Expr::Infix { left, op, right } => {
+                match op {
+                    InfixOp::And => {
+                        self.compile_expr_with_slot_substitution(left, slot, span)?;
+                        let jump = self.emit_jump(OpCode::PopJumpIfFalse);
+                        self.compile_expr_with_slot_substitution(right, slot, span)?;
+                        self.patch_jump(jump);
+                    }
+                    InfixOp::Or => {
+                        self.compile_expr_with_slot_substitution(left, slot, span)?;
+                        let jump = self.emit_jump(OpCode::PopJumpIfTrue);
+                        self.compile_expr_with_slot_substitution(right, slot, span)?;
+                        self.patch_jump(jump);
+                    }
+                    _ => {
+                        self.compile_expr_with_slot_substitution(left, slot, span)?;
+                        self.compile_expr_with_slot_substitution(right, slot, span)?;
+                        match op {
+                            InfixOp::Add => self.emit(OpCode::Add),
+                            InfixOp::Sub => self.emit(OpCode::Sub),
+                            InfixOp::Mul => self.emit(OpCode::Mul),
+                            InfixOp::Div => self.emit(OpCode::Div),
+                            InfixOp::Mod => self.emit(OpCode::Mod),
+                            InfixOp::Eq => self.emit(OpCode::Eq),
+                            InfixOp::Ne => self.emit(OpCode::Ne),
+                            InfixOp::Lt => self.emit(OpCode::Lt),
+                            InfixOp::Le => self.emit(OpCode::Le),
+                            InfixOp::Gt => self.emit(OpCode::Gt),
+                            InfixOp::Ge => self.emit(OpCode::Ge),
+                            InfixOp::And | InfixOp::Or => unreachable!("Handled above"),
+                            InfixOp::Pipeline | InfixOp::Compose => {
+                                return Err(CompileError::new(
+                                    "Nested pipeline/compose in composition not supported",
+                                    span,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            Expr::Prefix { op, right } => {
+                self.compile_expr_with_slot_substitution(right, slot, span)?;
+                match op {
+                    PrefixOp::Neg => self.emit(OpCode::Neg),
+                    PrefixOp::Not => self.emit(OpCode::Not),
+                }
+            }
+            // For non-placeholder expressions, just compile normally
+            _ => {
+                self.expression(expr)?;
+            }
+        }
         Ok(())
     }
 
@@ -997,6 +1198,36 @@ impl Compiler {
         exprs.iter().any(Self::contains_placeholder)
     }
 
+    /// Check if an expression is a "simple" placeholder expression.
+    /// Returns true for:
+    /// - Direct placeholder: `_`
+    /// - Prefix with placeholder: `-_`, `!_`
+    /// - Infix with placeholder(s) at top level: `_ + 1`, `2 * _`
+    /// - Index with placeholder: `_[0]`, `list[_]`
+    /// Returns false for:
+    /// - Calls containing placeholders: `f(_)`, `g(a, _ + 1)` - these are handled by compile_call
+    /// - Pipelines with placeholders: `_ |> f` - handled by compile_infix
+    fn is_simple_placeholder_expr(expr: &SpannedExpr) -> bool {
+        match &expr.node {
+            Expr::Placeholder => true,
+            Expr::Prefix { right, .. } => Self::is_simple_placeholder_expr(right),
+            Expr::Infix { left, right, op } => {
+                // For infix ops, check if either side is a simple placeholder expr
+                // but NOT for pipeline/compose which have special handling
+                !matches!(op, InfixOp::Pipeline | InfixOp::Compose)
+                    && (Self::is_simple_placeholder_expr(left)
+                        || Self::is_simple_placeholder_expr(right))
+            }
+            Expr::Index { collection, index } => {
+                Self::is_simple_placeholder_expr(collection)
+                    || Self::is_simple_placeholder_expr(index)
+            }
+            // Calls are NOT simple placeholder expressions - they have their own handling
+            Expr::Call { .. } => false,
+            _ => false,
+        }
+    }
+
     /// Count the number of placeholders in an expression at the immediate level
     /// Does NOT recurse into function bodies
     fn count_placeholders(expr: &SpannedExpr) -> usize {
@@ -1075,8 +1306,13 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         let left_has_placeholder = Self::contains_placeholder(left);
         let right_has_placeholder = Self::contains_placeholder(right);
-        let placeholder_count = (if left_has_placeholder { 1 } else { 0 })
-            + (if right_has_placeholder { 1 } else { 0 });
+        // For Compose, both sides share the same input - only 1 argument needed
+        let placeholder_count = if op == InfixOp::Compose {
+            if left_has_placeholder || right_has_placeholder { 1 } else { 0 }
+        } else {
+            (if left_has_placeholder { 1 } else { 0 })
+                + (if right_has_placeholder { 1 } else { 0 })
+        };
 
         // Create a new function
         let enclosing = std::mem::take(self);
@@ -1094,45 +1330,61 @@ impl Compiler {
 
         let mut arg_idx = 0;
 
-        // Compile left side
-        if Self::contains_placeholder(left) {
-            self.emit_with_operand(OpCode::GetLocal, arg_idx);
-            arg_idx += 1;
-        } else {
-            self.expression(left)?;
-        }
+        // Helper to compile an operand with potential placeholder substitution
+        let compile_operand =
+            |compiler: &mut Compiler, operand: &SpannedExpr, arg_idx: &mut u8| -> Result<(), CompileError> {
+                if Self::contains_placeholder(operand) {
+                    compiler.emit_with_operand(OpCode::GetLocal, *arg_idx);
+                    *arg_idx += 1;
+                } else {
+                    compiler.expression(operand)?;
+                }
+                Ok(())
+            };
 
-        // Compile right side
-        if Self::contains_placeholder(right) {
-            self.emit_with_operand(OpCode::GetLocal, arg_idx);
-        } else {
-            self.expression(right)?;
-        }
-
-        // Emit the operation
+        // Handle short-circuit operators specially - they need interleaved compilation with jumps
         match op {
-            InfixOp::Add => self.emit(OpCode::Add),
-            InfixOp::Sub => self.emit(OpCode::Sub),
-            InfixOp::Mul => self.emit(OpCode::Mul),
-            InfixOp::Div => self.emit(OpCode::Div),
-            InfixOp::Mod => self.emit(OpCode::Mod),
-            InfixOp::Eq => self.emit(OpCode::Eq),
-            InfixOp::Ne => self.emit(OpCode::Ne),
-            InfixOp::Lt => self.emit(OpCode::Lt),
-            InfixOp::Le => self.emit(OpCode::Le),
-            InfixOp::Gt => self.emit(OpCode::Gt),
-            InfixOp::Ge => self.emit(OpCode::Ge),
-            InfixOp::And | InfixOp::Or => {
-                return Err(CompileError::new(
-                    "Partial application not supported for && and ||",
-                    span,
-                ));
+            InfixOp::And => {
+                compile_operand(self, left, &mut arg_idx)?;
+                let jump = self.emit_jump(OpCode::PopJumpIfFalse);
+                compile_operand(self, right, &mut arg_idx)?;
+                self.patch_jump(jump);
             }
-            InfixOp::Pipeline | InfixOp::Compose => {
-                return Err(CompileError::new(
-                    "Partial application not supported for |> and >>",
-                    span,
-                ));
+            InfixOp::Or => {
+                compile_operand(self, left, &mut arg_idx)?;
+                let jump = self.emit_jump(OpCode::PopJumpIfTrue);
+                compile_operand(self, right, &mut arg_idx)?;
+                self.patch_jump(jump);
+            }
+            InfixOp::Pipeline => {
+                // For pipeline with placeholders, we compile it using the placeholder version
+                self.compile_pipeline_with_placeholders(left, right, span, &mut arg_idx)?;
+            }
+            InfixOp::Compose => {
+                // For compose with placeholders: (_ + 1) >> (_ * 2) creates |x| (x + 1) * 2
+                self.compile_compose_with_placeholders(left, right, span, &mut arg_idx)?;
+            }
+            _ => {
+                // Non-short-circuit operators: compile both sides then emit operation
+                compile_operand(self, left, &mut arg_idx)?;
+                compile_operand(self, right, &mut arg_idx)?;
+
+                match op {
+                    InfixOp::Add => self.emit(OpCode::Add),
+                    InfixOp::Sub => self.emit(OpCode::Sub),
+                    InfixOp::Mul => self.emit(OpCode::Mul),
+                    InfixOp::Div => self.emit(OpCode::Div),
+                    InfixOp::Mod => self.emit(OpCode::Mod),
+                    InfixOp::Eq => self.emit(OpCode::Eq),
+                    InfixOp::Ne => self.emit(OpCode::Ne),
+                    InfixOp::Lt => self.emit(OpCode::Lt),
+                    InfixOp::Le => self.emit(OpCode::Le),
+                    InfixOp::Gt => self.emit(OpCode::Gt),
+                    InfixOp::Ge => self.emit(OpCode::Ge),
+                    InfixOp::And | InfixOp::Or | InfixOp::Pipeline | InfixOp::Compose => {
+                        unreachable!()
+                    }
+                }
             }
         }
 
@@ -1180,25 +1432,53 @@ impl Compiler {
                 }
             }
             Expr::Infix { left, op, right } => {
-                self.compile_with_placeholders(left, placeholder_idx)?;
-                self.compile_with_placeholders(right, placeholder_idx)?;
+                // Handle short-circuit operators specially
                 match op {
-                    InfixOp::Add => self.emit(OpCode::Add),
-                    InfixOp::Sub => self.emit(OpCode::Sub),
-                    InfixOp::Mul => self.emit(OpCode::Mul),
-                    InfixOp::Div => self.emit(OpCode::Div),
-                    InfixOp::Mod => self.emit(OpCode::Mod),
-                    InfixOp::Eq => self.emit(OpCode::Eq),
-                    InfixOp::Ne => self.emit(OpCode::Ne),
-                    InfixOp::Lt => self.emit(OpCode::Lt),
-                    InfixOp::Le => self.emit(OpCode::Le),
-                    InfixOp::Gt => self.emit(OpCode::Gt),
-                    InfixOp::Ge => self.emit(OpCode::Ge),
-                    InfixOp::And | InfixOp::Or | InfixOp::Pipeline | InfixOp::Compose => {
+                    InfixOp::And => {
+                        self.compile_with_placeholders(left, placeholder_idx)?;
+                        let jump = self.emit_jump(OpCode::PopJumpIfFalse);
+                        self.compile_with_placeholders(right, placeholder_idx)?;
+                        self.patch_jump(jump);
+                    }
+                    InfixOp::Or => {
+                        self.compile_with_placeholders(left, placeholder_idx)?;
+                        let jump = self.emit_jump(OpCode::PopJumpIfTrue);
+                        self.compile_with_placeholders(right, placeholder_idx)?;
+                        self.patch_jump(jump);
+                    }
+                    InfixOp::Pipeline => {
+                        // Compile pipeline with placeholders supported
+                        self.compile_pipeline_with_placeholders(left, right, expr.span, placeholder_idx)?;
+                    }
+                    InfixOp::Compose => {
+                        // Compose in partial application is complex - for now, just compile
+                        // the left and right with placeholder support and use regular compose logic
+                        // This may need more work for complex cases
                         return Err(CompileError::new(
-                            "Operator not allowed in partial application",
+                            "Compose (>>) not allowed in partial application",
                             expr.span,
                         ));
+                    }
+                    _ => {
+                        // Non-short-circuit operators
+                        self.compile_with_placeholders(left, placeholder_idx)?;
+                        self.compile_with_placeholders(right, placeholder_idx)?;
+                        match op {
+                            InfixOp::Add => self.emit(OpCode::Add),
+                            InfixOp::Sub => self.emit(OpCode::Sub),
+                            InfixOp::Mul => self.emit(OpCode::Mul),
+                            InfixOp::Div => self.emit(OpCode::Div),
+                            InfixOp::Mod => self.emit(OpCode::Mod),
+                            InfixOp::Eq => self.emit(OpCode::Eq),
+                            InfixOp::Ne => self.emit(OpCode::Ne),
+                            InfixOp::Lt => self.emit(OpCode::Lt),
+                            InfixOp::Le => self.emit(OpCode::Le),
+                            InfixOp::Gt => self.emit(OpCode::Gt),
+                            InfixOp::Ge => self.emit(OpCode::Ge),
+                            InfixOp::And | InfixOp::Or | InfixOp::Pipeline | InfixOp::Compose => {
+                                unreachable!()
+                            }
+                        }
                     }
                 }
             }
@@ -1303,10 +1583,99 @@ impl Compiler {
                 self.compile_with_placeholders(right, placeholder_idx)?;
                 self.emit_with_operand(OpCode::Call, 2);
             }
+            Expr::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                // Handle if expressions with placeholders
+                self.compile_with_placeholders(condition, placeholder_idx)?;
+                let then_jump = self.emit_jump(OpCode::JumpIfFalse);
+                self.emit(OpCode::Pop); // Pop condition if truthy
+                self.compile_with_placeholders(then_branch, placeholder_idx)?;
+
+                if let Some(else_expr) = else_branch {
+                    let else_jump = self.emit_jump(OpCode::Jump);
+                    self.patch_jump(then_jump);
+                    self.emit(OpCode::Pop); // Pop condition if falsy
+                    self.compile_with_placeholders(else_expr, placeholder_idx)?;
+                    self.patch_jump(else_jump);
+                } else {
+                    let else_jump = self.emit_jump(OpCode::Jump);
+                    self.patch_jump(then_jump);
+                    self.emit(OpCode::Pop); // Pop condition
+                    self.emit(OpCode::Nil); // No else => nil
+                    self.patch_jump(else_jump);
+                }
+            }
+            Expr::Block(stmts) => {
+                // Handle block expressions - compile each statement
+                // For simplicity, we treat blocks as a sequence of expressions
+                // where only the last one's value is kept
+                for (i, stmt) in stmts.iter().enumerate() {
+                    self.compile_stmt_in_partial_context(stmt, placeholder_idx)?;
+                    // Pop intermediate results (not the last one)
+                    if i < stmts.len() - 1 {
+                        self.emit(OpCode::Pop);
+                    }
+                }
+            }
+            Expr::Function { params, body } => {
+                // Lambdas inside partial applications - compile normally
+                // They capture from the enclosing scope, not the partial application params
+                self.compile_function(params, body, expr.span)?;
+            }
+            Expr::Spread(inner) => {
+                // Handle spread expressions with placeholders
+                self.compile_with_placeholders(inner, placeholder_idx)?;
+                self.emit(OpCode::Spread);
+            }
             _ => {
                 return Err(CompileError::new(
                     "Expression type not supported in partial application",
                     expr.span,
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Helper to compile a statement in partial application context
+    fn compile_stmt_in_partial_context(
+        &mut self,
+        stmt: &SpannedStmt,
+        placeholder_idx: &mut u8,
+    ) -> Result<(), CompileError> {
+        match &stmt.node {
+            Stmt::Expr(expr) => {
+                self.compile_with_placeholders(expr, placeholder_idx)?;
+            }
+            Stmt::Let { pattern, value, mutable } => {
+                // Compile the value expression
+                self.compile_with_placeholders(value, placeholder_idx)?;
+                // Handle simple identifier patterns for now
+                if let Pattern::Identifier(name) = pattern {
+                    self.locals.push(Local {
+                        name: name.clone(),
+                        depth: self.scope_depth,
+                        mutable: *mutable,
+                        captured: false,
+                    });
+                } else {
+                    return Err(CompileError::new(
+                        "Only simple let bindings supported in partial application blocks",
+                        stmt.span,
+                    ));
+                }
+            }
+            Stmt::Return(expr) => {
+                self.compile_with_placeholders(expr, placeholder_idx)?;
+                self.emit(OpCode::Return);
+            }
+            Stmt::Break(_) => {
+                return Err(CompileError::new(
+                    "Break not supported in partial application blocks",
+                    stmt.span,
                 ));
             }
         }
@@ -1607,11 +1976,15 @@ impl Compiler {
 
         // Check if this is a builtin function being used as a value
         // In this case, create a wrapper closure that calls the builtin
-        if let Some(builtin_id) = BuiltinId::from_name(name) {
-            return self.compile_builtin_as_value(builtin_id, span);
+        // BUT only if we don't know of a global with this name (from this compilation unit)
+        if !self.global_names.contains(name) {
+            if let Some(builtin_id) = BuiltinId::from_name(name) {
+                return self.compile_builtin_as_value(builtin_id, span);
+            }
         }
 
-        // Finally, emit global lookup
+        // Emit global lookup - the runtime will check globals first, allowing
+        // user-defined globals to shadow builtins
         let name_idx = self
             .chunk()
             .add_constant(Value::String(Rc::new(name.to_string())));
@@ -1965,6 +2338,8 @@ impl Compiler {
                 self.emit_with_operand(OpCode::GetLocal, idx as u8);
             } else if is_global_scope {
                 // Global scope - compile value then emit SetGlobal
+                // Register the global name so it can shadow builtins
+                self.global_names.insert(name.clone());
                 self.expression(value)?;
                 let name_idx = self.chunk().add_constant(Value::String(
                     std::rc::Rc::new(name.clone())
@@ -2003,7 +2378,8 @@ impl Compiler {
         match pattern {
             Pattern::Identifier(name) => {
                 if is_global_scope {
-                    // Global binding - emit SetGlobal (value is on stack)
+                    // Global binding - register and emit SetGlobal (value is on stack)
+                    self.global_names.insert(name.clone());
                     let name_idx = self.chunk().add_constant(Value::String(
                         std::rc::Rc::new(name.clone())
                     ));

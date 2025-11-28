@@ -914,13 +914,8 @@ impl VM {
             (Value::Decimal(x), Value::Integer(y)) => Value::Decimal(OrderedFloat(x.0 + *y as f64)),
             (Value::Decimal(x), Value::Decimal(y)) => Value::Decimal(OrderedFloat(x.0 + y.0)),
 
-            // String concatenation
+            // String concatenation (only String + String per LANG.txt §4.1)
             (Value::String(x), Value::String(y)) => Value::String(Rc::new(format!("{}{}", x, y))),
-            // String + other types (coerce to string)
-            (Value::String(x), Value::Integer(y)) => Value::String(Rc::new(format!("{}{}", x, y))),
-            (Value::String(x), Value::Decimal(y)) => Value::String(Rc::new(format!("{}{}", x, y.0))),
-            (Value::Integer(x), Value::String(y)) => Value::String(Rc::new(format!("{}{}", x, y))),
-            (Value::Decimal(x), Value::String(y)) => Value::String(Rc::new(format!("{}{}", x.0, y))),
 
             // List concatenation
             (Value::List(x), Value::List(y)) => {
@@ -1739,6 +1734,8 @@ impl VM {
             BuiltinId::List => self.builtin_list_callback(args, line),
             BuiltinId::Set => self.builtin_set_callback(args, line),
             BuiltinId::Memoize => self.builtin_memoize(args, line),
+            BuiltinId::Sum => self.builtin_sum(args, line),
+            BuiltinId::Size => self.builtin_size(args, line),
             _ => Err(RuntimeError::new(
                 format!("{} is not a callback builtin", id.name()),
                 line,
@@ -2115,6 +2112,7 @@ impl VM {
 
                 match end {
                     Some(e) => {
+                        // Bounded range - eagerly evaluate and return List
                         let mut result = Vector::new();
                         let actual_end = if *inclusive { *e } else { e - 1 };
                         if start <= &actual_end {
@@ -2133,16 +2131,7 @@ impl VM {
                                 i -= 1;
                             }
                         }
-                        // Return as LazySequence placeholder - for now return List
-                        // Phase 12 will implement proper LazySequence
-                        Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Map {
-                            source: Rc::new(RefCell::new(LazySeq::Range {
-                                current: *start,
-                                end: *end,
-                                inclusive: *inclusive,
-                            })),
-                            mapper: closure,
-                        }))))
+                        Ok(Value::List(result))
                     }
                     None => {
                         // Unbounded range - return LazySequence
@@ -4527,6 +4516,162 @@ impl VM {
                 line,
             )),
         }
+    }
+
+    /// sum(collection) → Integer | Decimal
+    /// Sum all numeric elements in a collection.
+    fn builtin_sum(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let collection = &args[0];
+
+        // Helper to sum an iterator of values
+        fn sum_values<'a>(
+            iter: impl Iterator<Item = &'a Value>,
+            line: u32,
+        ) -> Result<Value, RuntimeError> {
+            let mut has_decimal = false;
+            let mut int_sum: i64 = 0;
+            let mut decimal_sum: f64 = 0.0;
+
+            for elem in iter {
+                match elem {
+                    Value::Integer(n) => {
+                        if has_decimal {
+                            decimal_sum += *n as f64;
+                        } else {
+                            int_sum += n;
+                        }
+                    }
+                    Value::Decimal(d) => {
+                        if !has_decimal {
+                            has_decimal = true;
+                            decimal_sum = int_sum as f64;
+                        }
+                        decimal_sum += d.0;
+                    }
+                    _ => {
+                        return Err(RuntimeError::new(
+                            format!("sum: non-numeric element {}", elem.type_name()),
+                            line,
+                        ));
+                    }
+                }
+            }
+
+            if has_decimal {
+                Ok(Value::Decimal(OrderedFloat(decimal_sum)))
+            } else {
+                Ok(Value::Integer(int_sum))
+            }
+        }
+
+        match collection {
+            Value::List(list) => sum_values(list.iter(), line),
+            Value::Set(set) => sum_values(set.iter(), line),
+            Value::Dict(dict) => sum_values(dict.values(), line),
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    let actual_end = if *inclusive { *e } else { e - 1 };
+                    if *start > actual_end {
+                        return Ok(Value::Integer(0));
+                    }
+                    // Sum of arithmetic sequence: n * (first + last) / 2
+                    let n = actual_end - start + 1;
+                    let sum = n * (start + actual_end) / 2;
+                    Ok(Value::Integer(sum))
+                }
+                None => Err(RuntimeError::new("Cannot sum unbounded range", line)),
+            },
+            Value::LazySequence(seq) => {
+                let mut has_decimal = false;
+                let mut int_sum: i64 = 0;
+                let mut decimal_sum: f64 = 0.0;
+
+                let mut seq_clone = seq.borrow().clone();
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    match elem {
+                        Value::Integer(n) => {
+                            if has_decimal {
+                                decimal_sum += n as f64;
+                            } else {
+                                int_sum += n;
+                            }
+                        }
+                        Value::Decimal(d) => {
+                            if !has_decimal {
+                                has_decimal = true;
+                                decimal_sum = int_sum as f64;
+                            }
+                            decimal_sum += d.0;
+                        }
+                        _ => {
+                            return Err(RuntimeError::new(
+                                format!("sum: non-numeric element {}", elem.type_name()),
+                                line,
+                            ));
+                        }
+                    }
+                }
+
+                if has_decimal {
+                    Ok(Value::Decimal(OrderedFloat(decimal_sum)))
+                } else {
+                    Ok(Value::Integer(int_sum))
+                }
+            }
+            _ => Err(RuntimeError::new(
+                format!("sum does not support {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// size(collection) → Integer
+    /// Get the size/length of a collection.
+    fn builtin_size(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let collection = &args[0];
+
+        let size = match collection {
+            Value::List(v) => v.len() as i64,
+            Value::Set(s) => s.len() as i64,
+            Value::Dict(d) => d.len() as i64,
+            Value::String(s) => s.graphemes(true).count() as i64,
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    let diff = (e - start).abs();
+                    if *inclusive { diff + 1 } else { diff }
+                }
+                None => {
+                    return Err(RuntimeError::new(
+                        "Cannot get size of unbounded range",
+                        line,
+                    ));
+                }
+            },
+            Value::LazySequence(seq) => {
+                // Materialize and count the lazy sequence
+                let mut count: i64 = 0;
+                let mut seq_clone = seq.borrow().clone();
+                while self.lazy_seq_next_with_callback(&mut seq_clone)?.is_some() {
+                    count += 1;
+                }
+                count
+            }
+            _ => {
+                return Err(RuntimeError::new(
+                    format!("size not supported for {}", collection.type_name()),
+                    line,
+                ));
+            }
+        };
+        Ok(Value::Integer(size))
     }
 }
 

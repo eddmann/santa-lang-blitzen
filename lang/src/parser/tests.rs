@@ -575,6 +575,15 @@ fn parse_match_expression() {
 }
 
 #[test]
+fn parse_match_trailing_commas() {
+    // Trailing commas between match arms should be allowed
+    check(
+        r#"match x { 1 { a }, 2 { b }, _ { c } }"#,
+        expect!["(match x { 1 => { a }, 2 => { b }, _ => { c } })"],
+    );
+}
+
+#[test]
 fn parse_match_with_guard() {
     check(
         "match x { n if n > 0 { n } _ { 0 } }",
