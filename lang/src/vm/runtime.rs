@@ -3105,6 +3105,11 @@ impl VM {
                         for i in *start..=actual_end {
                             acc = self.call_closure_sync(&closure, vec![acc, Value::Integer(i)])?;
                         }
+                    } else {
+                        // Reverse range (start > end)
+                        for i in (actual_end..=*start).rev() {
+                            acc = self.call_closure_sync(&closure, vec![acc, Value::Integer(i)])?;
+                        }
                     }
                 }
                 None => {

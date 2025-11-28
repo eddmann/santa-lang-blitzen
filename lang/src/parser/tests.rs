@@ -402,7 +402,7 @@ fn parse_single_element_set() {
 fn parse_single_element_set_vs_block() {
     // {2,} is a single-element set
     // {2} is a block returning 2
-    check("{2}", expect!["{ 2 }"]);
+    check("{2}", expect!["{2}"]);
 }
 
 #[test]

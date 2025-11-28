@@ -2836,10 +2836,17 @@ impl Compiler {
                 Ok(None)
             }
             Pattern::Identifier(name) => {
-                // Always matches, bind the value
-                // Value is on stack, we keep it as local
+                // Matches if value is not nil
+                // Dup subject, check if not nil
+                self.emit(OpCode::Dup);
+                self.emit(OpCode::Nil);
+                self.emit(OpCode::Ne);
+                let fail_jump = self.emit_jump(OpCode::JumpIfFalse);
+                // Pop the boolean result in success path
+                self.emit(OpCode::Pop);
+                // Bind the value as local
                 self.add_local(name.clone(), false);
-                Ok(None)
+                Ok(Some(fail_jump))
             }
             Pattern::Literal(lit) => {
                 // Dup subject, compare with literal
@@ -3094,8 +3101,13 @@ impl Compiler {
         let locals_before = self.locals.len();
         let fail_jump = self.compile_pattern_test(pattern, span)?;
 
-        // Pop subject value if pattern matched
-        self.emit(OpCode::Pop);
+        // Pop subject value if pattern matched (only if not bound by pattern)
+        // For Identifier and List patterns, the subject becomes a local and will
+        // be cleaned up with the other pattern locals via PopN
+        let subject_is_bound = matches!(pattern, Pattern::Identifier(_) | Pattern::List(_));
+        if !subject_is_bound {
+            self.emit(OpCode::Pop);
+        }
 
         // Compile then branch
         self.expression(then_branch)?;
