@@ -3127,6 +3127,9 @@ impl Compiler {
         // Patch fail jump
         if let Some(fj) = fail_jump {
             self.patch_jump(fj);
+            // Patterns with fail_jump have [subject, bool] on stack from the comparison
+            // We need to pop both: first the boolean result, then the subject
+            self.emit(OpCode::Pop); // Pop the boolean
         }
 
         // Pop subject value since pattern failed

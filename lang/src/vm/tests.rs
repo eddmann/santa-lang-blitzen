@@ -1504,10 +1504,11 @@ mod compiler_tests {
                 0028 [   1] GetLocal 2
                 0030 [   1] Add
                 0031 [   1] PopN 3
-                0033 [   1] Jump -> 39
+                0033 [   1] Jump -> 40
                 0036 [   1] Pop
-                0037 [   1] Constant 5 (0)
-                0039 [   1] Return
+                0037 [   1] Pop
+                0038 [   1] Constant 5 (0)
+                0040 [   1] Return
             "#]],
         );
     }
