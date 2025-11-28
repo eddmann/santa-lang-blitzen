@@ -217,6 +217,11 @@ impl Compiler {
         self.chunk().patch_jump(offset);
     }
 
+    /// Patch a jump instruction to a specific target
+    fn patch_jump_to(&mut self, offset: usize, target: usize) {
+        self.chunk().patch_jump_to(offset, target);
+    }
+
     /// Compile an expression
     fn expression(&mut self, expr: &SpannedExpr) -> Result<(), CompileError> {
         self.current_line = expr.span.line;
@@ -2804,6 +2809,14 @@ impl Compiler {
                 self.patch_jump(gsj);
             }
 
+            // Ensure locals are restored to state before this arm for next arm iteration.
+            // The success path already cleans up via PopN + locals.pop(), but the failure
+            // path may have added temporary locals (e.g., $match_subject in nested list
+            // patterns) that need to be removed from the compiler's tracking.
+            while self.locals.len() > locals_before {
+                self.locals.pop();
+            }
+
             // If this is the last arm and pattern/guard might fail, we need a fallback value
             if is_last && has_failure_code {
                 // Pop the subject that's still on stack
@@ -3024,11 +3037,30 @@ impl Compiler {
                         self.patch_jump(success_jump);
                     }
                 }
-                Pattern::Range { .. } => {
-                    return Err(CompileError::new(
-                        "Range patterns inside list patterns not yet supported",
-                        span,
-                    ));
+                Pattern::Range {
+                    start,
+                    end,
+                    inclusive,
+                } => {
+                    // Extract element and do range check
+                    self.emit_with_operand(OpCode::GetLocal, subject_local_idx);
+                    let idx = self.calc_pattern_index(i, rest_pos, patterns.len());
+                    self.emit_constant(Value::Integer(idx))?;
+                    self.emit(OpCode::Index);
+                    // Emit RangeCheck instruction
+                    self.emit(OpCode::RangeCheck);
+                    // Write start (2 bytes)
+                    self.chunk().write_operand((*start >> 8) as u8);
+                    self.chunk().write_operand((*start & 0xFF) as u8);
+                    // Write end (2 bytes)
+                    let end_val = end.unwrap_or(i16::MAX as i64) as i16;
+                    self.chunk().write_operand((end_val >> 8) as u8);
+                    self.chunk().write_operand((end_val & 0xFF) as u8);
+                    // Write inclusive flag
+                    self.chunk().write_operand(if *inclusive { 1 } else { 0 });
+                    // If not in range, fail - collect jump to patch later
+                    conditional_fail_jumps.push(self.emit_jump(OpCode::JumpIfFalse));
+                    self.emit(OpCode::Pop);
                 }
             }
         }
@@ -3048,14 +3080,17 @@ impl Compiler {
             // Jump past failure handling code
             let success_jump = self.emit_jump(OpCode::Jump);
 
-            // Handle conditional failures: patch each to pop its boolean, then jump to common point
+            // Handle conditional failures: emit ONE Pop, then patch ALL jumps to it.
+            // Each conditional failure has a boolean on stack that needs to be popped.
+            // All jumps go to the same Pop instruction, then fall through to common exit.
+            self.emit(OpCode::Pop);
+            let pop_location = self.chunk().code.len() - 1;
             for jump in &conditional_fail_jumps {
-                self.patch_jump(*jump);
-                self.emit(OpCode::Pop); // Pop the boolean from the check
+                self.patch_jump_to(*jump, pop_location);
             }
-            // All conditional failures now fall through to the common point
 
-            // Handle unconditional failures: patch them to the common point
+            // Handle unconditional failures: patch them to here (after the Pop)
+            // These have already cleaned up their stack, so they skip the Pop
             for jump in &unconditional_fail_jumps {
                 self.patch_jump(*jump);
             }

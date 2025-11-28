@@ -256,6 +256,17 @@ impl Chunk {
         self.code[offset + 1] = (jump & 0xFF) as u8;
     }
 
+    /// Patch a jump instruction to jump to a specific target location
+    pub fn patch_jump_to(&mut self, offset: usize, target: usize) {
+        // Calculate the jump distance from the instruction after the jump operand to target
+        let jump = target - offset - 2;
+        if jump > u16::MAX as usize {
+            panic!("Jump offset too large");
+        }
+        self.code[offset] = (jump >> 8) as u8;
+        self.code[offset + 1] = (jump & 0xFF) as u8;
+    }
+
     /// Disassemble a single instruction at the given offset
     /// Returns a string representation and the next offset
     pub fn disassemble_instruction(&self, offset: usize) -> String {
