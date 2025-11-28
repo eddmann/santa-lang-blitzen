@@ -84,11 +84,20 @@ impl Compiler {
 
     /// Create a compiler for a nested function
     fn new_function(name: Option<String>, arity: u8, enclosing: Compiler) -> Self {
+        Self::new_function_with_variadic(name, arity, false, enclosing)
+    }
+
+    fn new_function_with_variadic(name: Option<String>, arity: u8, is_variadic: bool, enclosing: Compiler) -> Self {
         let current_line = enclosing.current_line;
         // Inherit global_names from enclosing - nested functions should see same globals
         let global_names = enclosing.global_names.clone();
+        let function = if is_variadic {
+            CompiledFunction::new_variadic(arity, name)
+        } else {
+            CompiledFunction::new(arity, name)
+        };
         Self {
-            function: CompiledFunction::new(arity, name),
+            function,
             locals: Vec::new(),
             scope_depth: 0,
             enclosing: Some(Box::new(enclosing)),
@@ -1701,12 +1710,13 @@ impl Compiler {
             return Err(CompileError::new("Too many parameters (max 255)", span));
         }
 
-        // Handle rest parameter - count regular params
+        // Handle rest parameter - count regular params and detect variadic
         let mut regular_param_count = 0;
+        let mut is_variadic = false;
         for param in params {
             match &param.name {
                 ParamKind::Rest(_) => {
-                    // TODO: Handle rest parameter in runtime (Phase 6+)
+                    is_variadic = true;
                     break;
                 }
                 _ => regular_param_count += 1,
@@ -1715,7 +1725,7 @@ impl Compiler {
 
         // Create new compiler for function
         let enclosing = std::mem::take(self);
-        *self = Compiler::new_function(None, regular_param_count as u8, enclosing);
+        *self = Compiler::new_function_with_variadic(None, regular_param_count as u8, is_variadic, enclosing);
 
         // Add parameter locals and compile destructuring if needed
         // Track pattern params and their local slots for deferred destructuring

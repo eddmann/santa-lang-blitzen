@@ -182,6 +182,7 @@ impl VM {
 
             let function = Rc::new(CompiledFunction {
                 arity: 2,
+                is_variadic: false,
                 chunk,
                 name: Some(name.to_string()),
                 upvalues: Vec::new(),
@@ -1552,6 +1553,7 @@ impl VM {
 
     fn call_closure(&mut self, closure: Rc<Closure>, argc: usize) -> Result<(), RuntimeError> {
         let arity = closure.function.arity as usize;
+        let is_variadic = closure.function.is_variadic;
 
         if argc < arity {
             // Auto-currying: create a partial application
@@ -1573,7 +1575,7 @@ impl VM {
             return Ok(());
         }
 
-        if argc > arity {
+        if argc > arity && !is_variadic {
             return Err(self.error(format!("Expected {} arguments but got {}", arity, argc)));
         }
 
@@ -1581,14 +1583,36 @@ impl VM {
             return Err(self.error("Stack overflow"));
         }
 
+        // For variadic functions, collect extra args into a list
+        if is_variadic && argc > arity {
+            // Collect extra args (they're on top of stack)
+            let extra_count = argc - arity;
+            let mut rest_args: Vector<Value> = Vector::new();
+            for i in 0..extra_count {
+                // Pop in reverse order so the list is in argument order
+                rest_args.push_back(self.peek(extra_count - 1 - i).clone());
+            }
+            // Pop the extra args
+            for _ in 0..extra_count {
+                self.pop();
+            }
+            // Push the rest list as the last argument
+            self.push(Value::List(rest_args));
+        } else if is_variadic {
+            // Variadic but no extra args - push empty list for rest param
+            self.push(Value::List(Vector::new()));
+        }
+
         // Stack base is where the function value was (we'll pop it)
-        let stack_base = self.stack.len() - argc - 1;
+        // For variadic, stack now has: func, regular_args..., rest_list
+        let final_argc = if is_variadic { arity + 1 } else { argc };
+        let stack_base = self.stack.len() - final_argc - 1;
 
         // Remove the function from stack, keep args
         self.stack.remove(stack_base);
 
         self.frames
-            .push(CallFrame::new(closure, self.stack.len() - argc));
+            .push(CallFrame::new(closure, self.stack.len() - final_argc));
         Ok(())
     }
 
@@ -1599,6 +1623,7 @@ impl VM {
         new_argc: usize,
     ) -> Result<(), RuntimeError> {
         let arity = closure.function.arity as usize;
+        let is_variadic = closure.function.is_variadic;
         let total_args = partial_args.len() + new_argc;
 
         if total_args < arity {
@@ -1620,7 +1645,7 @@ impl VM {
             return Ok(());
         }
 
-        if total_args > arity {
+        if total_args > arity && !is_variadic {
             return Err(self.error(format!("Expected {} arguments but got {}", arity, total_args)));
         }
 
@@ -1639,8 +1664,32 @@ impl VM {
             self.stack.insert(insert_pos + i, arg);
         }
 
+        // For variadic functions, collect extra args into a list
+        let final_arity = if is_variadic {
+            let extra_count = total_args - arity;
+            if extra_count > 0 {
+                // Collect extra args from top of stack
+                let mut rest_args: Vector<Value> = Vector::new();
+                for i in 0..extra_count {
+                    rest_args.push_back(self.peek(extra_count - 1 - i).clone());
+                }
+                // Pop the extra args
+                for _ in 0..extra_count {
+                    self.pop();
+                }
+                // Push the rest list
+                self.push(Value::List(rest_args));
+            } else {
+                // No extra args - push empty list for rest param
+                self.push(Value::List(Vector::new()));
+            }
+            arity + 1 // Regular args + rest list
+        } else {
+            arity
+        };
+
         self.frames
-            .push(CallFrame::new(closure, self.stack.len() - arity));
+            .push(CallFrame::new(closure, self.stack.len() - final_arity));
         Ok(())
     }
 

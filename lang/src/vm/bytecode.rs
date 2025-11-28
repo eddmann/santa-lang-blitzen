@@ -381,8 +381,10 @@ impl Default for Chunk {
 /// Compiled function representation
 #[derive(Debug)]
 pub struct CompiledFunction {
-    /// Number of parameters
+    /// Number of parameters (for variadic functions, this is the count of regular params before the rest param)
     pub arity: u8,
+    /// Whether this function accepts a rest parameter (variadic)
+    pub is_variadic: bool,
     /// The bytecode for this function
     pub chunk: Chunk,
     /// Function name (for debugging)
@@ -404,6 +406,17 @@ impl CompiledFunction {
     pub fn new(arity: u8, name: Option<String>) -> Self {
         Self {
             arity,
+            is_variadic: false,
+            chunk: Chunk::new(),
+            name,
+            upvalues: Vec::new(),
+        }
+    }
+
+    pub fn new_variadic(arity: u8, name: Option<String>) -> Self {
+        Self {
+            arity,
+            is_variadic: true,
             chunk: Chunk::new(),
             name,
             upvalues: Vec::new(),
