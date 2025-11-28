@@ -914,8 +914,10 @@ impl VM {
             (Value::Decimal(x), Value::Integer(y)) => Value::Decimal(OrderedFloat(x.0 + *y as f64)),
             (Value::Decimal(x), Value::Decimal(y)) => Value::Decimal(OrderedFloat(x.0 + y.0)),
 
-            // String concatenation (only String + String per LANG.txt §4.1)
+            // String concatenation - String + any type coerces to string
             (Value::String(x), Value::String(y)) => Value::String(Rc::new(format!("{}{}", x, y))),
+            (Value::String(x), y) => Value::String(Rc::new(format!("{}{}", x, y))),
+            (x, Value::String(y)) => Value::String(Rc::new(format!("{}{}", x, y))),
 
             // List concatenation
             (Value::List(x), Value::List(y)) => {

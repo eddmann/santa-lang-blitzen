@@ -2360,8 +2360,24 @@ mod runtime_tests {
     // ============================================================
 
     #[test]
-    fn eval_type_error_add_int_string() {
-        assert!(eval(r#"1 + "hello""#).is_err());
+    fn eval_string_coercion_int_plus_string() {
+        // String coercion: Int + String and String + Int both produce String
+        assert_eq!(
+            eval(r#"1 + "hello""#),
+            Ok(Value::String(Rc::new("1hello".to_string())))
+        );
+        assert_eq!(
+            eval(r#""hello" + 1"#),
+            Ok(Value::String(Rc::new("hello1".to_string())))
+        );
+        assert_eq!(
+            eval(r#""" + 42"#),
+            Ok(Value::String(Rc::new("42".to_string())))
+        );
+        assert_eq!(
+            eval(r#"1 + "," + 2"#),
+            Ok(Value::String(Rc::new("1,2".to_string())))
+        );
     }
 
     #[test]
