@@ -1892,10 +1892,11 @@ impl VM {
                 }
             },
             LazySeq::RangeStep { current, end, step } => {
-                if *step > 0 && *current >= *end {
+                // range(from, to, step) is inclusive of 'to'
+                if *step > 0 && *current > *end {
                     return Ok(None);
                 }
-                if *step < 0 && *current <= *end {
+                if *step < 0 && *current < *end {
                     return Ok(None);
                 }
                 let value = Value::Integer(*current);
@@ -3086,6 +3087,7 @@ impl VM {
         let arity = self.closure_arity(&closure);
         let mut acc = initial.clone();
         let mut results = Vector::new();
+        results.push_back(initial.clone()); // scan includes initial value as first element
 
         match collection {
             Value::List(list) => {

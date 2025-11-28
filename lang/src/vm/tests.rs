@@ -2827,8 +2827,8 @@ mod runtime_tests {
 
     #[test]
     fn eval_builtin_size_lazy_sequence() {
-        // size on a LazySequence (from range function)
-        assert_eq!(eval("range(1, 10, 1) |> size"), Ok(Value::Integer(9)));
+        // size on a LazySequence (from range function) - range is inclusive
+        assert_eq!(eval("range(1, 10, 1) |> size"), Ok(Value::Integer(10)));
     }
 
     #[test]
@@ -3403,14 +3403,15 @@ mod runtime_tests {
 
     #[test]
     fn eval_builtin_scan_list() {
-        // scan(0, |a, b| a + b, [1, 2, 3]) => [1, 3, 6]
+        // scan(0, |a, b| a + b, [1, 2, 3]) => [0, 1, 3, 6] (includes initial value)
         let result = eval("scan(0, |a, b| a + b, [1, 2, 3])").unwrap();
         match result {
             Value::List(v) => {
-                assert_eq!(v.len(), 3);
-                assert_eq!(v[0], Value::Integer(1));
-                assert_eq!(v[1], Value::Integer(3));
-                assert_eq!(v[2], Value::Integer(6));
+                assert_eq!(v.len(), 4);
+                assert_eq!(v[0], Value::Integer(0));
+                assert_eq!(v[1], Value::Integer(1));
+                assert_eq!(v[2], Value::Integer(3));
+                assert_eq!(v[3], Value::Integer(6));
             }
             _ => panic!("Expected list"),
         }
@@ -3418,13 +3419,14 @@ mod runtime_tests {
 
     #[test]
     fn eval_builtin_scan_string() {
-        // scan("", |a, b| a + b, "ab") => ["a", "ab"]
+        // scan("", |a, b| a + b, "ab") => ["", "a", "ab"] (includes initial value)
         let result = eval(r#"scan("", |a, b| a + b, "ab")"#).unwrap();
         match result {
             Value::List(v) => {
-                assert_eq!(v.len(), 2);
-                assert_eq!(v[0], Value::String(Rc::new("a".to_string())));
-                assert_eq!(v[1], Value::String(Rc::new("ab".to_string())));
+                assert_eq!(v.len(), 3);
+                assert_eq!(v[0], Value::String(Rc::new("".to_string())));
+                assert_eq!(v[1], Value::String(Rc::new("a".to_string())));
+                assert_eq!(v[2], Value::String(Rc::new("ab".to_string())));
             }
             _ => panic!("Expected list"),
         }
@@ -3432,15 +3434,16 @@ mod runtime_tests {
 
     #[test]
     fn eval_builtin_scan_range() {
-        // scan(0, |a, b| a + b, 1..5) => [1, 3, 6, 10]
+        // scan(0, |a, b| a + b, 1..5) => [0, 1, 3, 6, 10] (includes initial value)
         let result = eval("scan(0, |a, b| a + b, 1..5)").unwrap();
         match result {
             Value::List(v) => {
-                assert_eq!(v.len(), 4);
-                assert_eq!(v[0], Value::Integer(1));
-                assert_eq!(v[1], Value::Integer(3));
-                assert_eq!(v[2], Value::Integer(6));
-                assert_eq!(v[3], Value::Integer(10));
+                assert_eq!(v.len(), 5);
+                assert_eq!(v[0], Value::Integer(0));
+                assert_eq!(v[1], Value::Integer(1));
+                assert_eq!(v[2], Value::Integer(3));
+                assert_eq!(v[3], Value::Integer(6));
+                assert_eq!(v[4], Value::Integer(10));
             }
             _ => panic!("Expected list"),
         }
@@ -3566,19 +3569,19 @@ mod runtime_tests {
 
     #[test]
     fn eval_builtin_sum_lazy_sequence() {
-        // sum on a LazySequence (from range function)
+        // sum on a LazySequence (from range function) - range is inclusive
         assert_eq!(
             eval("range(1, 5, 1) |> sum"),
-            Ok(Value::Integer(10)) // 1 + 2 + 3 + 4 = 10
+            Ok(Value::Integer(15)) // 1 + 2 + 3 + 4 + 5 = 15
         );
     }
 
     #[test]
     fn eval_builtin_sum_lazy_sequence_with_map() {
-        // sum on a mapped LazySequence
+        // sum on a mapped LazySequence - range is inclusive
         assert_eq!(
             eval("range(1, 5, 1) |> map(|x| x * 2) |> sum"),
-            Ok(Value::Integer(20)) // 2 + 4 + 6 + 8 = 20
+            Ok(Value::Integer(30)) // 2 + 4 + 6 + 8 + 10 = 30
         );
     }
 
