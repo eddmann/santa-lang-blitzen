@@ -212,6 +212,10 @@ impl VM {
 
     /// Run a compiled function
     pub fn run(&mut self, function: Rc<CompiledFunction>) -> Result<Value, RuntimeError> {
+        // Clear stack from any previous run to ensure clean state
+        // (globals are preserved, but locals should start fresh)
+        self.stack.clear();
+
         // Create main closure (no upvalues)
         let closure = Rc::new(Closure {
             function,

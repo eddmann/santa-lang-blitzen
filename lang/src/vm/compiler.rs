@@ -2337,13 +2337,13 @@ impl Compiler {
 
             if is_predeclared {
                 // Already pre-declared in current scope - compile value and update the local
+                // The slot already exists on the stack (with nil), so we just need to update it
                 let idx = self.resolve_local(name).unwrap();
                 self.expression(value)?;
                 self.emit_with_operand(OpCode::SetLocal, idx as u8);
-                // Value is now consumed, but SetLocal leaves it on stack, so pop it
+                // SetLocal copies value to slot but leaves it on stack - pop the extra copy
+                // The value is now in its pre-declared slot, no need to leave it on stack again
                 self.emit(OpCode::Pop);
-                // Push it back (let statements should leave value on stack)
-                self.emit_with_operand(OpCode::GetLocal, idx as u8);
             } else if is_global_scope {
                 // Global scope - compile value then emit SetGlobal
                 // Register the global name so it can shadow builtins
