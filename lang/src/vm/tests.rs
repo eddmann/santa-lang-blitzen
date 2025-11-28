@@ -1039,16 +1039,17 @@ mod compiler_tests {
 
     #[test]
     fn compile_pipeline_with_args() {
-        // x |> f(a) compiles to f(a, x)
+        // x |> f(a) compiles to (f(a))(x) - call f(a) first, then call result with x
         check_bytecode(
             "5 |> add(10)",
             expect![[r#"
                 == test ==
                 0000 [   1] GetGlobal 0 ("add")
                 0002 [   1] Constant 1 (10)
-                0004 [   1] Constant 2 (5)
-                0006 [   1] Call 2
-                0008 [   1] Return
+                0004 [   1] Call 1
+                0006 [   1] Constant 2 (5)
+                0008 [   1] Call 1
+                0010 [   1] Return
             "#]],
         );
     }

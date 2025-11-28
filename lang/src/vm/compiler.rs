@@ -559,16 +559,12 @@ impl Compiler {
                     self.chunk().write_operand_u16(builtin_id as u16);
                     self.chunk().write_operand((args.len() + 1) as u8);
                 } else {
-                    // Compile: func(args..., left)
-                    self.expression(function)?;
-                    for arg in args {
-                        self.expression(arg)?;
-                    }
+                    // For non-builtin calls: a |> f(b) means (f(b))(a)
+                    // First compile the call f(b) to get its result
+                    self.expression(right)?;
+                    // Then call that result with left as argument
                     self.expression(left)?;
-                    if args.len() + 1 > 255 {
-                        return Err(CompileError::new("Too many arguments", span));
-                    }
-                    self.emit_with_operand(OpCode::Call, (args.len() + 1) as u8);
+                    self.emit_with_operand(OpCode::Call, 1);
                 }
             }
             Expr::Identifier(name) => {
