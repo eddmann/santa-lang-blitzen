@@ -100,6 +100,7 @@ pub enum LazySeq {
         current: i64,
         end: Option<i64>,
         inclusive: bool,
+        step: i64, // +1 for ascending, -1 for descending
     },
     /// repeat(value) - infinite repetition
     Repeat { value: Value },

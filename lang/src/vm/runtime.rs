@@ -1955,11 +1955,11 @@ impl VM {
                 current,
                 end,
                 inclusive,
+                step,
             } => match end {
                 Some(e) => {
-                    // Determine direction based on start vs end
-                    let ascending = *current <= *e;
-                    let actual_end = if ascending {
+                    // Use stored step for direction
+                    let actual_end = if *step > 0 {
                         if *inclusive { *e } else { *e - 1 }
                     } else if *inclusive {
                         *e
@@ -1967,26 +1967,26 @@ impl VM {
                         *e + 1
                     };
 
-                    if ascending {
+                    if *step > 0 {
+                        // Ascending
                         if *current > actual_end {
                             return Ok(None);
                         }
-                        let value = Value::Integer(*current);
-                        *current += 1;
-                        Ok(Some(value))
                     } else {
+                        // Descending
                         if *current < actual_end {
                             return Ok(None);
                         }
-                        let value = Value::Integer(*current);
-                        *current -= 1;
-                        Ok(Some(value))
                     }
+
+                    let value = Value::Integer(*current);
+                    *current += *step;
+                    Ok(Some(value))
                 }
                 None => {
-                    // Unbounded (always ascending)
+                    // Unbounded (use stored step)
                     let value = Value::Integer(*current);
-                    *current += 1;
+                    *current += *step;
                     Ok(Some(value))
                 }
             },
@@ -2253,12 +2253,13 @@ impl VM {
                         Ok(Value::List(result))
                     }
                     None => {
-                        // Unbounded range - return LazySequence
+                        // Unbounded range - return LazySequence (always ascending)
                         Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Map {
                             source: Rc::new(RefCell::new(LazySeq::Range {
                                 current: *start,
                                 end: None,
                                 inclusive: *inclusive,
+                                step: 1,
                             })),
                             mapper: closure,
                         }))))
@@ -2403,34 +2404,21 @@ impl VM {
                 };
 
                 // Range filters to LazySequence
-                match end {
-                    Some(_) => {
-                        // For bounded range, return LazySequence
-                        Ok(Value::LazySequence(Rc::new(RefCell::new(
-                            LazySeq::Filter {
-                                source: Rc::new(RefCell::new(LazySeq::Range {
-                                    current: *start,
-                                    end: *end,
-                                    inclusive: *inclusive,
-                                })),
-                                predicate: closure,
-                            },
-                        ))))
-                    }
-                    None => {
-                        // Unbounded range
-                        Ok(Value::LazySequence(Rc::new(RefCell::new(
-                            LazySeq::Filter {
-                                source: Rc::new(RefCell::new(LazySeq::Range {
-                                    current: *start,
-                                    end: None,
-                                    inclusive: *inclusive,
-                                })),
-                                predicate: closure,
-                            },
-                        ))))
-                    }
-                }
+                let step = match end {
+                    Some(e) if *e < *start => -1,
+                    _ => 1,
+                };
+                Ok(Value::LazySequence(Rc::new(RefCell::new(
+                    LazySeq::Filter {
+                        source: Rc::new(RefCell::new(LazySeq::Range {
+                            current: *start,
+                            end: *end,
+                            inclusive: *inclusive,
+                            step,
+                        })),
+                        predicate: closure,
+                    },
+                ))))
             }
             Value::LazySequence(lazy_seq) => {
                 let closure = match &predicate {
@@ -4486,17 +4474,13 @@ impl VM {
                         current,
                         end,
                         inclusive,
-                    } => {
-                        let step = match end {
-                            Some(e) if *e < *current => -1,
-                            _ => 1,
-                        };
-                        LazySeq::Range {
-                            current: current + step,
-                            end: *end,
-                            inclusive: *inclusive,
-                        }
-                    }
+                        step,
+                    } => LazySeq::Range {
+                        current: current + step,
+                        end: *end,
+                        inclusive: *inclusive,
+                        step: *step,
+                    },
                     // RangeStep: advance by step
                     LazySeq::RangeStep { current, end, step } => LazySeq::RangeStep {
                         current: current + step,

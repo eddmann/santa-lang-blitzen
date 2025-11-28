@@ -2028,11 +2028,18 @@ fn value_to_lazy_seq_for_zip(value: &Value, line: u32) -> Result<LazySeq, Runtim
             start,
             end,
             inclusive,
-        } => Ok(LazySeq::Range {
-            current: *start,
-            end: *end,
-            inclusive: *inclusive,
-        }),
+        } => {
+            let step = match end {
+                Some(e) if *e < *start => -1,
+                _ => 1,
+            };
+            Ok(LazySeq::Range {
+                current: *start,
+                end: *end,
+                inclusive: *inclusive,
+                step,
+            })
+        }
         Value::LazySequence(seq) => Ok(seq.borrow().clone()),
         _ => Err(RuntimeError::new(
             format!("Unexpected value type for lazy zip: {}", value.type_name()),
@@ -2157,10 +2164,12 @@ impl Clone for LazySeq {
                 current,
                 end,
                 inclusive,
+                step,
             } => LazySeq::Range {
                 current: *current,
                 end: *end,
                 inclusive: *inclusive,
+                step: *step,
             },
             LazySeq::RangeStep { current, end, step } => LazySeq::RangeStep {
                 current: *current,
@@ -2223,29 +2232,36 @@ fn lazy_seq_next_simple(seq: &mut LazySeq) -> Result<Option<Value>, RuntimeError
             current,
             end,
             inclusive,
+            step,
         } => {
             if let Some(e) = end {
-                let actual_end = if *inclusive { *e } else { *e - 1 };
-                if *current <= actual_end {
-                    let val = *current;
-                    *current += 1;
-                    Ok(Some(Value::Integer(val)))
-                } else if *current > actual_end && *current >= *e {
-                    // Descending range
-                    let val = *current;
-                    *current -= 1;
-                    if val >= actual_end {
-                        Ok(Some(Value::Integer(val)))
-                    } else {
-                        Ok(None)
+                let actual_end = if *step > 0 {
+                    if *inclusive { *e } else { *e - 1 }
+                } else if *inclusive {
+                    *e
+                } else {
+                    *e + 1
+                };
+
+                if *step > 0 {
+                    // Ascending
+                    if *current > actual_end {
+                        return Ok(None);
                     }
                 } else {
-                    Ok(None)
+                    // Descending
+                    if *current < actual_end {
+                        return Ok(None);
+                    }
                 }
-            } else {
-                // Unbounded range
+
                 let val = *current;
-                *current += 1;
+                *current += *step;
+                Ok(Some(Value::Integer(val)))
+            } else {
+                // Unbounded range (always ascending)
+                let val = *current;
+                *current += *step;
                 Ok(Some(Value::Integer(val)))
             }
         }
