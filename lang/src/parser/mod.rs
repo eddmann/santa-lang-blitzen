@@ -112,8 +112,13 @@ impl Parser {
                 self.parse_test_block()
             }
             _ => {
-                // For other sections, parse as normal expression
-                let expr = self.parse_expression()?;
+                // For part_one/part_two, if the body starts with { it's a block, not a set
+                let is_part_section = name.as_str() == "part_one" || name.as_str() == "part_two";
+                let expr = if is_part_section && self.check(&TokenKind::LeftBrace) {
+                    self.parse_block()?
+                } else {
+                    self.parse_expression()?
+                };
                 match name.as_str() {
                     "input" => Ok(Section::Input(expr)),
                     "part_one" => Ok(Section::PartOne(expr)),
@@ -827,7 +832,8 @@ impl Parser {
             return self.continue_as_set(start_span, first);
         }
 
-        // If followed by }, it could be either - treat as block with single expression
+        // If followed by }, it's a single-element set
+        // (blocks only appear in specific contexts like if/else bodies, not standalone)
         if self.check(&TokenKind::RightBrace) {
             let end_token = self.advance().unwrap();
             let span = Span {
@@ -836,10 +842,7 @@ impl Parser {
                 line: start_span.line,
                 column: start_span.column,
             };
-            return Ok(Spanned::new(
-                Expr::Block(vec![Spanned::new(Stmt::Expr(first), span)]),
-                span,
-            ));
+            return Ok(Spanned::new(Expr::Set(vec![first]), span));
         }
 
         // Otherwise, continue as block (there might be more statements)
@@ -1049,8 +1052,9 @@ impl Parser {
         self.expect(TokenKind::Pipe)?;
 
         // Body can be expression or block
+        // When function body starts with {, it's always a block (not a set)
         let body = if self.check(&TokenKind::LeftBrace) {
-            self.parse_set_or_block()?
+            self.parse_block()?
         } else {
             self.parse_expression()?
         };
@@ -1076,8 +1080,9 @@ impl Parser {
         let start_span = self.expect(TokenKind::PipePipe)?.span;
 
         // Body can be expression or block
+        // When function body starts with {, it's always a block (not a set)
         let body = if self.check(&TokenKind::LeftBrace) {
-            self.parse_set_or_block()?
+            self.parse_block()?
         } else {
             self.parse_expression()?
         };
