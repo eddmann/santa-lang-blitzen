@@ -635,13 +635,15 @@ impl VM {
                     self.call_value(actual_argc)?;
                 }
                 Ok(OpCode::Return) => {
-                    let result = self.pop();
-
-                    // Close any open upvalues in this frame
+                    // Close any open upvalues BEFORE popping the return value
+                    // This ensures captured locals are properly preserved
                     let frame = self.frames.pop().unwrap();
                     self.close_upvalues(frame.stack_base);
 
-                    // Pop locals from the stack
+                    // Now pop the return value (which is on top of stack)
+                    let result = self.pop();
+
+                    // Pop remaining locals from the stack
                     while self.stack.len() > frame.stack_base {
                         self.pop();
                     }

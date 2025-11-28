@@ -567,28 +567,63 @@ impl Compiler {
         span: Span,
     ) -> Result<(), CompileError> {
         // Pipeline: left |> right
+        // If right is a call with placeholder: func(_, args...) => func(left, args...)
         // If right is a call: func(args...) => func(args..., left)
         // If right is an identifier: func => func(left)
 
         match &right.node {
             Expr::Call { function, args } => {
+                // Check if any arg is directly a placeholder - if so, substitute left
+                let has_placeholder_arg = args.iter().any(|a| matches!(a.node, Expr::Placeholder));
+
                 // Check if function is a builtin call
                 if let Expr::Identifier(name) = &function.node
                     && let Some(builtin_id) = BuiltinId::from_name(name)
                     && self.resolve_local(name).is_none()
                     && self.resolve_upvalue(name).is_none()
                 {
-                    // Compile: builtin(args..., left)
-                    for arg in args {
-                        self.expression(arg)?;
+                    if has_placeholder_arg {
+                        // Replace placeholder with left: builtin(args with _ replaced by left)
+                        for arg in args {
+                            if matches!(arg.node, Expr::Placeholder) {
+                                self.expression(left)?;
+                            } else {
+                                self.expression(arg)?;
+                            }
+                        }
+                        if args.len() > 255 {
+                            return Err(CompileError::new("Too many arguments", span));
+                        }
+                        self.emit(OpCode::CallBuiltin);
+                        self.chunk().write_operand_u16(builtin_id as u16);
+                        self.chunk().write_operand(args.len() as u8);
+                    } else {
+                        // No placeholder: append left at end: builtin(args..., left)
+                        for arg in args {
+                            self.expression(arg)?;
+                        }
+                        self.expression(left)?;
+                        if args.len() + 1 > 255 {
+                            return Err(CompileError::new("Too many arguments", span));
+                        }
+                        self.emit(OpCode::CallBuiltin);
+                        self.chunk().write_operand_u16(builtin_id as u16);
+                        self.chunk().write_operand((args.len() + 1) as u8);
                     }
-                    self.expression(left)?;
-                    if args.len() + 1 > 255 {
+                } else if has_placeholder_arg {
+                    // Non-builtin with placeholder: func(args with _ replaced by left)
+                    self.expression(function)?;
+                    for arg in args {
+                        if matches!(arg.node, Expr::Placeholder) {
+                            self.expression(left)?;
+                        } else {
+                            self.expression(arg)?;
+                        }
+                    }
+                    if args.len() > 255 {
                         return Err(CompileError::new("Too many arguments", span));
                     }
-                    self.emit(OpCode::CallBuiltin);
-                    self.chunk().write_operand_u16(builtin_id as u16);
-                    self.chunk().write_operand((args.len() + 1) as u8);
+                    self.emit_with_operand(OpCode::Call, args.len() as u8);
                 } else {
                     // For non-builtin calls: a |> f(b) means (f(b))(a)
                     // First compile the call f(b) to get its result
