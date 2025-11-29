@@ -84,7 +84,7 @@ fn runner_script_mode() {
     "#;
 
     let program = parse(source);
-    let mut runner = AocRunner::new(program);
+    let runner = AocRunner::new(program);
 
     assert!(runner.is_script_mode());
 

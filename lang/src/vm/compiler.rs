@@ -285,11 +285,6 @@ impl Compiler {
         self.chunk().patch_jump(offset);
     }
 
-    /// Patch a jump instruction to a specific target
-    fn patch_jump_to(&mut self, offset: usize, target: usize) {
-        self.chunk().patch_jump_to(offset, target);
-    }
-
     /// Compile an expression
     fn expression(&mut self, expr: &SpannedExpr) -> Result<(), CompileError> {
         self.current_line = expr.span.line;
@@ -587,10 +582,11 @@ impl Compiler {
         // Check for partial application (placeholder in operands)
         // For && and ||, don't convert to partial application - placeholders in operands
         // create their own closures, and short-circuit evaluation should still work
-        if Self::contains_placeholder(left) || Self::contains_placeholder(right) {
-            if op != InfixOp::And && op != InfixOp::Or {
-                return self.compile_partial_infix(left, op, right, span);
-            }
+        if (Self::contains_placeholder(left) || Self::contains_placeholder(right))
+            && op != InfixOp::And
+            && op != InfixOp::Or
+        {
+            return self.compile_partial_infix(left, op, right, span);
         }
 
         // Special handling for short-circuit operators
@@ -1377,17 +1373,13 @@ impl Compiler {
         }
     }
 
-    /// Check if a list of expressions contains a placeholder
-    fn contains_placeholder_expr_list(exprs: &[SpannedExpr]) -> bool {
-        exprs.iter().any(Self::contains_placeholder)
-    }
-
     /// Check if an expression is a "simple" placeholder expression.
     /// Returns true for:
     /// - Direct placeholder: `_`
     /// - Prefix with placeholder: `-_`, `!_`
     /// - Infix with placeholder(s) at top level: `_ + 1`, `2 * _`
     /// - Index with placeholder: `_[0]`, `list[_]`
+    ///
     /// Returns false for:
     /// - Calls containing placeholders: `f(_)`, `g(a, _ + 1)` - these are handled by compile_call
     /// - Pipelines with placeholders: `_ |> f` - handled by compile_infix
@@ -2193,10 +2185,10 @@ impl Compiler {
         // Check if this is a builtin function being used as a value
         // In this case, create a wrapper closure that calls the builtin
         // BUT only if we don't know of a global with this name (from this compilation unit)
-        if !self.global_names.contains(name) {
-            if let Some(builtin_id) = BuiltinId::from_name(name) {
-                return self.compile_builtin_as_value(builtin_id, span);
-            }
+        if !self.global_names.contains(name)
+            && let Some(builtin_id) = BuiltinId::from_name(name)
+        {
+            return self.compile_builtin_as_value(builtin_id, span);
         }
 
         // Emit global lookup - the runtime will check globals first, allowing
@@ -3066,6 +3058,7 @@ impl Compiler {
     }
 
     /// Compile list pattern test
+    #[allow(clippy::only_used_in_recursion)]
     fn compile_list_pattern_test(
         &mut self,
         patterns: &[Pattern],
