@@ -12,7 +12,8 @@ Cargo.lock
 .DS_Store
 
 # Benchmark results
-benchmark-results/
+benchmark-results/*
+!benchmark-results/.gitkeep
 target/criterion/
 
 # Compiled binaries
