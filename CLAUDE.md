@@ -25,7 +25,7 @@ Guidelines for Claude Code when developing the santa-lang's Blitzen VM.
 
 When adding new dependencies, always use the latest stable version from crates.io.
 
-- **im-rs**: `git = "ssh://git@github.com/eddmann/im-rs.git"` (persistent collections)
+- **im-rs**: `git = "https://github.com/eddmann/im-rs.git"` (persistent collections)
 - **ordered-float**: For decimal value handling
 - **unicode-segmentation**: For grapheme cluster string indexing
 - **regex**: For pattern matching functions
