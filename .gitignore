@@ -12,4 +12,5 @@ Cargo.lock
 .DS_Store
 
 # Benchmark results
-*.html
+benchmark-results/
+target/criterion/
