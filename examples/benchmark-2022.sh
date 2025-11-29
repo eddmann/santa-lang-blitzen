@@ -148,7 +148,7 @@ echo ""
 cd "$SCRIPT_DIR"
 
 for day in $(seq -w 1 25); do
-    SANTA_FILE="aoc2022_day${day}.santa"
+    SANTA_FILE="$SCRIPT_DIR/aoc2022_day${day}.santa"
 
     if [[ ! -f "$SANTA_FILE" ]]; then
         continue
@@ -162,7 +162,6 @@ for day in $(seq -w 1 25); do
         --runs "$RUNS"
         --time-limit "$TIMEOUT"
         --export-json "$JSON_FILE"
-        --shell=none
     )
 
     if [[ "$IGNORE_FAILURES" == "true" ]]; then
