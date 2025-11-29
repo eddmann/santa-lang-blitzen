@@ -162,6 +162,7 @@ for day in $(seq -w 1 25); do
         --runs "$RUNS"
         --time-limit "$TIMEOUT"
         --export-json "$JSON_FILE"
+        --shell=none
     )
 
     if [[ "$IGNORE_FAILURES" == "true" ]]; then
