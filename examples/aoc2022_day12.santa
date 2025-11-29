@@ -1,4 +1,4 @@
-input: read("aoc2022_day12.input")
+input: read("aoc://2022/12")
 
 let parse_height_map = |input| {
   zip(0.., lines(input))
@@ -72,7 +72,7 @@ abdefghi"
 }
 
 test: {
-  input: read("aoc2022_day12.input")
+  input: read("aoc://2022/12")
   part_one: 484
   part_two: 478
 }

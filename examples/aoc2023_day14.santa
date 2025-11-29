@@ -1,4 +1,4 @@
-input: read("aoc2023_day14.input")
+input: read("aoc://2023/14")
 
 let transpose = |xs| zip(..xs) |> map(fold("", +))
 

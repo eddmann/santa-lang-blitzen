@@ -1,4 +1,4 @@
-input: read("aoc2022_day07.input")
+input: read("aoc://2022/7")
 
 let prefixes = fold_s([[], []]) |[prefixes, prefix], key| {
   [prefixes + [[..prefix, key]], [..prefix, key]];
@@ -69,7 +69,7 @@ $ ls
 }
 
 test: {
-  input: read("aoc2022_day07.input")
+  input: read("aoc://2022/7")
   part_one: 1501149
   part_two: 10096985
 }

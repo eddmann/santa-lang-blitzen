@@ -1,4 +1,4 @@
-input: read("aoc2023_day11.input")
+input: read("aoc://2023/11")
 
 let manhattan_distance = |[y1, x1], [y2, x2]| abs(y1 - y2) + abs(x1 - x2)
 

@@ -1,4 +1,4 @@
-input: read("aoc2022_day24.input")
+input: read("aoc://2022/24")
 
 let gcd = |a, b| if b == 0 { a } else { gcd(b, a % b) }
 let lcm = |..n| fold(1, |a, b| a / gcd(a, b) * b, n)

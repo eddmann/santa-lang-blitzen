@@ -7,7 +7,6 @@ edition = "2021"
 lang = { path = "../../lang" }
 rustyline = "14.0"
 ureq = { version = "2.10", features = ["json"] }
-dirs = "5.0"
 
 [dev-dependencies]
 assert_cmd = "2.0"

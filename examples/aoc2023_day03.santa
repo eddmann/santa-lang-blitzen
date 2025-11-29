@@ -1,4 +1,4 @@
-input: read("aoc2023_day03.input")
+input: read("aoc://2023/3")
 
 let parse_candidate_parts = |input| {
   let mut parts = []
@@ -76,7 +76,7 @@ test: {
 }
 
 test: {
-  input: read("aoc2023_day03.input")
+  input: read("aoc://2023/3")
   part_one: 536202
   part_two: 78272573
 }

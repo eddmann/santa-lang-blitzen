@@ -1,4 +1,4 @@
-input: read("aoc2022_day02.input")
+input: read("aoc://2022/2")
 
 let lookup = #{
   "A": 0, "B": 1, "C": 2,
@@ -38,7 +38,7 @@ C Z"
 }
 
 test: {
-  input: read("aoc2022_day02.input")
+  input: read("aoc://2022/2")
   part_one: 11767
   part_two: 13886
 }

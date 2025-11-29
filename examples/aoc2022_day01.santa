@@ -1,4 +1,4 @@
-input: read("aoc2022_day01.input")
+input: read("aoc://2022/1")
 
 let parse_inventories = split("\n\n") >> map(ints >> sum);
 
@@ -33,7 +33,7 @@ test: {
 }
 
 test: {
-  input: read("aoc2022_day01.input")
+  input: read("aoc://2022/1")
   part_one: 71300
   part_two: 209691
 }

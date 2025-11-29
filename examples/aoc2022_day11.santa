@@ -1,4 +1,4 @@
-input: read("aoc2022_day11.input")
+input: read("aoc://2022/11")
 
 let parse_op = |op| match split(" ", op) {
   ["+", v] { _ + int(v) }
@@ -95,7 +95,7 @@ Monkey 3:
 }
 
 test: {
-  input: read("aoc2022_day11.input")
+  input: read("aoc://2022/11")
   part_one: 119715
   part_two: 18085004878
 }

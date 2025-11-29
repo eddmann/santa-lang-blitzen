@@ -1,4 +1,4 @@
-input: read("aoc2022_day22.input")
+input: read("aoc://2022/22")
 
 let parse_maze = |input| {
   let section = input |> split("\n\n") |> first;
@@ -188,7 +188,7 @@ test: {
 }
 
 test: {
-  input: read("aoc2022_day22.input")
+  input: read("aoc://2022/22")
   part_one: 136054
   part_two: 122153
 }

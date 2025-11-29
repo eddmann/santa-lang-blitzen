@@ -1,4 +1,4 @@
-input: read("aoc2023_day02.input")
+input: read("aoc://2023/2")
 
 let parse_required_cubes_per_game = lines >> map |line| {
   let parse_colour = |colour, line| line |> regex_match_all("\\d+ " + colour) |> map(split(" ") >> first >> int)
@@ -37,7 +37,7 @@ Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green"
 }
 
 test: {
-  input: read("aoc2023_day02.input")
+  input: read("aoc://2023/2")
   part_one: 3035
   part_two: 66027
 }

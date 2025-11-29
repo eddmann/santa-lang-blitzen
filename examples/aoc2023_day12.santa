@@ -1,4 +1,4 @@
-input: read("aoc2023_day12.input")
+input: read("aoc://2023/12")
 
 let parse_records = |input| {
   input

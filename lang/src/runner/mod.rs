@@ -184,7 +184,7 @@ impl AocRunner {
         // Execute with timing
         let start = Instant::now();
         let result = self.compile_and_execute_expr(vm, expr)?;
-        let duration = start.elapsed().as_micros();
+        let duration = start.elapsed().as_millis();
 
         Ok(Some((result, duration)))
     }

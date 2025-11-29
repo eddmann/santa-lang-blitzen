@@ -1,4 +1,4 @@
-input: read("aoc2023_day01.input")
+input: read("aoc://2023/1")
 
 part_one: {
   let calibrate = |value| {
@@ -58,7 +58,7 @@ zoneight234
 }
 
 test: {
-  input: read("aoc2023_day01.input")
+  input: read("aoc://2023/1")
   part_one: 55017
   part_two: 53539
 }

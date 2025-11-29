@@ -1,4 +1,4 @@
-input: read("aoc2018_day14.input")
+input: read("aoc://2018/14")
 
 let next_score = |[scores, elf_1, elf_2]| {
   let next = "" + (scores[elf_1] + scores[elf_2])

@@ -1,4 +1,4 @@
-input: read("aoc2022_day10.input")
+input: read("aoc://2022/10")
 
 let signal = lines >>
   flat_map(|op| {
@@ -179,6 +179,6 @@ noop"
 }
 
 test: {
-  input: read("aoc2022_day10.input")
+  input: read("aoc://2022/10")
   part_one: 15260
 }

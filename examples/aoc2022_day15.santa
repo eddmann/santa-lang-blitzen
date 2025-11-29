@@ -1,4 +1,4 @@
-input: read("aoc2022_day15.input")
+input: read("aoc://2022/15")
 
 let parse_row = lines >> first >> int;
 let parse_reports = lines >> rest >> map(ints);

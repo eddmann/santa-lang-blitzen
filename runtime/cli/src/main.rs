@@ -11,6 +11,7 @@ use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use std::env;
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::process;
 
 fn main() {
@@ -71,6 +72,7 @@ fn run_script(path: &str) -> Result<(), ExitCode> {
     })?;
 
     let session_token = env::var("SANTA_CLI_SESSION_TOKEN").ok();
+    let script_dir = Path::new(path).parent().map(|p| p.to_path_buf());
 
     // Lex and parse
     let mut lexer = Lexer::new(&source);
@@ -85,7 +87,7 @@ fn run_script(path: &str) -> Result<(), ExitCode> {
         ExitCode::RuntimeError
     })?;
 
-    let mut vm = create_vm(session_token.as_deref());
+    let mut vm = create_vm(session_token.as_deref(), script_dir);
     let mut runner = AocRunner::new(program);
 
     // Check if this is a script (no AOC sections) or an AOC solution
@@ -130,6 +132,7 @@ fn run_tests(path: &str) -> Result<(), ExitCode> {
     })?;
 
     let session_token = env::var("SANTA_CLI_SESSION_TOKEN").ok();
+    let script_dir = Path::new(path).parent().map(|p| p.to_path_buf());
 
     // Lex and parse
     let mut lexer = Lexer::new(&source);
@@ -147,7 +150,7 @@ fn run_tests(path: &str) -> Result<(), ExitCode> {
     let mut runner = AocRunner::new(program);
 
     // Create VM factory for tests
-    let vm_factory = || create_vm(session_token.as_deref());
+    let vm_factory = || create_vm(session_token.as_deref(), script_dir.clone());
 
     match runner.run_tests(&vm_factory) {
         Ok(test_results) => {
@@ -198,7 +201,7 @@ fn run_repl() -> Result<(), ExitCode> {
     println!();
 
     let session_token = env::var("SANTA_CLI_SESSION_TOKEN").ok();
-    let mut vm = create_vm(session_token.as_deref());
+    let mut vm = create_vm(session_token.as_deref(), None);
     let mut editor = DefaultEditor::new().map_err(|e| {
         eprintln!("Failed to initialize REPL: {}", e);
         ExitCode::RuntimeError
@@ -253,7 +256,7 @@ fn run_repl() -> Result<(), ExitCode> {
     Ok(())
 }
 
-fn create_vm(session_token: Option<&str>) -> VM {
+fn create_vm(session_token: Option<&str>, script_dir: Option<PathBuf>) -> VM {
     let mut vm = VM::new();
 
     let session_token_owned = session_token.map(|s| s.to_string());
@@ -269,7 +272,9 @@ fn create_vm(session_token: Option<&str>) -> VM {
             ));
         }
         match &args[0] {
-            Value::String(path) => external::builtin_read(path, session_token_for_read.as_deref()),
+            Value::String(path) => {
+                external::builtin_read(path, session_token_for_read.as_deref(), script_dir.as_deref())
+            }
             _ => Err(RuntimeError::new(
                 format!("read expects String, got {}", args[0].type_name()),
                 0,

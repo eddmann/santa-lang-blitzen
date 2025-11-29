@@ -1,4 +1,4 @@
-input: read("aoc2022_day25.input")
+input: read("aoc://2022/25")
 
 let conversion = #{
   nil: 0,
@@ -45,6 +45,6 @@ test: {
 }
 
 test: {
-  input: read("aoc2022_day25.input")
+  input: read("aoc://2022/25")
   part_one: "2-0==21--=0==2201==2"
 }

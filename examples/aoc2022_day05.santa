@@ -1,4 +1,4 @@
-input: read("aoc2022_day05.input")
+input: read("aoc://2022/5")
 
 let parse_stacks = |input| {
   let parse_stack_line = chunk(4) >> map(find(regex_match("([A-Z])")));
@@ -48,7 +48,7 @@ move 1 from 1 to 2"
 }
 
 test: {
-  input: read("aoc2022_day05.input")
+  input: read("aoc://2022/5")
   part_one: "RLFNRTNFB"
   part_two: "MHQTLJRLB"
 }

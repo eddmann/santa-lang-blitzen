@@ -1,4 +1,4 @@
-input: read("aoc2022_day14.input")
+input: read("aoc://2022/14")
 
 let parse_scan = lines >> map(split(" -> ") >> map(ints));
 

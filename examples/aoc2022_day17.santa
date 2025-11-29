@@ -1,4 +1,4 @@
-input: read("aoc2022_day17.input")
+input: read("aoc://2022/17")
 
 let parse_rocks = |rocks| {
   let parse_rock = |rock| {

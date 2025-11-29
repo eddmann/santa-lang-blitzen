@@ -1,4 +1,4 @@
-input: read("aoc2022_day16.input")
+input: read("aoc://2022/16")
 
 let parse_valves = |input| {
   let parse_valve = |line| {

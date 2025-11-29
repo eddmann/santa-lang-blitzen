@@ -1,4 +1,4 @@
-input: read("aoc2022_day13.input")
+input: read("aoc://2022/13")
 
 let parse_packets = lines >> filter(_ != "") >> map(evaluate);
 
@@ -65,7 +65,7 @@ test: {
 }
 
 test: {
-  input: read("aoc2022_day13.input")
+  input: read("aoc://2022/13")
   part_one: 5503
   part_two: 20952
 }

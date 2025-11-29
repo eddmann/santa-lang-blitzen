@@ -1,4 +1,4 @@
-input: read("aoc2022_day09.input")
+input: read("aoc://2022/9")
 
 let parse_motions = lines >> flat_map |motion| {
   let [direction, step] = split(" ", motion);
@@ -96,7 +96,7 @@ U 20"
 }
 
 test: {
-  input: read("aoc2022_day09.input")
+  input: read("aoc://2022/9")
   part_one: 5907
   part_two: 2303
 }

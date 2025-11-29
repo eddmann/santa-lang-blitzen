@@ -1,4 +1,4 @@
-input: read("aoc2022_day21.input")
+input: read("aoc://2022/21")
 
 let parse_jobs = lines >> map(split(": ")) >> dict;
 
@@ -74,7 +74,7 @@ hmdt: 32"
 }
 
 test: {
-  input: read("aoc2022_day21.input")
+  input: read("aoc://2022/21")
   part_one: 158661812617812
   part_two: 3352886133831
 }

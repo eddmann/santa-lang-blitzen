@@ -1,4 +1,4 @@
-input: read("aoc2023_day08.input")
+input: read("aoc://2023/8")
 
 let gcd = |a, b| if a == 0 { b } else { gcd(b % a, a) }
 let lcm = |a, b| int(a / gcd(a, b)) * b
@@ -69,7 +69,7 @@ XXX = (XXX, XXX)"
 }
 
 test: {
-  input: read("aoc2023_day08.input")
+  input: read("aoc://2023/8")
   part_one: 19637
   part_two: 8811050362409
 }

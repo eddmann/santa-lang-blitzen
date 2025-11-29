@@ -1,4 +1,4 @@
-input: read("aoc2022_day08.input")
+input: read("aoc://2022/8")
 
 let parse_grid = |input| {
   zip(0.., lines(input))
@@ -68,7 +68,7 @@ test: {
 }
 
 test: {
-  input: read("aoc2022_day08.input")
+  input: read("aoc://2022/8")
   part_one: 1719
   part_two: 590824
 }

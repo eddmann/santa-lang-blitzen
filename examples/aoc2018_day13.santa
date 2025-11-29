@@ -1,4 +1,4 @@
-input: read("aoc2018_day13.input")
+input: read("aoc://2018/13")
 
 let parse_map = |input| {
   let parsed_map = zip(0.., lines(input))

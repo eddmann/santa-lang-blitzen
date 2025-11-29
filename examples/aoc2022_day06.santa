@@ -1,4 +1,4 @@
-input: read("aoc2022_day06.input")
+input: read("aoc://2022/6")
 
 let is_marker? = |sequence| size(sequence) == size(set(sequence));
 
@@ -58,7 +58,7 @@ test: {
 }
 
 test: {
-  input: read("aoc2022_day06.input")
+  input: read("aoc://2022/6")
   part_one: 1848
   part_two: 2308
 }

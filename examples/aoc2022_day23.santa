@@ -1,4 +1,4 @@
-input: read("aoc2022_day23.input")
+input: read("aoc://2022/23")
 
 let parse_elves = |input| {
   zip(0.., lines(input))

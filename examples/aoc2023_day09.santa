@@ -1,4 +1,4 @@
-input: read("aoc2023_day09.input")
+input: read("aoc://2023/9")
 
 let parse_report = lines >> map(ints)
 
@@ -34,7 +34,7 @@ test: {
 }
 
 test: {
-  input: read("aoc2023_day09.input")
+  input: read("aoc://2023/9")
   part_one: 1887980197
   part_two: 990
 }

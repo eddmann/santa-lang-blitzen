@@ -1,4 +1,4 @@
-input: read("aoc2018_day12.input")
+input: read("aoc://2018/12")
 
 let parse_notes = |input| {
   let [initial, _, ..patterns] = lines(input);

@@ -1,4 +1,4 @@
-input: read("aoc2023_day05.input")
+input: read("aoc://2023/5")
 
 let parse_almanac = |input| {
   let [_, seeds, ..maps] = input |> split(":") |> map(ints);
@@ -83,6 +83,6 @@ humidity-to-location map:
 }
 
 test: {
-  input: read("aoc2023_day05.input")
+  input: read("aoc://2023/5")
   part_one: 836040384
 }

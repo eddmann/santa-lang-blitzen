@@ -1,4 +1,4 @@
-input: read("aoc2018_day08.input")
+input: read("aoc://2018/8")
 
 let parse_license = ints;
 

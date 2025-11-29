@@ -1,4 +1,4 @@
-input: read("aoc2023_day06.input")
+input: read("aoc://2023/6")
 
 let parse_races = lines >> map(ints) >> |l| zip(..l)
 
@@ -28,6 +28,6 @@ Distance:  9  40  200"
 }
 
 test: {
-  input: read("aoc2023_day06.input")
+  input: read("aoc://2023/6")
   part_one: 211904
 }

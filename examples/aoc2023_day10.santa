@@ -1,4 +1,4 @@
-input: read("aoc2023_day10.input")
+input: read("aoc://2023/10")
 
 let pt_add = |[y1, x1], [y2, x2]| [y1 + y2, x1 + x2]
 

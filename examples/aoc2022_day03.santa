@@ -1,4 +1,4 @@
-input: read("aoc2022_day03.input")
+input: read("aoc://2022/3")
 
 let priorities = zip("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 1..) |> dict;
 
@@ -37,7 +37,7 @@ CrZsJsPPZsGzwwsLwLmpwMDw"
 }
 
 test: {
-  input: read("aoc2022_day03.input")
+  input: read("aoc://2022/3")
   part_one: 8515
   part_two: 2434
 }

@@ -4,6 +4,7 @@
 
 use lang::vm::{RuntimeError, Value};
 use std::fs;
+use std::path::Path;
 
 pub fn builtin_puts(args: &[Value]) -> Result<Value, RuntimeError> {
     let output = args
@@ -15,9 +16,13 @@ pub fn builtin_puts(args: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::Nil)
 }
 
-pub fn builtin_read(path: &str, session_token: Option<&str>) -> Result<Value, RuntimeError> {
+pub fn builtin_read(
+    path: &str,
+    session_token: Option<&str>,
+    script_dir: Option<&Path>,
+) -> Result<Value, RuntimeError> {
     if path.starts_with("aoc://") {
-        read_aoc_input(path, session_token)
+        read_aoc_input(path, session_token, script_dir)
     } else if path.starts_with("http://") || path.starts_with("https://") {
         read_url(path)
     } else {
@@ -40,7 +45,11 @@ fn read_url(url: &str) -> Result<Value, RuntimeError> {
         .map_err(|e| RuntimeError::new(format!("Failed to read URL response: {}", e), 0))
 }
 
-fn read_aoc_input(url: &str, session_token: Option<&str>) -> Result<Value, RuntimeError> {
+fn read_aoc_input(
+    url: &str,
+    session_token: Option<&str>,
+    script_dir: Option<&Path>,
+) -> Result<Value, RuntimeError> {
     let parts: Vec<&str> = url.strip_prefix("aoc://").unwrap().split('/').collect();
     if parts.len() != 2 {
         return Err(RuntimeError::new(
@@ -56,10 +65,17 @@ fn read_aoc_input(url: &str, session_token: Option<&str>) -> Result<Value, Runti
         .parse::<u32>()
         .map_err(|_| RuntimeError::new(format!("Invalid day in AOC URL: '{}'", parts[1]), 0))?;
 
-    if let Some(cached) = get_cached_input(year, day) {
-        return Ok(Value::String(cached.into()));
+    let filename = format!("aoc{}_day{:02}.input", year, day);
+
+    // Check for local .input file next to the script
+    if let Some(dir) = script_dir {
+        let input_path = dir.join(&filename);
+        if let Ok(content) = fs::read_to_string(&input_path) {
+            return Ok(Value::String(content.into()));
+        }
     }
 
+    // Fetch from AOC (requires token)
     let token = session_token.ok_or_else(|| {
         RuntimeError::new(
             "AOC session token not found. Set SANTA_CLI_SESSION_TOKEN environment variable".to_string(),
@@ -75,34 +91,13 @@ fn read_aoc_input(url: &str, session_token: Option<&str>) -> Result<Value, Runti
         .into_string()
         .map_err(|e| RuntimeError::new(format!("Failed to read AOC response: {}", e), 0))?;
 
-    cache_input(year, day, &content)?;
-    Ok(Value::String(content.into()))
-}
-
-fn get_cache_dir() -> Option<std::path::PathBuf> {
-    dirs::cache_dir().map(|mut path| {
-        path.push("santa-cli");
-        path.push("inputs");
-        path
-    })
-}
-
-fn get_cached_input(year: u32, day: u32) -> Option<String> {
-    let cache_dir = get_cache_dir()?;
-    let cache_file = cache_dir.join(format!("{}-{}.txt", year, day));
-    fs::read_to_string(cache_file).ok()
-}
-
-fn cache_input(year: u32, day: u32, content: &str) -> Result<(), RuntimeError> {
-    if let Some(cache_dir) = get_cache_dir() {
-        fs::create_dir_all(&cache_dir).map_err(|e| {
-            RuntimeError::new(format!("Failed to create cache directory: {}", e), 0)
-        })?;
-        let cache_file = cache_dir.join(format!("{}-{}.txt", year, day));
-        fs::write(cache_file, content)
-            .map_err(|e| RuntimeError::new(format!("Failed to cache input: {}", e), 0))?;
+    // Cache locally if script_dir provided
+    if let Some(dir) = script_dir {
+        let input_path = dir.join(&filename);
+        fs::write(&input_path, &content).ok(); // Ignore write errors
     }
-    Ok(())
+
+    Ok(Value::String(content.into()))
 }
 
 pub fn builtin_env(vars: &[(String, Value)]) -> Result<Value, RuntimeError> {

@@ -1,4 +1,4 @@
-input: read("aoc2022_day04.input")
+input: read("aoc://2022/4")
 
 let parse_assignments = lines >> map(split(",") >> map(split("-") >> map(int)));
 
@@ -24,7 +24,7 @@ test: {
 }
 
 test: {
-  input: read("aoc2022_day04.input")
+  input: read("aoc://2022/4")
   part_one: 413
   part_two: 806
 }

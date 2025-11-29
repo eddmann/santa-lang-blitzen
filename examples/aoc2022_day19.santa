@@ -1,4 +1,4 @@
-input: read("aoc2022_day19.input")
+input: read("aoc://2022/19")
 
 let parse_blueprint = |line| {
   let [id, ore_robot_ore, clay_robot_ore, obsidian_robot_ore,
@@ -153,7 +153,7 @@ Blueprint 2: Each ore robot costs 2 ore. Each clay robot costs 3 ore. Each obsid
 }
 
 test: {
-  input: read("aoc2022_day19.input")
+  input: read("aoc://2022/19")
   part_one: 1349
   part_two: 21840
 }

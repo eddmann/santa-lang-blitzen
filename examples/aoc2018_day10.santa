@@ -1,4 +1,4 @@
-input: read("aoc2018_day10.input")
+input: read("aoc://2018/10")
 
 let parse_points = lines
   >> map(|point| {

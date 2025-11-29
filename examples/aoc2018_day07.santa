@@ -1,4 +1,4 @@
-input: read("aoc2018_day07.input")
+input: read("aoc://2018/7")
 
 let parse_instructions = lines >> map(|line| [line[5], line[-12]]);
 

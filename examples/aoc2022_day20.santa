@@ -1,4 +1,4 @@
-input: read("aoc2022_day20.input")
+input: read("aoc://2022/20")
 
 let parse_numbers = |decryption_key| {
   ints >> map(_ * decryption_key) >> zip(0.., _);

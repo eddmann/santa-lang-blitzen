@@ -1,4 +1,4 @@
-input: read("aoc2022_day18.input")
+input: read("aoc://2022/18")
 
 let parse_cubes = lines >> map(ints);
 
