@@ -14,12 +14,16 @@ fn benchmark_lexer(c: &mut Criterion) {
 
     // Simple expression
     let simple = "1 + 2 * 3";
-    group.bench_with_input(BenchmarkId::new("simple_expr", "1+2*3"), &simple, |b, src| {
-        b.iter(|| {
-            let mut lexer = Lexer::new(black_box(src));
-            lexer.tokenize().unwrap()
-        });
-    });
+    group.bench_with_input(
+        BenchmarkId::new("simple_expr", "1+2*3"),
+        &simple,
+        |b, src| {
+            b.iter(|| {
+                let mut lexer = Lexer::new(black_box(src));
+                lexer.tokenize().unwrap()
+            });
+        },
+    );
 
     // Medium complexity - function with control flow
     let medium = r#"
@@ -29,12 +33,16 @@ fn benchmark_lexer(c: &mut Criterion) {
         };
         factorial(10)
     "#;
-    group.bench_with_input(BenchmarkId::new("function_def", "factorial"), &medium, |b, src| {
-        b.iter(|| {
-            let mut lexer = Lexer::new(black_box(src));
-            lexer.tokenize().unwrap()
-        });
-    });
+    group.bench_with_input(
+        BenchmarkId::new("function_def", "factorial"),
+        &medium,
+        |b, src| {
+            b.iter(|| {
+                let mut lexer = Lexer::new(black_box(src));
+                lexer.tokenize().unwrap()
+            });
+        },
+    );
 
     // Complex - AOC-style solution
     let complex = r#"
@@ -50,21 +58,29 @@ fn benchmark_lexer(c: &mut Criterion) {
         part_one: parse(input) |> solve
         part_two: parse(input) |> map(|n| n + 1) |> solve
     "#;
-    group.bench_with_input(BenchmarkId::new("aoc_solution", "complex"), &complex, |b, src| {
-        b.iter(|| {
-            let mut lexer = Lexer::new(black_box(src));
-            lexer.tokenize().unwrap()
-        });
-    });
+    group.bench_with_input(
+        BenchmarkId::new("aoc_solution", "complex"),
+        &complex,
+        |b, src| {
+            b.iter(|| {
+                let mut lexer = Lexer::new(black_box(src));
+                lexer.tokenize().unwrap()
+            });
+        },
+    );
 
     // Large input - many tokens
     let large: String = (0..1000).map(|i| format!("let x{i} = {i};\n")).collect();
-    group.bench_with_input(BenchmarkId::new("large_input", "1000_vars"), &large, |b, src| {
-        b.iter(|| {
-            let mut lexer = Lexer::new(black_box(src));
-            lexer.tokenize().unwrap()
-        });
-    });
+    group.bench_with_input(
+        BenchmarkId::new("large_input", "1000_vars"),
+        &large,
+        |b, src| {
+            b.iter(|| {
+                let mut lexer = Lexer::new(black_box(src));
+                lexer.tokenize().unwrap()
+            });
+        },
+    );
 
     group.finish();
 }
@@ -79,22 +95,30 @@ fn benchmark_parser(c: &mut Criterion) {
     // Simple expression
     let simple = "1 + 2 * 3 - 4 / 2";
     let simple_tokens = Lexer::new(simple).tokenize().unwrap();
-    group.bench_with_input(BenchmarkId::new("simple_expr", "arithmetic"), &simple_tokens, |b, tokens| {
-        b.iter(|| {
-            let mut parser = Parser::new(black_box(tokens.clone()));
-            parser.parse_program().unwrap()
-        });
-    });
+    group.bench_with_input(
+        BenchmarkId::new("simple_expr", "arithmetic"),
+        &simple_tokens,
+        |b, tokens| {
+            b.iter(|| {
+                let mut parser = Parser::new(black_box(tokens.clone()));
+                parser.parse_program().unwrap()
+            });
+        },
+    );
 
     // Nested expressions
     let nested = "((((1 + 2) * 3) - 4) / 2)";
     let nested_tokens = Lexer::new(nested).tokenize().unwrap();
-    group.bench_with_input(BenchmarkId::new("nested_expr", "parens"), &nested_tokens, |b, tokens| {
-        b.iter(|| {
-            let mut parser = Parser::new(black_box(tokens.clone()));
-            parser.parse_program().unwrap()
-        });
-    });
+    group.bench_with_input(
+        BenchmarkId::new("nested_expr", "parens"),
+        &nested_tokens,
+        |b, tokens| {
+            b.iter(|| {
+                let mut parser = Parser::new(black_box(tokens.clone()));
+                parser.parse_program().unwrap()
+            });
+        },
+    );
 
     // Function with pattern matching
     let pattern_match = r#"
@@ -106,12 +130,16 @@ fn benchmark_parser(c: &mut Criterion) {
         }
     "#;
     let pattern_tokens = Lexer::new(pattern_match).tokenize().unwrap();
-    group.bench_with_input(BenchmarkId::new("pattern_match", "complex"), &pattern_tokens, |b, tokens| {
-        b.iter(|| {
-            let mut parser = Parser::new(black_box(tokens.clone()));
-            parser.parse_program().unwrap()
-        });
-    });
+    group.bench_with_input(
+        BenchmarkId::new("pattern_match", "complex"),
+        &pattern_tokens,
+        |b, tokens| {
+            b.iter(|| {
+                let mut parser = Parser::new(black_box(tokens.clone()));
+                parser.parse_program().unwrap()
+            });
+        },
+    );
 
     // Collections
     let collections = r#"
@@ -121,12 +149,16 @@ fn benchmark_parser(c: &mut Criterion) {
         let range = 1..100;
     "#;
     let collection_tokens = Lexer::new(collections).tokenize().unwrap();
-    group.bench_with_input(BenchmarkId::new("collections", "all_types"), &collection_tokens, |b, tokens| {
-        b.iter(|| {
-            let mut parser = Parser::new(black_box(tokens.clone()));
-            parser.parse_program().unwrap()
-        });
-    });
+    group.bench_with_input(
+        BenchmarkId::new("collections", "all_types"),
+        &collection_tokens,
+        |b, tokens| {
+            b.iter(|| {
+                let mut parser = Parser::new(black_box(tokens.clone()));
+                parser.parse_program().unwrap()
+            });
+        },
+    );
 
     group.finish();
 }

@@ -514,15 +514,10 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         BuiltinId::Int => builtin_int(&args[0], line),
         BuiltinId::Ints => builtin_ints(&args[0], line),
         // List and Set need callback support for LazySequence - handled by VM
-        BuiltinId::List | BuiltinId::Set => {
-            Err(RuntimeError::new(
-                format!(
-                    "{} is not a callback builtin",
-                    id.name()
-                ),
-                line,
-            ))
-        }
+        BuiltinId::List | BuiltinId::Set => Err(RuntimeError::new(
+            format!("{} is not a callback builtin", id.name()),
+            line,
+        )),
         BuiltinId::Dict => builtin_dict(&args[0], line),
         // Size is now handled in runtime.rs for LazySequence support
         // Get, First, Second, Rest are callback builtins for LazySequence support
@@ -1180,10 +1175,7 @@ fn builtin_sum(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
                 let sum = n * (start + actual_end) / 2;
                 Ok(Value::Integer(sum))
             }
-            None => Err(RuntimeError::new(
-                "Cannot sum unbounded range",
-                line,
-            )),
+            None => Err(RuntimeError::new("Cannot sum unbounded range", line)),
         },
         Value::LazySequence(_) => Err(RuntimeError::new(
             "Cannot sum lazy sequence; use take() to create a finite list first",
@@ -1414,11 +1406,7 @@ fn compare_values(a: &Value, b: &Value, line: u32) -> Result<i32, RuntimeError> 
         }
         (Value::String(x), Value::String(y)) => Ok(x.cmp(y) as i32),
         _ => Err(RuntimeError::new(
-            format!(
-                "Cannot compare {} and {}",
-                a.type_name(),
-                b.type_name()
-            ),
+            format!("Cannot compare {} and {}", a.type_name(), b.type_name()),
             line,
         )),
     }
@@ -1437,7 +1425,7 @@ fn builtin_skip(total: &Value, collection: &Value, line: u32) -> Result<Value, R
             return Err(RuntimeError::new(
                 format!("skip expects Integer, got {}", total.type_name()),
                 line,
-            ))
+            ));
         }
     };
 
@@ -1539,10 +1527,7 @@ fn builtin_reverse(collection: &Value, line: u32) -> Result<Value, RuntimeError>
                 }
                 Ok(Value::List(result))
             }
-            None => Err(RuntimeError::new(
-                "Cannot reverse unbounded range",
-                line,
-            )),
+            None => Err(RuntimeError::new("Cannot reverse unbounded range", line)),
         },
         _ => Err(RuntimeError::new(
             format!("reverse does not support {}", collection.type_name()),
@@ -1560,7 +1545,7 @@ fn builtin_rotate(steps: &Value, collection: &Value, line: u32) -> Result<Value,
             return Err(RuntimeError::new(
                 format!("rotate expects Integer, got {}", steps.type_name()),
                 line,
-            ))
+            ));
         }
     };
 
@@ -1595,14 +1580,12 @@ fn builtin_rotate(steps: &Value, collection: &Value, line: u32) -> Result<Value,
 fn builtin_chunk(size: &Value, collection: &Value, line: u32) -> Result<Value, RuntimeError> {
     let chunk_size = match size {
         Value::Integer(n) if *n > 0 => *n as usize,
-        Value::Integer(_) => {
-            return Err(RuntimeError::new("chunk size must be positive", line))
-        }
+        Value::Integer(_) => return Err(RuntimeError::new("chunk size must be positive", line)),
         _ => {
             return Err(RuntimeError::new(
                 format!("chunk expects Integer, got {}", size.type_name()),
                 line,
-            ))
+            ));
         }
     };
 
@@ -1637,7 +1620,10 @@ fn builtin_chunk(size: &Value, collection: &Value, line: u32) -> Result<Value, R
             Ok(Value::List(result))
         }
         _ => Err(RuntimeError::new(
-            format!("chunk expects List or String, got {}", collection.type_name()),
+            format!(
+                "chunk expects List or String, got {}",
+                collection.type_name()
+            ),
             line,
         )),
     }
@@ -1669,7 +1655,11 @@ fn builtin_union(args: &[Value], line: u32) -> Result<Value, RuntimeError> {
     Ok(Value::Set(result))
 }
 
-fn add_to_set(result: &mut HashSet<Value>, collection: &Value, line: u32) -> Result<(), RuntimeError> {
+fn add_to_set(
+    result: &mut HashSet<Value>,
+    collection: &Value,
+    line: u32,
+) -> Result<(), RuntimeError> {
     match collection {
         Value::List(list) => {
             for elem in list.iter() {
@@ -1802,13 +1792,13 @@ fn builtin_includes(collection: &Value, value: &Value, line: u32) -> Result<Valu
             return Err(RuntimeError::new(
                 "Cannot check includes? on lazy sequence; may not terminate for infinite sequences",
                 line,
-            ))
+            ));
         }
         _ => {
             return Err(RuntimeError::new(
                 format!("includes? does not support {}", collection.type_name()),
                 line,
-            ))
+            ));
         }
     };
 
@@ -1836,9 +1826,11 @@ use std::cell::RefCell;
 /// Generate a lazy sequence that repeats value indefinitely.
 /// Per LANG.txt §11.12
 fn builtin_repeat(value: &Value, _line: u32) -> Result<Value, RuntimeError> {
-    Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Repeat {
-        value: value.clone(),
-    }))))
+    Ok(Value::LazySequence(Rc::new(RefCell::new(
+        LazySeq::Repeat {
+            value: value.clone(),
+        },
+    ))))
 }
 
 /// cycle(collection) → LazySequence
@@ -1865,9 +1857,12 @@ fn builtin_cycle(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
         }
         _ => {
             return Err(RuntimeError::new(
-                format!("cycle expects List or String, got {}", collection.type_name()),
+                format!(
+                    "cycle expects List or String, got {}",
+                    collection.type_name()
+                ),
                 line,
-            ))
+            ));
         }
     };
 
@@ -1882,15 +1877,18 @@ fn builtin_cycle(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
 /// Per LANG.txt §11.12
 fn builtin_zip(args: &[Value], line: u32) -> Result<Value, RuntimeError> {
     if args.is_empty() {
-        return Err(RuntimeError::new("zip requires at least one argument", line));
+        return Err(RuntimeError::new(
+            "zip requires at least one argument",
+            line,
+        ));
     }
 
     // Per LANG.txt §11.12:
     // - If ANY collection has finite size → returns List
     // - If ALL collections are infinite → returns LazySequence
-    let all_infinite = args.iter().all(|arg| {
-        matches!(arg, Value::Range { end: None, .. } | Value::LazySequence(_))
-    });
+    let all_infinite = args
+        .iter()
+        .all(|arg| matches!(arg, Value::Range { end: None, .. } | Value::LazySequence(_)));
 
     if all_infinite {
         // Create lazy sequence only when ALL are infinite
@@ -2056,14 +2054,18 @@ fn value_to_lazy_seq_for_zip(value: &Value, line: u32) -> Result<LazySeq, Runtim
 /// combinations(size, collection) → LazySequence
 /// Generate all combinations of given size from collection.
 /// Per LANG.txt §11.12
-fn builtin_combinations(size_val: &Value, collection: &Value, line: u32) -> Result<Value, RuntimeError> {
+fn builtin_combinations(
+    size_val: &Value,
+    collection: &Value,
+    line: u32,
+) -> Result<Value, RuntimeError> {
     let size = match size_val {
         Value::Integer(n) if *n >= 0 => *n as usize,
         _ => {
             return Err(RuntimeError::new(
                 "combinations expects non-negative Integer as first argument",
                 line,
-            ))
+            ));
         }
     };
 
@@ -2073,7 +2075,7 @@ fn builtin_combinations(size_val: &Value, collection: &Value, line: u32) -> Resu
             return Err(RuntimeError::new(
                 format!("combinations expects List, got {}", collection.type_name()),
                 line,
-            ))
+            ));
         }
     };
 
@@ -2108,14 +2110,22 @@ fn builtin_combinations(size_val: &Value, collection: &Value, line: u32) -> Resu
 /// range(from, to, step) → LazySequence
 /// Generate a range with custom step value.
 /// Per LANG.txt §11.13
-fn builtin_range_fn(from: &Value, to: &Value, step: &Value, line: u32) -> Result<Value, RuntimeError> {
+fn builtin_range_fn(
+    from: &Value,
+    to: &Value,
+    step: &Value,
+    line: u32,
+) -> Result<Value, RuntimeError> {
     let from_val = match from {
         Value::Integer(n) => *n,
         _ => {
             return Err(RuntimeError::new(
-                format!("range expects Integer as first argument, got {}", from.type_name()),
+                format!(
+                    "range expects Integer as first argument, got {}",
+                    from.type_name()
+                ),
                 line,
-            ))
+            ));
         }
     };
 
@@ -2123,9 +2133,12 @@ fn builtin_range_fn(from: &Value, to: &Value, step: &Value, line: u32) -> Result
         Value::Integer(n) => *n,
         _ => {
             return Err(RuntimeError::new(
-                format!("range expects Integer as second argument, got {}", to.type_name()),
+                format!(
+                    "range expects Integer as second argument, got {}",
+                    to.type_name()
+                ),
                 line,
-            ))
+            ));
         }
     };
 
@@ -2133,9 +2146,12 @@ fn builtin_range_fn(from: &Value, to: &Value, step: &Value, line: u32) -> Result
         Value::Integer(n) => *n,
         _ => {
             return Err(RuntimeError::new(
-                format!("range expects Integer as third argument, got {}", step.type_name()),
+                format!(
+                    "range expects Integer as third argument, got {}",
+                    step.type_name()
+                ),
                 line,
-            ))
+            ));
         }
     };
 
@@ -2377,7 +2393,6 @@ fn lazy_seq_next_simple(seq: &mut LazySeq) -> Result<Option<Value>, RuntimeError
     }
 }
 
-
 // ============================================================================
 // String Functions (§11.14)
 // ============================================================================
@@ -2433,9 +2448,9 @@ fn builtin_replace(
     line: u32,
 ) -> Result<Value, RuntimeError> {
     match (pattern, replacement, string) {
-        (Value::String(pat), Value::String(repl), Value::String(s)) => {
-            Ok(Value::String(Rc::new(s.replace(pat.as_str(), repl.as_str()))))
-        }
+        (Value::String(pat), Value::String(repl), Value::String(s)) => Ok(Value::String(Rc::new(
+            s.replace(pat.as_str(), repl.as_str()),
+        ))),
         (Value::String(_), Value::String(_), _) => Err(RuntimeError::new(
             format!(
                 "replace expects String as third argument, got {}",
@@ -2478,11 +2493,17 @@ fn builtin_split(separator: &Value, string: &Value, line: u32) -> Result<Value, 
             Ok(Value::List(parts))
         }
         (Value::String(_), _) => Err(RuntimeError::new(
-            format!("split expects String as second argument, got {}", string.type_name()),
+            format!(
+                "split expects String as second argument, got {}",
+                string.type_name()
+            ),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!("split expects String as first argument, got {}", separator.type_name()),
+            format!(
+                "split expects String as first argument, got {}",
+                separator.type_name()
+            ),
             line,
         )),
     }
@@ -2493,10 +2514,9 @@ fn builtin_split(separator: &Value, string: &Value, line: u32) -> Result<Value, 
 fn builtin_regex_match(pattern: &Value, string: &Value, line: u32) -> Result<Value, RuntimeError> {
     match (pattern, string) {
         (Value::String(pat), Value::String(s)) => {
-            let re = Regex::new(pat).map_err(|e| {
-                RuntimeError::new(format!("Invalid regex pattern: {}", e), line)
-            })?;
-            
+            let re = Regex::new(pat)
+                .map_err(|e| RuntimeError::new(format!("Invalid regex pattern: {}", e), line))?;
+
             let captures: Vector<Value> = match re.captures(s) {
                 Some(caps) => caps
                     .iter()
@@ -2505,15 +2525,21 @@ fn builtin_regex_match(pattern: &Value, string: &Value, line: u32) -> Result<Val
                     .collect(),
                 None => Vector::new(),
             };
-            
+
             Ok(Value::List(captures))
         }
         (Value::String(_), _) => Err(RuntimeError::new(
-            format!("regex_match expects String as second argument, got {}", string.type_name()),
+            format!(
+                "regex_match expects String as second argument, got {}",
+                string.type_name()
+            ),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!("regex_match expects String as first argument, got {}", pattern.type_name()),
+            format!(
+                "regex_match expects String as first argument, got {}",
+                pattern.type_name()
+            ),
             line,
         )),
     }
@@ -2521,26 +2547,35 @@ fn builtin_regex_match(pattern: &Value, string: &Value, line: u32) -> Result<Val
 
 /// regex_match_all(pattern, string) → List[String]
 /// Match all occurrences. Per LANG.txt §11.14
-fn builtin_regex_match_all(pattern: &Value, string: &Value, line: u32) -> Result<Value, RuntimeError> {
+fn builtin_regex_match_all(
+    pattern: &Value,
+    string: &Value,
+    line: u32,
+) -> Result<Value, RuntimeError> {
     match (pattern, string) {
         (Value::String(pat), Value::String(s)) => {
-            let re = Regex::new(pat).map_err(|e| {
-                RuntimeError::new(format!("Invalid regex pattern: {}", e), line)
-            })?;
-            
+            let re = Regex::new(pat)
+                .map_err(|e| RuntimeError::new(format!("Invalid regex pattern: {}", e), line))?;
+
             let matches: Vector<Value> = re
                 .find_iter(s)
                 .map(|m| Value::String(Rc::new(m.as_str().to_string())))
                 .collect();
-            
+
             Ok(Value::List(matches))
         }
         (Value::String(_), _) => Err(RuntimeError::new(
-            format!("regex_match_all expects String as second argument, got {}", string.type_name()),
+            format!(
+                "regex_match_all expects String as second argument, got {}",
+                string.type_name()
+            ),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!("regex_match_all expects String as first argument, got {}", pattern.type_name()),
+            format!(
+                "regex_match_all expects String as first argument, got {}",
+                pattern.type_name()
+            ),
             line,
         )),
     }
@@ -2579,7 +2614,10 @@ fn builtin_signum(value: &Value, line: u32) -> Result<Value, RuntimeError> {
             Ok(Value::Integer(sign))
         }
         _ => Err(RuntimeError::new(
-            format!("signum expects Integer or Decimal, got {}", value.type_name()),
+            format!(
+                "signum expects Integer or Decimal, got {}",
+                value.type_name()
+            ),
             line,
         )),
     }
@@ -2610,11 +2648,17 @@ fn builtin_vec_add(a: &Value, b: &Value, line: u32) -> Result<Value, RuntimeErro
             Ok(Value::List(result))
         }
         (Value::List(_), _) => Err(RuntimeError::new(
-            format!("vec_add expects List as second argument, got {}", b.type_name()),
+            format!(
+                "vec_add expects List as second argument, got {}",
+                b.type_name()
+            ),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!("vec_add expects List as first argument, got {}", a.type_name()),
+            format!(
+                "vec_add expects List as first argument, got {}",
+                a.type_name()
+            ),
             line,
         )),
     }
@@ -2630,11 +2674,17 @@ fn builtin_bit_and(a: &Value, b: &Value, line: u32) -> Result<Value, RuntimeErro
     match (a, b) {
         (Value::Integer(na), Value::Integer(nb)) => Ok(Value::Integer(na & nb)),
         (Value::Integer(_), _) => Err(RuntimeError::new(
-            format!("bit_and expects Integer as second argument, got {}", b.type_name()),
+            format!(
+                "bit_and expects Integer as second argument, got {}",
+                b.type_name()
+            ),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!("bit_and expects Integer as first argument, got {}", a.type_name()),
+            format!(
+                "bit_and expects Integer as first argument, got {}",
+                a.type_name()
+            ),
             line,
         )),
     }
@@ -2646,11 +2696,17 @@ fn builtin_bit_or(a: &Value, b: &Value, line: u32) -> Result<Value, RuntimeError
     match (a, b) {
         (Value::Integer(na), Value::Integer(nb)) => Ok(Value::Integer(na | nb)),
         (Value::Integer(_), _) => Err(RuntimeError::new(
-            format!("bit_or expects Integer as second argument, got {}", b.type_name()),
+            format!(
+                "bit_or expects Integer as second argument, got {}",
+                b.type_name()
+            ),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!("bit_or expects Integer as first argument, got {}", a.type_name()),
+            format!(
+                "bit_or expects Integer as first argument, got {}",
+                a.type_name()
+            ),
             line,
         )),
     }
@@ -2662,11 +2718,17 @@ fn builtin_bit_xor(a: &Value, b: &Value, line: u32) -> Result<Value, RuntimeErro
     match (a, b) {
         (Value::Integer(na), Value::Integer(nb)) => Ok(Value::Integer(na ^ nb)),
         (Value::Integer(_), _) => Err(RuntimeError::new(
-            format!("bit_xor expects Integer as second argument, got {}", b.type_name()),
+            format!(
+                "bit_xor expects Integer as second argument, got {}",
+                b.type_name()
+            ),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!("bit_xor expects Integer as first argument, got {}", a.type_name()),
+            format!(
+                "bit_xor expects Integer as first argument, got {}",
+                a.type_name()
+            ),
             line,
         )),
     }
@@ -2701,11 +2763,17 @@ fn builtin_bit_shift_left(value: &Value, shift: &Value, line: u32) -> Result<Val
             }
         }
         (Value::Integer(_), _) => Err(RuntimeError::new(
-            format!("bit_shift_left expects Integer as second argument, got {}", shift.type_name()),
+            format!(
+                "bit_shift_left expects Integer as second argument, got {}",
+                shift.type_name()
+            ),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!("bit_shift_left expects Integer as first argument, got {}", value.type_name()),
+            format!(
+                "bit_shift_left expects Integer as first argument, got {}",
+                value.type_name()
+            ),
             line,
         )),
     }
@@ -2729,11 +2797,17 @@ fn builtin_bit_shift_right(value: &Value, shift: &Value, line: u32) -> Result<Va
             }
         }
         (Value::Integer(_), _) => Err(RuntimeError::new(
-            format!("bit_shift_right expects Integer as second argument, got {}", shift.type_name()),
+            format!(
+                "bit_shift_right expects Integer as second argument, got {}",
+                shift.type_name()
+            ),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!("bit_shift_right expects Integer as first argument, got {}", value.type_name()),
+            format!(
+                "bit_shift_right expects Integer as first argument, got {}",
+                value.type_name()
+            ),
             line,
         )),
     }
@@ -2785,7 +2859,7 @@ fn builtin_evaluate(source: &Value, line: u32) -> Result<Value, RuntimeError> {
             use crate::parser::Parser;
             use crate::vm::compiler::Compiler;
             use crate::vm::runtime::VM;
-            
+
             // Lex the source
             let mut lexer = Lexer::new(code);
             let tokens = lexer.tokenize().map_err(|e| {

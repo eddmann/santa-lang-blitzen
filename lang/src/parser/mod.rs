@@ -145,7 +145,10 @@ impl Parser {
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             // Parse identifier
             let field_token = self.advance().ok_or_else(|| {
-                ParseError::new("Expected field name in test block".to_string(), brace_token.span)
+                ParseError::new(
+                    "Expected field name in test block".to_string(),
+                    brace_token.span,
+                )
             })?;
 
             let field_name = match &field_token.kind {
@@ -195,7 +198,9 @@ impl Parser {
                 }
                 _ => {
                     return Err(ParseError::new(
-                        format!("Unknown field '{field_name}' in test block. Expected 'input', 'part_one', or 'part_two'"),
+                        format!(
+                            "Unknown field '{field_name}' in test block. Expected 'input', 'part_one', or 'part_two'"
+                        ),
                         field_token.span,
                     ));
                 }
@@ -305,11 +310,7 @@ impl Parser {
                 // Note: LeftParen should NOT be here - `-(expr)` is prefix negation, not operator reference
                 if matches!(
                     self.peek().map(|t| &t.kind),
-                    Some(
-                        TokenKind::Comma
-                            | TokenKind::RightParen
-                            | TokenKind::RightBracket
-                    )
+                    Some(TokenKind::Comma | TokenKind::RightParen | TokenKind::RightBracket)
                 ) {
                     // Operator as function reference
                     Ok(Spanned::new(Expr::Identifier("-".to_string()), op_span))

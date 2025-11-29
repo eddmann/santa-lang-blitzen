@@ -76,12 +76,7 @@ impl SantaError {
     pub fn format_with_source(&self, source: &str) -> String {
         let (line, column, message, kind) = match self {
             SantaError::Lex(err) => (err.line, err.column, &err.message, "Lexical error"),
-            SantaError::Parse(err) => (
-                err.span.line,
-                err.span.column,
-                &err.message,
-                "Parse error",
-            ),
+            SantaError::Parse(err) => (err.span.line, err.span.column, &err.message, "Parse error"),
             SantaError::Compile(err) => (
                 err.span.line,
                 err.span.column,
@@ -154,12 +149,7 @@ impl SantaError {
 
         let (line, column, message, kind) = match self {
             SantaError::Lex(err) => (err.line, err.column, &err.message, "Lexical error"),
-            SantaError::Parse(err) => (
-                err.span.line,
-                err.span.column,
-                &err.message,
-                "Parse error",
-            ),
+            SantaError::Parse(err) => (err.span.line, err.span.column, &err.message, "Parse error"),
             SantaError::Compile(err) => (
                 err.span.line,
                 err.span.column,
@@ -218,7 +208,11 @@ impl SantaError {
                     output.push('\n');
                 }
             } else {
-                output.push_str(&format!("   {:4} | {}\n", line_num, line_content).dimmed().to_string());
+                output.push_str(
+                    &format!("   {:4} | {}\n", line_num, line_content)
+                        .dimmed()
+                        .to_string(),
+                );
             }
         }
 

@@ -2336,7 +2336,10 @@ mod runtime_tests {
         // Guard fails - falls through to wildcard
         assert_eq!(
             eval("match [10, 20] { [start, end] if start > 100 { start } x { x } }"),
-            Ok(Value::List(Vector::from(vec![Value::Integer(10), Value::Integer(20)])))
+            Ok(Value::List(Vector::from(vec![
+                Value::Integer(10),
+                Value::Integer(20)
+            ])))
         );
     }
 
@@ -2366,7 +2369,9 @@ mod runtime_tests {
     #[test]
     fn eval_match_list_pattern_via_statements() {
         // Test via compile_statements (as CLI does)
-        let tokens = Lexer::new("match [1, 2] { [a, b] { a + b } _ { 0 } }").tokenize().unwrap();
+        let tokens = Lexer::new("match [1, 2] { [a, b] { a + b } _ { 0 } }")
+            .tokenize()
+            .unwrap();
         let program = Parser::new(tokens).parse_program().unwrap();
         let compiled = Compiler::compile_statements(&program.statements).unwrap();
         let mut vm = VM::new();
@@ -2377,7 +2382,9 @@ mod runtime_tests {
     #[test]
     fn eval_match_list_pattern_no_fallback() {
         // Test without wildcard fallback
-        let tokens = Lexer::new("match [1, 2] { [a, b] { a + b } }").tokenize().unwrap();
+        let tokens = Lexer::new("match [1, 2] { [a, b] { a + b } }")
+            .tokenize()
+            .unwrap();
         let program = Parser::new(tokens).parse_program().unwrap();
         let compiled = Compiler::compile_statements(&program.statements).unwrap();
         let mut vm = VM::new();
@@ -3204,7 +3211,8 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_flat_map_with_pairs() {
         // flat_map should work with zip pairs without unwrapping them
-        let result = eval("zip(0..3, [\"a\", \"b\", \"c\"]) |> flat_map(|[i, v]| [[i, v]])").unwrap();
+        let result =
+            eval("zip(0..3, [\"a\", \"b\", \"c\"]) |> flat_map(|[i, v]| [[i, v]])").unwrap();
         match result {
             Value::List(v) => {
                 assert_eq!(v.len(), 3);
@@ -3547,10 +3555,7 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_count_range() {
         // count(|x| x % 2 == 0, 1..11) => 5
-        assert_eq!(
-            eval("count(|x| x % 2 == 0, 1..11)"),
-            Ok(Value::Integer(5))
-        );
+        assert_eq!(eval("count(|x| x % 2 == 0, 1..11)"), Ok(Value::Integer(5)));
     }
 
     // =========================================================================
@@ -3652,7 +3657,9 @@ mod runtime_tests {
     fn eval_builtin_skip_list() {
         // skip(2, [1, 2, 3, 4, 5]) => [3, 4, 5]
         let expected = Value::List(
-            vec![Value::Integer(3), Value::Integer(4), Value::Integer(5)].into_iter().collect(),
+            vec![Value::Integer(3), Value::Integer(4), Value::Integer(5)]
+                .into_iter()
+                .collect(),
         );
         assert_eq!(eval("skip(2, [1, 2, 3, 4, 5])"), Ok(expected));
     }
@@ -3661,7 +3668,9 @@ mod runtime_tests {
     fn eval_builtin_take_list() {
         // take(3, [1, 2, 3, 4, 5]) => [1, 2, 3]
         let expected = Value::List(
-            vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)].into_iter().collect(),
+            vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)]
+                .into_iter()
+                .collect(),
         );
         assert_eq!(eval("take(3, [1, 2, 3, 4, 5])"), Ok(expected));
     }
@@ -3670,7 +3679,9 @@ mod runtime_tests {
     fn eval_builtin_take_range() {
         // take(3, 1..) => [1, 2, 3]
         let expected = Value::List(
-            vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)].into_iter().collect(),
+            vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)]
+                .into_iter()
+                .collect(),
         );
         assert_eq!(eval("take(3, 1..)"), Ok(expected));
     }
@@ -3707,7 +3718,9 @@ mod runtime_tests {
     fn eval_builtin_reverse_list() {
         // reverse([1, 2, 3]) => [3, 2, 1]
         let expected = Value::List(
-            vec![Value::Integer(3), Value::Integer(2), Value::Integer(1)].into_iter().collect(),
+            vec![Value::Integer(3), Value::Integer(2), Value::Integer(1)]
+                .into_iter()
+                .collect(),
         );
         assert_eq!(eval("reverse([1, 2, 3])"), Ok(expected));
     }
@@ -3758,8 +3771,16 @@ mod runtime_tests {
         // chunk(2, [1, 2, 3, 4, 5]) => [[1, 2], [3, 4], [5]]
         let expected = Value::List(
             vec![
-                Value::List(vec![Value::Integer(1), Value::Integer(2)].into_iter().collect()),
-                Value::List(vec![Value::Integer(3), Value::Integer(4)].into_iter().collect()),
+                Value::List(
+                    vec![Value::Integer(1), Value::Integer(2)]
+                        .into_iter()
+                        .collect(),
+                ),
+                Value::List(
+                    vec![Value::Integer(3), Value::Integer(4)]
+                        .into_iter()
+                        .collect(),
+                ),
                 Value::List(vec![Value::Integer(5)].into_iter().collect()),
             ]
             .into_iter()
@@ -3808,19 +3829,13 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_includes_list() {
         // includes?([1, 2, 3], 2) => true
-        assert_eq!(
-            eval("includes?([1, 2, 3], 2)"),
-            Ok(Value::Boolean(true))
-        );
+        assert_eq!(eval("includes?([1, 2, 3], 2)"), Ok(Value::Boolean(true)));
     }
 
     #[test]
     fn eval_builtin_includes_list_not_found() {
         // includes?([1, 2, 3], 5) => false
-        assert_eq!(
-            eval("includes?([1, 2, 3], 5)"),
-            Ok(Value::Boolean(false))
-        );
+        assert_eq!(eval("includes?([1, 2, 3], 5)"), Ok(Value::Boolean(false)));
     }
 
     #[test]
@@ -3835,19 +3850,13 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_includes_range() {
         // includes?(1..10, 5) => true
-        assert_eq!(
-            eval("includes?(1..10, 5)"),
-            Ok(Value::Boolean(true))
-        );
+        assert_eq!(eval("includes?(1..10, 5)"), Ok(Value::Boolean(true)));
     }
 
     #[test]
     fn eval_builtin_excludes_list() {
         // excludes?([1, 2, 3], 5) => true
-        assert_eq!(
-            eval("excludes?([1, 2, 3], 5)"),
-            Ok(Value::Boolean(true))
-        );
+        assert_eq!(eval("excludes?([1, 2, 3], 5)"), Ok(Value::Boolean(true)));
     }
 
     #[test]
@@ -3871,10 +3880,7 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_all_list() {
         // all?(|x| x > 0, [1, 2, 3]) => true
-        assert_eq!(
-            eval("all?(|x| x > 0, [1, 2, 3])"),
-            Ok(Value::Boolean(true))
-        );
+        assert_eq!(eval("all?(|x| x > 0, [1, 2, 3])"), Ok(Value::Boolean(true)));
     }
 
     #[test]
@@ -3889,10 +3895,7 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_all_range() {
         // all?(|x| x > 0, 1..=5) => true
-        assert_eq!(
-            eval("all?(|x| x > 0, 1..=5)"),
-            Ok(Value::Boolean(true))
-        );
+        assert_eq!(eval("all?(|x| x > 0, 1..=5)"), Ok(Value::Boolean(true)));
     }
 
     // =========================================================================
@@ -4076,7 +4079,9 @@ mod runtime_tests {
     fn eval_fold_dict_break() {
         // fold with break on dict - dict iteration order is undefined so we test the break mechanism
         assert_eq!(
-            eval(r#"fold(0, |acc, v| if v > 2 { break 99 } else { acc + v }, #{"a": 1, "b": 2, "c": 3})"#),
+            eval(
+                r#"fold(0, |acc, v| if v > 2 { break 99 } else { acc + v }, #{"a": 1, "b": 2, "c": 3})"#
+            ),
             Ok(Value::Integer(99)) // break returns 99 when we hit v=3
         );
     }
@@ -4093,10 +4098,7 @@ mod runtime_tests {
     #[test]
     fn eval_each_bounded_range() {
         // Tests that each works on bounded range and returns nil
-        assert_eq!(
-            eval("each(|x| x, 1..5)"),
-            Ok(Value::Nil)
-        );
+        assert_eq!(eval("each(|x| x, 1..5)"), Ok(Value::Nil));
     }
 
     #[test]
@@ -4140,11 +4142,11 @@ mod runtime_tests {
         // take(3, map(|x| x * 2, repeat(5))) => [10, 10, 10]
         assert_eq!(
             eval("take(3, map(|x| x * 2, repeat(5)))"),
-            Ok(Value::List(vec![
-                Value::Integer(10),
-                Value::Integer(10),
-                Value::Integer(10)
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(10), Value::Integer(10), Value::Integer(10)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4154,11 +4156,15 @@ mod runtime_tests {
         // take(3, map(|x| x + 1, map(|x| x * 2, 1..))) => [3, 5, 7]
         assert_eq!(
             eval("take(3, map(|x| x + 1, map(|x| x * 2, 1..)))"),
-            Ok(Value::List(vec![
-                Value::Integer(3),  // 1*2+1 = 3
-                Value::Integer(5),  // 2*2+1 = 5
-                Value::Integer(7)   // 3*2+1 = 7
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![
+                    Value::Integer(3), // 1*2+1 = 3
+                    Value::Integer(5), // 2*2+1 = 5
+                    Value::Integer(7)  // 3*2+1 = 7
+                ]
+                .into_iter()
+                .collect()
+            ))
         );
     }
 
@@ -4168,11 +4174,11 @@ mod runtime_tests {
         // take(3, filter(|x| x % 2 == 0, iterate(|x| x + 1, 1))) => [2, 4, 6]
         assert_eq!(
             eval("take(3, filter(|x| x % 2 == 0, iterate(|x| x + 1, 1)))"),
-            Ok(Value::List(vec![
-                Value::Integer(2),
-                Value::Integer(4),
-                Value::Integer(6)
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(2), Value::Integer(4), Value::Integer(6)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4182,11 +4188,11 @@ mod runtime_tests {
         // take(3, map(|x| x * 10, filter(|x| x % 2 == 0, 1..))) => [20, 40, 60]
         assert_eq!(
             eval("take(3, map(|x| x * 10, filter(|x| x % 2 == 0, 1..)))"),
-            Ok(Value::List(vec![
-                Value::Integer(20),
-                Value::Integer(40),
-                Value::Integer(60)
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(20), Value::Integer(40), Value::Integer(60)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4196,11 +4202,11 @@ mod runtime_tests {
         // take(3, skip(2, repeat(7))) => [7, 7, 7]
         assert_eq!(
             eval("take(3, skip(2, repeat(7)))"),
-            Ok(Value::List(vec![
-                Value::Integer(7),
-                Value::Integer(7),
-                Value::Integer(7)
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(7), Value::Integer(7), Value::Integer(7)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4210,11 +4216,11 @@ mod runtime_tests {
         // take(3, skip(5, iterate(|x| x + 1, 0))) => [5, 6, 7]
         assert_eq!(
             eval("take(3, skip(5, iterate(|x| x + 1, 0)))"),
-            Ok(Value::List(vec![
-                Value::Integer(5),
-                Value::Integer(6),
-                Value::Integer(7)
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(5), Value::Integer(6), Value::Integer(7)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4232,11 +4238,11 @@ mod runtime_tests {
         // rest(repeat(5)) should return a lazy sequence, take 3 from it
         assert_eq!(
             eval("take(3, rest(repeat(5)))"),
-            Ok(Value::List(vec![
-                Value::Integer(5),
-                Value::Integer(5),
-                Value::Integer(5)
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(5), Value::Integer(5), Value::Integer(5)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4245,11 +4251,11 @@ mod runtime_tests {
         // rest(iterate(|x| x + 1, 0)) skips first, take 3 => [1, 2, 3]
         assert_eq!(
             eval("take(3, rest(iterate(|x| x + 1, 0)))"),
-            Ok(Value::List(vec![
-                Value::Integer(1),
-                Value::Integer(2),
-                Value::Integer(3)
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4261,11 +4267,15 @@ mod runtime_tests {
     fn eval_builtin_lines() {
         assert_eq!(
             eval("lines(\"a\\nb\\nc\")"),
-            Ok(Value::List(vec![
-                Value::String(Rc::new("a".to_string())),
-                Value::String(Rc::new("b".to_string())),
-                Value::String(Rc::new("c".to_string()))
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![
+                    Value::String(Rc::new("a".to_string())),
+                    Value::String(Rc::new("b".to_string())),
+                    Value::String(Rc::new("c".to_string()))
+                ]
+                .into_iter()
+                .collect()
+            ))
         );
     }
 
@@ -4273,9 +4283,11 @@ mod runtime_tests {
     fn eval_builtin_lines_single() {
         assert_eq!(
             eval("lines(\"single line\")"),
-            Ok(Value::List(vec![
-                Value::String(Rc::new("single line".to_string()))
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::String(Rc::new("single line".to_string()))]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4283,11 +4295,15 @@ mod runtime_tests {
     fn eval_builtin_split() {
         assert_eq!(
             eval("split(\",\", \"a,b,c\")"),
-            Ok(Value::List(vec![
-                Value::String(Rc::new("a".to_string())),
-                Value::String(Rc::new("b".to_string())),
-                Value::String(Rc::new("c".to_string()))
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![
+                    Value::String(Rc::new("a".to_string())),
+                    Value::String(Rc::new("b".to_string())),
+                    Value::String(Rc::new("c".to_string()))
+                ]
+                .into_iter()
+                .collect()
+            ))
         );
     }
 
@@ -4295,11 +4311,15 @@ mod runtime_tests {
     fn eval_builtin_split_empty_separator() {
         assert_eq!(
             eval("split(\"\", \"abc\")"),
-            Ok(Value::List(vec![
-                Value::String(Rc::new("a".to_string())),
-                Value::String(Rc::new("b".to_string())),
-                Value::String(Rc::new("c".to_string()))
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![
+                    Value::String(Rc::new("a".to_string())),
+                    Value::String(Rc::new("b".to_string())),
+                    Value::String(Rc::new("c".to_string()))
+                ]
+                .into_iter()
+                .collect()
+            ))
         );
     }
 
@@ -4307,9 +4327,11 @@ mod runtime_tests {
     fn eval_builtin_regex_match() {
         assert_eq!(
             eval("regex_match(\"(\\\\d+)\", \"abc123\")"),
-            Ok(Value::List(vec![
-                Value::String(Rc::new("123".to_string()))
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::String(Rc::new("123".to_string()))]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4317,10 +4339,14 @@ mod runtime_tests {
     fn eval_builtin_regex_match_multiple_groups() {
         assert_eq!(
             eval("regex_match(\"(\\\\w+):(\\\\d+)\", \"port:8080\")"),
-            Ok(Value::List(vec![
-                Value::String(Rc::new("port".to_string())),
-                Value::String(Rc::new("8080".to_string()))
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![
+                    Value::String(Rc::new("port".to_string())),
+                    Value::String(Rc::new("8080".to_string()))
+                ]
+                .into_iter()
+                .collect()
+            ))
         );
     }
 
@@ -4336,11 +4362,15 @@ mod runtime_tests {
     fn eval_builtin_regex_match_all() {
         assert_eq!(
             eval("regex_match_all(\"\\\\d+\", \"a1b2c3\")"),
-            Ok(Value::List(vec![
-                Value::String(Rc::new("1".to_string())),
-                Value::String(Rc::new("2".to_string())),
-                Value::String(Rc::new("3".to_string()))
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![
+                    Value::String(Rc::new("1".to_string())),
+                    Value::String(Rc::new("2".to_string())),
+                    Value::String(Rc::new("3".to_string()))
+                ]
+                .into_iter()
+                .collect()
+            ))
         );
     }
 
@@ -4379,10 +4409,11 @@ mod runtime_tests {
     fn eval_builtin_vec_add() {
         assert_eq!(
             eval("vec_add([1, 2], [3, 4])"),
-            Ok(Value::List(vec![
-                Value::Integer(4),
-                Value::Integer(6)
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(4), Value::Integer(6)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4390,10 +4421,11 @@ mod runtime_tests {
     fn eval_builtin_vec_add_shorter_list() {
         assert_eq!(
             eval("vec_add([1, 2, 3], [10, 20])"),
-            Ok(Value::List(vec![
-                Value::Integer(11),
-                Value::Integer(22)
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(11), Value::Integer(22)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4438,19 +4470,46 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_id() {
         assert_eq!(eval("id(42)"), Ok(Value::Integer(42)));
-        assert_eq!(eval("id(\"hello\")"), Ok(Value::String(Rc::new("hello".to_string()))));
+        assert_eq!(
+            eval("id(\"hello\")"),
+            Ok(Value::String(Rc::new("hello".to_string())))
+        );
     }
 
     #[test]
     fn eval_builtin_type() {
-        assert_eq!(eval("type(nil)"), Ok(Value::String(Rc::new("Nil".to_string()))));
-        assert_eq!(eval("type(42)"), Ok(Value::String(Rc::new("Integer".to_string()))));
-        assert_eq!(eval("type(3.15)"), Ok(Value::String(Rc::new("Decimal".to_string()))));
-        assert_eq!(eval("type(true)"), Ok(Value::String(Rc::new("Boolean".to_string()))));
-        assert_eq!(eval("type(\"hello\")"), Ok(Value::String(Rc::new("String".to_string()))));
-        assert_eq!(eval("type([1, 2])"), Ok(Value::String(Rc::new("List".to_string()))));
-        assert_eq!(eval("type({1, 2})"), Ok(Value::String(Rc::new("Set".to_string()))));
-        assert_eq!(eval("type(#{\"a\": 1})"), Ok(Value::String(Rc::new("Dictionary".to_string()))));
+        assert_eq!(
+            eval("type(nil)"),
+            Ok(Value::String(Rc::new("Nil".to_string())))
+        );
+        assert_eq!(
+            eval("type(42)"),
+            Ok(Value::String(Rc::new("Integer".to_string())))
+        );
+        assert_eq!(
+            eval("type(3.15)"),
+            Ok(Value::String(Rc::new("Decimal".to_string())))
+        );
+        assert_eq!(
+            eval("type(true)"),
+            Ok(Value::String(Rc::new("Boolean".to_string())))
+        );
+        assert_eq!(
+            eval("type(\"hello\")"),
+            Ok(Value::String(Rc::new("String".to_string())))
+        );
+        assert_eq!(
+            eval("type([1, 2])"),
+            Ok(Value::String(Rc::new("List".to_string())))
+        );
+        assert_eq!(
+            eval("type({1, 2})"),
+            Ok(Value::String(Rc::new("Set".to_string())))
+        );
+        assert_eq!(
+            eval("type(#{\"a\": 1})"),
+            Ok(Value::String(Rc::new("Dictionary".to_string())))
+        );
     }
 
     #[test]
@@ -4474,18 +4533,21 @@ mod runtime_tests {
         assert_eq!(eval("evaluate(\"1 + 2\")"), Ok(Value::Integer(3)));
         assert_eq!(
             eval("evaluate(\"[1, 2, 3]\")"),
-            Ok(Value::List(vec![
-                Value::Integer(1),
-                Value::Integer(2),
-                Value::Integer(3)
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
     #[test]
     fn eval_builtin_evaluate_with_let() {
         // Test evaluate with let statements
-        assert_eq!(eval("evaluate(\"let x = 10; x * 2\")"), Ok(Value::Integer(20)));
+        assert_eq!(
+            eval("evaluate(\"let x = 10; x * 2\")"),
+            Ok(Value::Integer(20))
+        );
     }
 
     #[test]
@@ -4786,7 +4848,9 @@ mod runtime_tests {
     fn partial_application_composition_with_placeholder() {
         // Composition with placeholder fills piped value into placeholder position
         assert_eq!(
-            eval(r#"{ let d = #{"a": 1}; let f = |x| x; let composed = f >> get(_, d); composed("a") }"#),
+            eval(
+                r#"{ let d = #{"a": 1}; let f = |x| x; let composed = f >> get(_, d); composed("a") }"#
+            ),
             Ok(Value::Integer(1))
         );
     }
@@ -4818,11 +4882,15 @@ mod runtime_tests {
         // Builtin functions auto-curry when called with fewer args
         assert_eq!(
             eval(r#"{ let splitComma = split(","); splitComma("a,b,c") }"#),
-            Ok(Value::List(vec![
-                Value::String(Rc::new("a".to_string())),
-                Value::String(Rc::new("b".to_string())),
-                Value::String(Rc::new("c".to_string()))
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![
+                    Value::String(Rc::new("a".to_string())),
+                    Value::String(Rc::new("b".to_string())),
+                    Value::String(Rc::new("c".to_string()))
+                ]
+                .into_iter()
+                .collect()
+            ))
         );
     }
 
@@ -4831,16 +4899,28 @@ mod runtime_tests {
         // Auto-curried builtin used in map
         assert_eq!(
             eval(r#"["a,b", "c,d"] |> map(split(","))"#),
-            Ok(Value::List(vec![
-                Value::List(vec![
-                    Value::String(Rc::new("a".to_string())),
-                    Value::String(Rc::new("b".to_string()))
-                ].into_iter().collect()),
-                Value::List(vec![
-                    Value::String(Rc::new("c".to_string())),
-                    Value::String(Rc::new("d".to_string()))
-                ].into_iter().collect())
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![
+                    Value::List(
+                        vec![
+                            Value::String(Rc::new("a".to_string())),
+                            Value::String(Rc::new("b".to_string()))
+                        ]
+                        .into_iter()
+                        .collect()
+                    ),
+                    Value::List(
+                        vec![
+                            Value::String(Rc::new("c".to_string())),
+                            Value::String(Rc::new("d".to_string()))
+                        ]
+                        .into_iter()
+                        .collect()
+                    )
+                ]
+                .into_iter()
+                .collect()
+            ))
         );
     }
 
@@ -4849,10 +4929,14 @@ mod runtime_tests {
         // Composition with builtin as first-class value
         assert_eq!(
             eval(r#"{ let parse = lines >> map(ints); parse("abc123\ndef456") }"#),
-            Ok(Value::List(vec![
-                Value::List(vec![Value::Integer(123)].into_iter().collect()),
-                Value::List(vec![Value::Integer(456)].into_iter().collect())
-            ].into_iter().collect()))
+            Ok(Value::List(
+                vec![
+                    Value::List(vec![Value::Integer(123)].into_iter().collect()),
+                    Value::List(vec![Value::Integer(456)].into_iter().collect())
+                ]
+                .into_iter()
+                .collect()
+            ))
         );
     }
 
@@ -4872,7 +4956,11 @@ mod runtime_tests {
         // List[start..end] returns sublist (exclusive end)
         assert_eq!(
             eval("[1, 2, 3, 4, 5][1..3]"),
-            Ok(Value::List(vec![Value::Integer(2), Value::Integer(3)].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(2), Value::Integer(3)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4881,7 +4969,11 @@ mod runtime_tests {
         // List[start..=end] returns sublist (inclusive end)
         assert_eq!(
             eval("[1, 2, 3, 4, 5][1..=3]"),
-            Ok(Value::List(vec![Value::Integer(2), Value::Integer(3), Value::Integer(4)].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(2), Value::Integer(3), Value::Integer(4)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4890,7 +4982,11 @@ mod runtime_tests {
         // List[start..] returns from start to end
         assert_eq!(
             eval("[1, 2, 3, 4, 5][2..]"),
-            Ok(Value::List(vec![Value::Integer(3), Value::Integer(4), Value::Integer(5)].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(3), Value::Integer(4), Value::Integer(5)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4924,10 +5020,7 @@ mod runtime_tests {
     #[test]
     fn range_indexing_empty_result() {
         // Empty range returns empty list/string
-        assert_eq!(
-            eval("[1, 2, 3][2..2]"),
-            Ok(Value::List(Vector::new()))
-        );
+        assert_eq!(eval("[1, 2, 3][2..2]"), Ok(Value::List(Vector::new())));
         assert_eq!(
             eval(r#""hello"[3..3]"#),
             Ok(Value::String(Rc::new(String::new())))
@@ -4949,8 +5042,14 @@ mod runtime_tests {
     fn nested_pattern_in_map() {
         // Nested patterns with map
         assert_eq!(
-            eval(r#"[[[1, 2], [3, 4]], [[5, 6], [7, 8]]] |> map(|[[a, b], [c, d]]| a + b + c + d)"#),
-            Ok(Value::List(vec![Value::Integer(10), Value::Integer(26)].into_iter().collect()))
+            eval(
+                r#"[[[1, 2], [3, 4]], [[5, 6], [7, 8]]] |> map(|[[a, b], [c, d]]| a + b + c + d)"#
+            ),
+            Ok(Value::List(
+                vec![Value::Integer(10), Value::Integer(26)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -4977,19 +5076,13 @@ mod runtime_tests {
     #[test]
     fn unbounded_range_with_pipeline() {
         // Unbounded range followed by pipeline operator
-        assert_eq!(
-            eval("4.. |> find(|x| x > 5)"),
-            Ok(Value::Integer(6))
-        );
+        assert_eq!(eval("4.. |> find(|x| x > 5)"), Ok(Value::Integer(6)));
     }
 
     #[test]
     fn unbounded_range_with_pipeline_multiline() {
         // Multiline version
-        assert_eq!(
-            eval("0..\n    |> find(|x| x > 10)"),
-            Ok(Value::Integer(11))
-        );
+        assert_eq!(eval("0..\n    |> find(|x| x > 10)"), Ok(Value::Integer(11)));
     }
 
     #[test]
@@ -5015,7 +5108,11 @@ mod runtime_tests {
         // Partial application used in map
         assert_eq!(
             eval(r#"{ let mult = |a, b| a * b; [1, 2, 3] |> map(mult(2)) }"#),
-            Ok(Value::List(vec![Value::Integer(2), Value::Integer(4), Value::Integer(6)].into_iter().collect()))
+            Ok(Value::List(
+                vec![Value::Integer(2), Value::Integer(4), Value::Integer(6)]
+                    .into_iter()
+                    .collect()
+            ))
         );
     }
 
@@ -5023,7 +5120,9 @@ mod runtime_tests {
     fn user_function_chained_curry() {
         // Multiple levels of currying
         assert_eq!(
-            eval(r#"{ let add3 = |a, b, c| a + b + c; let add2 = add3(1); let add1 = add2(2); add1(3) }"#),
+            eval(
+                r#"{ let add3 = |a, b, c| a + b + c; let add2 = add3(1); let add1 = add2(2); add1(3) }"#
+            ),
             Ok(Value::Integer(6))
         );
     }
@@ -5033,7 +5132,7 @@ mod runtime_tests {
         // First args applied first, then remaining args
         assert_eq!(
             eval(r#"{ let sub = |a, b| a - b; let subFrom10 = sub(10); subFrom10(3) }"#),
-            Ok(Value::Integer(7))  // 10 - 3 = 7
+            Ok(Value::Integer(7)) // 10 - 3 = 7
         );
     }
 
@@ -5082,9 +5181,10 @@ let [[a, b], ..rest] = sorted;
         let expected = Value::List(Vector::from(vec![
             Value::Integer(1),
             Value::Integer(2),
-            Value::List(Vector::from(vec![
-                Value::List(Vector::from(vec![Value::Integer(3), Value::Integer(4)]))
-            ])),
+            Value::List(Vector::from(vec![Value::List(Vector::from(vec![
+                Value::Integer(3),
+                Value::Integer(4),
+            ]))])),
         ]));
         assert_eq!(result.map_err(|e| e.message), Ok(expected));
     }

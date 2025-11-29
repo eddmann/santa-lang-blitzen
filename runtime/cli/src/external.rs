@@ -53,7 +53,10 @@ fn read_aoc_input(
     let parts: Vec<&str> = url.strip_prefix("aoc://").unwrap().split('/').collect();
     if parts.len() != 2 {
         return Err(RuntimeError::new(
-            format!("Invalid AOC URL format: '{}'. Expected 'aoc://YEAR/DAY'", url),
+            format!(
+                "Invalid AOC URL format: '{}'. Expected 'aoc://YEAR/DAY'",
+                url
+            ),
             0,
         ));
     }
@@ -78,7 +81,8 @@ fn read_aoc_input(
     // Fetch from AOC (requires token)
     let token = session_token.ok_or_else(|| {
         RuntimeError::new(
-            "AOC session token not found. Set SANTA_CLI_SESSION_TOKEN environment variable".to_string(),
+            "AOC session token not found. Set SANTA_CLI_SESSION_TOKEN environment variable"
+                .to_string(),
             0,
         )
     })?;

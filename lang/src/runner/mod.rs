@@ -44,7 +44,6 @@ impl AocRunner {
     }
 
     pub fn run_solution(&mut self, vm: &mut VM) -> Result<SolutionResult, RuntimeError> {
-
         // Check for duplicate sections
         self.check_duplicate_sections()?;
 
@@ -64,13 +63,13 @@ impl AocRunner {
         // Execute part_two
         let part_two = self.execute_part(vm, "part_two", input_value)?;
 
-        Ok(SolutionResult {
-            part_one,
-            part_two,
-        })
+        Ok(SolutionResult { part_one, part_two })
     }
 
-    pub fn run_tests(&mut self, vm_factory: &dyn Fn() -> VM) -> Result<Vec<TestResult>, RuntimeError> {
+    pub fn run_tests(
+        &mut self,
+        vm_factory: &dyn Fn() -> VM,
+    ) -> Result<Vec<TestResult>, RuntimeError> {
         let mut results = Vec::new();
 
         // Check for duplicate sections
@@ -84,17 +83,24 @@ impl AocRunner {
         }
 
         // Get test sections
-        let test_sections: Vec<_> = self.program.sections.iter()
+        let test_sections: Vec<_> = self
+            .program
+            .sections
+            .iter()
             .filter_map(|s| match s {
-                Section::Test { input, part_one, part_two } => {
-                    Some((input.clone(), part_one.clone(), part_two.clone()))
-                }
-                _ => None
+                Section::Test {
+                    input,
+                    part_one,
+                    part_two,
+                } => Some((input.clone(), part_one.clone(), part_two.clone())),
+                _ => None,
             })
             .collect();
 
         // Run each test
-        for (index, (test_input_expr, expected_part_one, expected_part_two)) in test_sections.iter().enumerate() {
+        for (index, (test_input_expr, expected_part_one, expected_part_two)) in
+            test_sections.iter().enumerate()
+        {
             let result = self.run_single_test(
                 vm_factory,
                 index,
@@ -109,7 +115,6 @@ impl AocRunner {
     }
 
     pub fn run_script(&self, vm: &mut VM) -> Result<Value, RuntimeError> {
-
         // Execute all statements and return the last value
         if self.program.statements.is_empty() {
             Ok(Value::Nil)
@@ -119,7 +124,11 @@ impl AocRunner {
     }
 
     pub fn is_script_mode(&self) -> bool {
-        !self.program.sections.iter().any(|s| matches!(s, Section::PartOne(_) | Section::PartTwo(_)))
+        !self
+            .program
+            .sections
+            .iter()
+            .any(|s| matches!(s, Section::PartOne(_) | Section::PartTwo(_)))
     }
 
     fn check_duplicate_sections(&self) -> Result<(), RuntimeError> {
@@ -137,13 +146,22 @@ impl AocRunner {
         }
 
         if input_count > 1 {
-            return Err(RuntimeError::new("Expected a single 'input' section".to_string(), 0));
+            return Err(RuntimeError::new(
+                "Expected a single 'input' section".to_string(),
+                0,
+            ));
         }
         if part_one_count > 1 {
-            return Err(RuntimeError::new("Expected single 'part_one' solution".to_string(), 0));
+            return Err(RuntimeError::new(
+                "Expected single 'part_one' solution".to_string(),
+                0,
+            ));
         }
         if part_two_count > 1 {
-            return Err(RuntimeError::new("Expected single 'part_two' solution".to_string(), 0));
+            return Err(RuntimeError::new(
+                "Expected single 'part_two' solution".to_string(),
+                0,
+            ));
         }
 
         Ok(())
@@ -209,32 +227,46 @@ impl AocRunner {
         let test_input = self.compile_and_execute_expr(&mut vm, test_input_expr)?;
 
         // Run part_one if expected
-        let (part_one_passed, part_one_expected_val, part_one_actual_val) = if let Some(expected_expr) = expected_part_one {
-            let expected = self.compile_and_execute_expr(&mut vm, expected_expr)?;
+        let (part_one_passed, part_one_expected_val, part_one_actual_val) =
+            if let Some(expected_expr) = expected_part_one {
+                let expected = self.compile_and_execute_expr(&mut vm, expected_expr)?;
 
-            // Find and execute part_one
-            if let Some((actual, _)) = self.execute_part(&mut vm, "part_one", Some(test_input.clone()))? {
-                (Some(actual == expected), Some(expected.clone()), Some(actual))
+                // Find and execute part_one
+                if let Some((actual, _)) =
+                    self.execute_part(&mut vm, "part_one", Some(test_input.clone()))?
+                {
+                    (
+                        Some(actual == expected),
+                        Some(expected.clone()),
+                        Some(actual),
+                    )
+                } else {
+                    (None, Some(expected), None)
+                }
             } else {
-                (None, Some(expected), None)
-            }
-        } else {
-            (None, None, None)
-        };
+                (None, None, None)
+            };
 
         // Run part_two if expected
-        let (part_two_passed, part_two_expected_val, part_two_actual_val) = if let Some(expected_expr) = expected_part_two {
-            let expected = self.compile_and_execute_expr(&mut vm, expected_expr)?;
+        let (part_two_passed, part_two_expected_val, part_two_actual_val) =
+            if let Some(expected_expr) = expected_part_two {
+                let expected = self.compile_and_execute_expr(&mut vm, expected_expr)?;
 
-            // Find and execute part_two
-            if let Some((actual, _)) = self.execute_part(&mut vm, "part_two", Some(test_input.clone()))? {
-                (Some(actual == expected), Some(expected.clone()), Some(actual))
+                // Find and execute part_two
+                if let Some((actual, _)) =
+                    self.execute_part(&mut vm, "part_two", Some(test_input.clone()))?
+                {
+                    (
+                        Some(actual == expected),
+                        Some(expected.clone()),
+                        Some(actual),
+                    )
+                } else {
+                    (None, Some(expected), None)
+                }
             } else {
-                (None, Some(expected), None)
-            }
-        } else {
-            (None, None, None)
-        };
+                (None, None, None)
+            };
 
         Ok(TestResult {
             test_index,
@@ -247,7 +279,11 @@ impl AocRunner {
         })
     }
 
-    fn compile_and_execute_stmts(&self, vm: &mut VM, stmts: &[SpannedStmt]) -> Result<Value, RuntimeError> {
+    fn compile_and_execute_stmts(
+        &self,
+        vm: &mut VM,
+        stmts: &[SpannedStmt],
+    ) -> Result<Value, RuntimeError> {
         let compiled = Compiler::compile_statements(stmts)
             .map_err(|e| RuntimeError::new(e.message, e.span.start as u32))?;
         vm.run(Rc::new(compiled))
@@ -265,7 +301,11 @@ impl AocRunner {
         vm.run(Rc::new(compiled))
     }
 
-    fn compile_and_execute_expr(&self, vm: &mut VM, expr: &SpannedExpr) -> Result<Value, RuntimeError> {
+    fn compile_and_execute_expr(
+        &self,
+        vm: &mut VM,
+        expr: &SpannedExpr,
+    ) -> Result<Value, RuntimeError> {
         // Use global names from statement compilation to ensure proper builtin shadowing
         let compiled = Compiler::compile_expression_with_globals(expr, &self.global_names)
             .map_err(|e| RuntimeError::new(e.message, e.span.start as u32))?;

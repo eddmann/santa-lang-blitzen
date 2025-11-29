@@ -87,7 +87,12 @@ impl Compiler {
         Self::new_function_with_variadic(name, arity, false, enclosing)
     }
 
-    fn new_function_with_variadic(name: Option<String>, arity: u8, is_variadic: bool, enclosing: Compiler) -> Self {
+    fn new_function_with_variadic(
+        name: Option<String>,
+        arity: u8,
+        is_variadic: bool,
+        enclosing: Compiler,
+    ) -> Self {
         let current_line = enclosing.current_line;
         // Inherit global_names from enclosing - nested functions should see same globals
         let global_names = enclosing.global_names.clone();
@@ -887,46 +892,44 @@ impl Compiler {
             Expr::Placeholder => {
                 self.emit_with_operand(OpCode::GetLocal, slot);
             }
-            Expr::Infix { left, op, right } => {
-                match op {
-                    InfixOp::And => {
-                        self.compile_expr_with_slot_substitution(left, slot, span)?;
-                        let jump = self.emit_jump(OpCode::PopJumpIfFalse);
-                        self.compile_expr_with_slot_substitution(right, slot, span)?;
-                        self.patch_jump(jump);
-                    }
-                    InfixOp::Or => {
-                        self.compile_expr_with_slot_substitution(left, slot, span)?;
-                        let jump = self.emit_jump(OpCode::PopJumpIfTrue);
-                        self.compile_expr_with_slot_substitution(right, slot, span)?;
-                        self.patch_jump(jump);
-                    }
-                    _ => {
-                        self.compile_expr_with_slot_substitution(left, slot, span)?;
-                        self.compile_expr_with_slot_substitution(right, slot, span)?;
-                        match op {
-                            InfixOp::Add => self.emit(OpCode::Add),
-                            InfixOp::Sub => self.emit(OpCode::Sub),
-                            InfixOp::Mul => self.emit(OpCode::Mul),
-                            InfixOp::Div => self.emit(OpCode::Div),
-                            InfixOp::Mod => self.emit(OpCode::Mod),
-                            InfixOp::Eq => self.emit(OpCode::Eq),
-                            InfixOp::Ne => self.emit(OpCode::Ne),
-                            InfixOp::Lt => self.emit(OpCode::Lt),
-                            InfixOp::Le => self.emit(OpCode::Le),
-                            InfixOp::Gt => self.emit(OpCode::Gt),
-                            InfixOp::Ge => self.emit(OpCode::Ge),
-                            InfixOp::And | InfixOp::Or => unreachable!("Handled above"),
-                            InfixOp::Pipeline | InfixOp::Compose => {
-                                return Err(CompileError::new(
-                                    "Nested pipeline/compose in composition not supported",
-                                    span,
-                                ));
-                            }
+            Expr::Infix { left, op, right } => match op {
+                InfixOp::And => {
+                    self.compile_expr_with_slot_substitution(left, slot, span)?;
+                    let jump = self.emit_jump(OpCode::PopJumpIfFalse);
+                    self.compile_expr_with_slot_substitution(right, slot, span)?;
+                    self.patch_jump(jump);
+                }
+                InfixOp::Or => {
+                    self.compile_expr_with_slot_substitution(left, slot, span)?;
+                    let jump = self.emit_jump(OpCode::PopJumpIfTrue);
+                    self.compile_expr_with_slot_substitution(right, slot, span)?;
+                    self.patch_jump(jump);
+                }
+                _ => {
+                    self.compile_expr_with_slot_substitution(left, slot, span)?;
+                    self.compile_expr_with_slot_substitution(right, slot, span)?;
+                    match op {
+                        InfixOp::Add => self.emit(OpCode::Add),
+                        InfixOp::Sub => self.emit(OpCode::Sub),
+                        InfixOp::Mul => self.emit(OpCode::Mul),
+                        InfixOp::Div => self.emit(OpCode::Div),
+                        InfixOp::Mod => self.emit(OpCode::Mod),
+                        InfixOp::Eq => self.emit(OpCode::Eq),
+                        InfixOp::Ne => self.emit(OpCode::Ne),
+                        InfixOp::Lt => self.emit(OpCode::Lt),
+                        InfixOp::Le => self.emit(OpCode::Le),
+                        InfixOp::Gt => self.emit(OpCode::Gt),
+                        InfixOp::Ge => self.emit(OpCode::Ge),
+                        InfixOp::And | InfixOp::Or => unreachable!("Handled above"),
+                        InfixOp::Pipeline | InfixOp::Compose => {
+                            return Err(CompileError::new(
+                                "Nested pipeline/compose in composition not supported",
+                                span,
+                            ));
                         }
                     }
                 }
-            }
+            },
             Expr::Prefix { op, right } => {
                 self.compile_expr_with_slot_substitution(right, slot, span)?;
                 match op {
@@ -989,7 +992,10 @@ impl Compiler {
                     // f >> g(_, b) creates |x| g(f(x), b)
                     // First compile left(x) and store in a temporary
                     match &left.node {
-                        Expr::Call { function: left_fn, args: left_args } => {
+                        Expr::Call {
+                            function: left_fn,
+                            args: left_args,
+                        } => {
                             // Check if left function is a builtin
                             let is_left_builtin = if let Expr::Identifier(name) = &left_fn.node {
                                 BuiltinId::from_name(name).is_some()
@@ -1087,7 +1093,8 @@ impl Compiler {
                     self.emit(OpCode::Return);
 
                     // Restore enclosing compiler
-                    let compiled_fn = std::mem::replace(&mut self.function, CompiledFunction::new(0, None));
+                    let compiled_fn =
+                        std::mem::replace(&mut self.function, CompiledFunction::new(0, None));
                     let enclosing = self.enclosing.take().expect("should have enclosing");
                     *self = *enclosing;
 
@@ -1113,7 +1120,10 @@ impl Compiler {
                 // If left is also a Call, append x to its args: f(a) becomes f(a, x)
                 // Otherwise: f becomes f(x)
                 match &left.node {
-                    Expr::Call { function: left_fn, args: left_args } => {
+                    Expr::Call {
+                        function: left_fn,
+                        args: left_args,
+                    } => {
                         // Check if left function is a builtin
                         let is_left_builtin = if let Expr::Identifier(name) = &left_fn.node {
                             BuiltinId::from_name(name).is_some()
@@ -1138,7 +1148,10 @@ impl Compiler {
 
                         let left_total_args = left_args.len() + 1;
                         if left_total_args > 255 {
-                            return Err(CompileError::new("Too many arguments in composition", span));
+                            return Err(CompileError::new(
+                                "Too many arguments in composition",
+                                span,
+                            ));
                         }
 
                         // Emit call (builtin or regular)
@@ -1219,7 +1232,10 @@ impl Compiler {
                 // Compile: left(arg)
                 // If left is a Call, append x to its args
                 match &left.node {
-                    Expr::Call { function: left_fn, args: left_args } => {
+                    Expr::Call {
+                        function: left_fn,
+                        args: left_args,
+                    } => {
                         // Check if left function is a builtin
                         let is_left_builtin = if let Expr::Identifier(name) = &left_fn.node {
                             BuiltinId::from_name(name).is_some()
@@ -1241,7 +1257,10 @@ impl Compiler {
 
                         let left_total_args = left_args.len() + 1;
                         if left_total_args > 255 {
-                            return Err(CompileError::new("Too many arguments in composition", span));
+                            return Err(CompileError::new(
+                                "Too many arguments in composition",
+                                span,
+                            ));
                         }
 
                         if is_left_builtin {
@@ -1347,9 +1366,7 @@ impl Compiler {
                 // Don't recurse into args - placeholders inside arg expressions create partials
                 // for those args only, which are consumed by the call.
                 Self::contains_placeholder(function)
-                    || args
-                        .iter()
-                        .any(|arg| matches!(arg.node, Expr::Placeholder))
+                    || args.iter().any(|arg| matches!(arg.node, Expr::Placeholder))
             }
             Expr::Index { collection, index } => {
                 Self::contains_placeholder(collection) || Self::contains_placeholder(index)
@@ -1475,10 +1492,13 @@ impl Compiler {
         let right_has_placeholder = Self::contains_placeholder(right);
         // For Compose, both sides share the same input - only 1 argument needed
         let placeholder_count = if op == InfixOp::Compose {
-            if left_has_placeholder || right_has_placeholder { 1 } else { 0 }
+            if left_has_placeholder || right_has_placeholder {
+                1
+            } else {
+                0
+            }
         } else {
-            (if left_has_placeholder { 1 } else { 0 })
-                + (if right_has_placeholder { 1 } else { 0 })
+            (if left_has_placeholder { 1 } else { 0 }) + (if right_has_placeholder { 1 } else { 0 })
         };
 
         // Create a new function
@@ -1498,16 +1518,18 @@ impl Compiler {
         let mut arg_idx = 0;
 
         // Helper to compile an operand with potential placeholder substitution
-        let compile_operand =
-            |compiler: &mut Compiler, operand: &SpannedExpr, arg_idx: &mut u8| -> Result<(), CompileError> {
-                if Self::contains_placeholder(operand) {
-                    compiler.emit_with_operand(OpCode::GetLocal, *arg_idx);
-                    *arg_idx += 1;
-                } else {
-                    compiler.expression(operand)?;
-                }
-                Ok(())
-            };
+        let compile_operand = |compiler: &mut Compiler,
+                               operand: &SpannedExpr,
+                               arg_idx: &mut u8|
+         -> Result<(), CompileError> {
+            if Self::contains_placeholder(operand) {
+                compiler.emit_with_operand(OpCode::GetLocal, *arg_idx);
+                *arg_idx += 1;
+            } else {
+                compiler.expression(operand)?;
+            }
+            Ok(())
+        };
 
         // Handle short-circuit operators specially - they need interleaved compilation with jumps
         match op {
@@ -1615,7 +1637,12 @@ impl Compiler {
                     }
                     InfixOp::Pipeline => {
                         // Compile pipeline with placeholders supported
-                        self.compile_pipeline_with_placeholders(left, right, expr.span, placeholder_idx)?;
+                        self.compile_pipeline_with_placeholders(
+                            left,
+                            right,
+                            expr.span,
+                            placeholder_idx,
+                        )?;
                     }
                     InfixOp::Compose => {
                         // Compose in partial application is complex - for now, just compile
@@ -1723,7 +1750,11 @@ impl Compiler {
                 }
                 self.emit_with_operand(OpCode::MakeDict, entries.len() as u8);
             }
-            Expr::Range { start, end, inclusive } => {
+            Expr::Range {
+                start,
+                end,
+                inclusive,
+            } => {
                 // Handle range literals with placeholders
                 self.compile_with_placeholders(start, placeholder_idx)?;
                 if let Some(end_expr) = end {
@@ -1817,7 +1848,11 @@ impl Compiler {
             Stmt::Expr(expr) => {
                 self.compile_with_placeholders(expr, placeholder_idx)?;
             }
-            Stmt::Let { pattern, value, mutable } => {
+            Stmt::Let {
+                pattern,
+                value,
+                mutable,
+            } => {
                 // Compile the value expression
                 self.compile_with_placeholders(value, placeholder_idx)?;
                 // Handle simple identifier patterns for now
@@ -1875,7 +1910,12 @@ impl Compiler {
 
         // Create new compiler for function
         let enclosing = std::mem::take(self);
-        *self = Compiler::new_function_with_variadic(None, regular_param_count as u8, is_variadic, enclosing);
+        *self = Compiler::new_function_with_variadic(
+            None,
+            regular_param_count as u8,
+            is_variadic,
+            enclosing,
+        );
 
         // Add parameter locals and compile destructuring if needed
         // Track pattern params and their local slots for deferred destructuring
@@ -2010,7 +2050,11 @@ impl Compiler {
         }
 
         // Emit TailCall if in tail position, otherwise Call
-        let opcode = if in_tail { OpCode::TailCall } else { OpCode::Call };
+        let opcode = if in_tail {
+            OpCode::TailCall
+        } else {
+            OpCode::Call
+        };
         self.emit_with_operand(opcode, args.len() as u8);
         Ok(())
     }
@@ -2388,10 +2432,11 @@ impl Compiler {
                 pattern: Pattern::Identifier(name),
                 ..
             } = &stmt.node
-                && !seen_names.insert(name.clone()) {
-                    // Name already seen - it's a shadow, not a forward reference
-                    duplicate_names.insert(name.clone());
-                }
+                && !seen_names.insert(name.clone())
+            {
+                // Name already seen - it's a shadow, not a forward reference
+                duplicate_names.insert(name.clone());
+            }
         }
 
         // Pre-declare unique let bindings with nil to support forward references (mutual recursion)
@@ -2417,7 +2462,8 @@ impl Compiler {
         }
 
         // Save pre-declaration state for compile_let to use
-        let saved_predeclare_state = std::mem::replace(&mut self.did_predeclare_block, did_predeclare);
+        let saved_predeclare_state =
+            std::mem::replace(&mut self.did_predeclare_block, did_predeclare);
 
         for (i, stmt) in stmts.iter().enumerate() {
             let is_last = i == stmts.len() - 1;
@@ -2492,7 +2538,10 @@ impl Compiler {
             // Only check for pre-declaration if this block actually did pre-declare
             let is_predeclared = if self.did_predeclare_block && !is_global_scope {
                 // Check if this local was already pre-declared in the CURRENT scope
-                self.locals.iter().rev().find(|l| l.name == *name)
+                self.locals
+                    .iter()
+                    .rev()
+                    .find(|l| l.name == *name)
                     .map(|l| l.depth == self.scope_depth)
                     .unwrap_or(false)
             } else {
@@ -2513,9 +2562,9 @@ impl Compiler {
                 // Register the global name so it can shadow builtins
                 self.global_names.insert(name.clone());
                 self.expression(value)?;
-                let name_idx = self.chunk().add_constant(Value::String(
-                    std::rc::Rc::new(name.clone())
-                ));
+                let name_idx = self
+                    .chunk()
+                    .add_constant(Value::String(std::rc::Rc::new(name.clone())));
                 if name_idx > 255 {
                     return Err(CompileError::new("Too many global names", span));
                 }
@@ -2550,9 +2599,9 @@ impl Compiler {
                 if is_global_scope {
                     // Global binding - register and emit SetGlobal (value is on stack)
                     self.global_names.insert(name.clone());
-                    let name_idx = self.chunk().add_constant(Value::String(
-                        std::rc::Rc::new(name.clone())
-                    ));
+                    let name_idx = self
+                        .chunk()
+                        .add_constant(Value::String(std::rc::Rc::new(name.clone())));
                     if name_idx > 255 {
                         return Err(CompileError::new("Too many global names", span));
                     }
@@ -2630,9 +2679,9 @@ impl Compiler {
                     if is_global_scope {
                         // Global binding - register so it's found before builtins
                         self.global_names.insert(name.clone());
-                        let name_idx = self.chunk().add_constant(Value::String(
-                            std::rc::Rc::new(name.clone())
-                        ));
+                        let name_idx = self
+                            .chunk()
+                            .add_constant(Value::String(std::rc::Rc::new(name.clone())));
                         if name_idx > 255 {
                             return Err(CompileError::new("Too many global names", span));
                         }
@@ -2667,9 +2716,9 @@ impl Compiler {
                     if is_global_scope {
                         // Global binding - register so it's found before builtins
                         self.global_names.insert(name.clone());
-                        let name_idx = self.chunk().add_constant(Value::String(
-                            std::rc::Rc::new(name.clone())
-                        ));
+                        let name_idx = self
+                            .chunk()
+                            .add_constant(Value::String(std::rc::Rc::new(name.clone())));
                         if name_idx > 255 {
                             return Err(CompileError::new("Too many global names", span));
                         }
@@ -2780,7 +2829,10 @@ impl Compiler {
                 }
                 _ => {
                     return Err(CompileError::new(
-                        format!("Pattern type {:?} not supported in function parameters", elem_pattern),
+                        format!(
+                            "Pattern type {:?} not supported in function parameters",
+                            elem_pattern
+                        ),
                         span,
                     ));
                 }
@@ -2790,7 +2842,11 @@ impl Compiler {
     }
 
     /// Emit code to access a nested element via a sequence of indices
-    fn emit_nested_access(&mut self, param_idx: u8, index_path: &[usize]) -> Result<(), CompileError> {
+    fn emit_nested_access(
+        &mut self,
+        param_idx: u8,
+        index_path: &[usize],
+    ) -> Result<(), CompileError> {
         // Get the parameter
         self.emit_with_operand(OpCode::GetLocal, param_idx);
         // Apply each index in the path

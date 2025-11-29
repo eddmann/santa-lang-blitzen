@@ -161,9 +161,20 @@ fn run_tests(path: &str) -> Result<(), ExitCode> {
 
                 if let Some(passed) = test_result.part_one_passed {
                     let status = if passed { "✓" } else { "✗" };
-                    let expected = test_result.part_one_expected.as_ref().map(|v| v.to_string()).unwrap_or_else(|| "N/A".to_string());
-                    let actual = test_result.part_one_actual.as_ref().map(|v| v.to_string()).unwrap_or_else(|| "N/A".to_string());
-                    println!("  Part 1: {} (expected: {}, got: {})", status, expected, actual);
+                    let expected = test_result
+                        .part_one_expected
+                        .as_ref()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "N/A".to_string());
+                    let actual = test_result
+                        .part_one_actual
+                        .as_ref()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "N/A".to_string());
+                    println!(
+                        "  Part 1: {} (expected: {}, got: {})",
+                        status, expected, actual
+                    );
                     if !passed {
                         all_passed = false;
                     }
@@ -171,9 +182,20 @@ fn run_tests(path: &str) -> Result<(), ExitCode> {
 
                 if let Some(passed) = test_result.part_two_passed {
                     let status = if passed { "✓" } else { "✗" };
-                    let expected = test_result.part_two_expected.as_ref().map(|v| v.to_string()).unwrap_or_else(|| "N/A".to_string());
-                    let actual = test_result.part_two_actual.as_ref().map(|v| v.to_string()).unwrap_or_else(|| "N/A".to_string());
-                    println!("  Part 2: {} (expected: {}, got: {})", status, expected, actual);
+                    let expected = test_result
+                        .part_two_expected
+                        .as_ref()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "N/A".to_string());
+                    let actual = test_result
+                        .part_two_actual
+                        .as_ref()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "N/A".to_string());
+                    println!(
+                        "  Part 2: {} (expected: {}, got: {})",
+                        status, expected, actual
+                    );
                     if !passed {
                         all_passed = false;
                     }
@@ -272,9 +294,11 @@ fn create_vm(session_token: Option<&str>, script_dir: Option<PathBuf>) -> VM {
             ));
         }
         match &args[0] {
-            Value::String(path) => {
-                external::builtin_read(path, session_token_for_read.as_deref(), script_dir.as_deref())
-            }
+            Value::String(path) => external::builtin_read(
+                path,
+                session_token_for_read.as_deref(),
+                script_dir.as_deref(),
+            ),
             _ => Err(RuntimeError::new(
                 format!("read expects String, got {}", args[0].type_name()),
                 0,

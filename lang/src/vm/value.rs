@@ -108,10 +108,7 @@ pub enum LazySeq {
     Cycle { source: Vector<Value>, index: usize },
     /// iterate(fn, initial) - apply fn repeatedly
     /// generator is stored as Value to support both Function and PartialApplication
-    Iterate {
-        generator: Value,
-        current: Value,
-    },
+    Iterate { generator: Value, current: Value },
     /// map over lazy sequence
     Map {
         source: Rc<RefCell<LazySeq>>,
@@ -141,11 +138,7 @@ pub enum LazySeq {
         indices: Vec<usize>,
     },
     /// range(from, to, step) - custom step range
-    RangeStep {
-        current: i64,
-        end: i64,
-        step: i64,
-    },
+    RangeStep { current: i64, end: i64, step: i64 },
     /// Exhausted sequence
     Empty,
 }
@@ -205,8 +198,11 @@ impl Value {
             Value::List(elements) => elements.iter().all(|e| e.is_hashable()),
             Value::Set(_) => true,
             // Dict, LazySequence, Function, ExternalFunction, PartialApplication, MemoizedFunction are NOT hashable
-            Value::Dict(_) | Value::LazySequence(_) | Value::Function(_)
-            | Value::ExternalFunction(_) | Value::PartialApplication { .. }
+            Value::Dict(_)
+            | Value::LazySequence(_)
+            | Value::Function(_)
+            | Value::ExternalFunction(_)
+            | Value::PartialApplication { .. }
             | Value::MemoizedFunction(_) => false,
             // Ranges are hashable (they're just data)
             Value::Range { .. } => true,
@@ -249,8 +245,14 @@ impl PartialEq for Value {
             (Value::ExternalFunction(a), Value::ExternalFunction(b)) => a == b,
             // Partial applications compare by closure identity and args equality
             (
-                Value::PartialApplication { closure: c1, args: a1 },
-                Value::PartialApplication { closure: c2, args: a2 },
+                Value::PartialApplication {
+                    closure: c1,
+                    args: a1,
+                },
+                Value::PartialApplication {
+                    closure: c2,
+                    args: a2,
+                },
             ) => Rc::ptr_eq(c1, c2) && a1 == a2,
             // Memoized functions compare by identity
             (Value::MemoizedFunction(a), Value::MemoizedFunction(b)) => Rc::ptr_eq(a, b),

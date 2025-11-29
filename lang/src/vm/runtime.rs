@@ -151,7 +151,8 @@ impl VM {
     where
         F: Fn(&[Value], &VM) -> Result<Value, RuntimeError> + 'static,
     {
-        self.externals.insert(name.to_string(), Rc::new(Box::new(func)));
+        self.externals
+            .insert(name.to_string(), Rc::new(Box::new(func)));
     }
 
     /// Get a reference to the globals map (for external functions like env())
@@ -196,19 +197,30 @@ impl VM {
 
         // Register all binary operators as global function values
         // Arithmetic operators
-        self.globals.insert("+".to_string(), create_binop(OpCode::Add, "+"));
-        self.globals.insert("-".to_string(), create_binop(OpCode::Sub, "-"));
-        self.globals.insert("*".to_string(), create_binop(OpCode::Mul, "*"));
-        self.globals.insert("/".to_string(), create_binop(OpCode::Div, "/"));
-        self.globals.insert("%".to_string(), create_binop(OpCode::Mod, "%"));
+        self.globals
+            .insert("+".to_string(), create_binop(OpCode::Add, "+"));
+        self.globals
+            .insert("-".to_string(), create_binop(OpCode::Sub, "-"));
+        self.globals
+            .insert("*".to_string(), create_binop(OpCode::Mul, "*"));
+        self.globals
+            .insert("/".to_string(), create_binop(OpCode::Div, "/"));
+        self.globals
+            .insert("%".to_string(), create_binop(OpCode::Mod, "%"));
 
         // Comparison operators
-        self.globals.insert("<".to_string(), create_binop(OpCode::Lt, "<"));
-        self.globals.insert(">".to_string(), create_binop(OpCode::Gt, ">"));
-        self.globals.insert("<=".to_string(), create_binop(OpCode::Le, "<="));
-        self.globals.insert(">=".to_string(), create_binop(OpCode::Ge, ">="));
-        self.globals.insert("==".to_string(), create_binop(OpCode::Eq, "=="));
-        self.globals.insert("!=".to_string(), create_binop(OpCode::Ne, "!="));
+        self.globals
+            .insert("<".to_string(), create_binop(OpCode::Lt, "<"));
+        self.globals
+            .insert(">".to_string(), create_binop(OpCode::Gt, ">"));
+        self.globals
+            .insert("<=".to_string(), create_binop(OpCode::Le, "<="));
+        self.globals
+            .insert(">=".to_string(), create_binop(OpCode::Ge, ">="));
+        self.globals
+            .insert("==".to_string(), create_binop(OpCode::Eq, "=="));
+        self.globals
+            .insert("!=".to_string(), create_binop(OpCode::Ne, "!="));
     }
 
     /// Run a compiled function
@@ -378,7 +390,8 @@ impl VM {
                                     Value::String(s) => {
                                         use unicode_segmentation::UnicodeSegmentation;
                                         for g in s.graphemes(true) {
-                                            elements.push_back(Value::String(Rc::new(g.to_string())));
+                                            elements
+                                                .push_back(Value::String(Rc::new(g.to_string())));
                                         }
                                     }
                                     Value::Set(set) => {
@@ -386,14 +399,20 @@ impl VM {
                                             elements.push_back(item.clone());
                                         }
                                     }
-                                    Value::Range { start, end, inclusive } => {
+                                    Value::Range {
+                                        start,
+                                        end,
+                                        inclusive,
+                                    } => {
                                         if let Some(end_val) = end {
-                                            let actual_end = if inclusive { end_val + 1 } else { end_val };
+                                            let actual_end =
+                                                if inclusive { end_val + 1 } else { end_val };
                                             for n in start..actual_end {
                                                 elements.push_back(Value::Integer(n));
                                             }
                                         } else {
-                                            return Err(self.error("Cannot spread unbounded range into list"));
+                                            return Err(self
+                                                .error("Cannot spread unbounded range into list"));
                                         }
                                     }
                                     other => {
@@ -443,14 +462,20 @@ impl VM {
                                             elements.insert(Value::String(Rc::new(g.to_string())));
                                         }
                                     }
-                                    Value::Range { start, end, inclusive } => {
+                                    Value::Range {
+                                        start,
+                                        end,
+                                        inclusive,
+                                    } => {
                                         if let Some(end_val) = end {
-                                            let actual_end = if inclusive { end_val + 1 } else { end_val };
+                                            let actual_end =
+                                                if inclusive { end_val + 1 } else { end_val };
                                             for n in start..actual_end {
                                                 elements.insert(Value::Integer(n));
                                             }
                                         } else {
-                                            return Err(self.error("Cannot spread unbounded range into set"));
+                                            return Err(self
+                                                .error("Cannot spread unbounded range into set"));
                                         }
                                     }
                                     other => {
@@ -726,14 +751,21 @@ impl VM {
                                             args.push(item.clone());
                                         }
                                     }
-                                    Value::Range { start, end, inclusive } => {
+                                    Value::Range {
+                                        start,
+                                        end,
+                                        inclusive,
+                                    } => {
                                         if let Some(end_val) = end {
-                                            let actual_end = if inclusive { end_val + 1 } else { end_val };
+                                            let actual_end =
+                                                if inclusive { end_val + 1 } else { end_val };
                                             for n in start..actual_end {
                                                 args.push(Value::Integer(n));
                                             }
                                         } else {
-                                            return Err(self.error("Cannot spread unbounded range into builtin call"));
+                                            return Err(self.error(
+                                                "Cannot spread unbounded range into builtin call",
+                                            ));
                                         }
                                     }
                                     other => {
@@ -874,14 +906,20 @@ impl VM {
                                 expanded_args.push(item.clone());
                             }
                         }
-                        Value::Range { start, end, inclusive } => {
+                        Value::Range {
+                            start,
+                            end,
+                            inclusive,
+                        } => {
                             if let Some(end_val) = end {
                                 let actual_end = if inclusive { end_val + 1 } else { end_val };
                                 for n in start..actual_end {
                                     expanded_args.push(Value::Integer(n));
                                 }
                             } else {
-                                return Err(self.error("Cannot spread unbounded range into function call"));
+                                return Err(
+                                    self.error("Cannot spread unbounded range into function call")
+                                );
                             }
                         }
                         other => {
@@ -1334,7 +1372,14 @@ impl VM {
             }
 
             // List indexing with Range
-            (Value::List(list), Value::Range { start, end, inclusive }) => {
+            (
+                Value::List(list),
+                Value::Range {
+                    start,
+                    end,
+                    inclusive,
+                },
+            ) => {
                 let len = list.len() as i64;
                 let actual_start = if *start < 0 {
                     (len + start).max(0)
@@ -1345,8 +1390,16 @@ impl VM {
                 let actual_end = match end {
                     None => list.len(),
                     Some(e) => {
-                        let idx = if *e < 0 { (len + e).max(0) } else { (*e).min(len) };
-                        if *inclusive { (idx + 1).min(len) as usize } else { idx as usize }
+                        let idx = if *e < 0 {
+                            (len + e).max(0)
+                        } else {
+                            (*e).min(len)
+                        };
+                        if *inclusive {
+                            (idx + 1).min(len) as usize
+                        } else {
+                            idx as usize
+                        }
                     }
                 };
 
@@ -1358,7 +1411,14 @@ impl VM {
             }
 
             // String indexing with Range
-            (Value::String(s), Value::Range { start, end, inclusive }) => {
+            (
+                Value::String(s),
+                Value::Range {
+                    start,
+                    end,
+                    inclusive,
+                },
+            ) => {
                 use unicode_segmentation::UnicodeSegmentation;
                 let graphemes: Vec<&str> = s.graphemes(true).collect();
                 let len = graphemes.len() as i64;
@@ -1371,8 +1431,16 @@ impl VM {
                 let actual_end = match end {
                     None => graphemes.len(),
                     Some(e) => {
-                        let idx = if *e < 0 { (len + e).max(0) } else { (*e).min(len) };
-                        if *inclusive { (idx + 1).min(len) as usize } else { idx as usize }
+                        let idx = if *e < 0 {
+                            (len + e).max(0)
+                        } else {
+                            (*e).min(len)
+                        };
+                        if *inclusive {
+                            (idx + 1).min(len) as usize
+                        } else {
+                            idx as usize
+                        }
                     }
                 };
 
@@ -1388,7 +1456,14 @@ impl VM {
 
             // Range indexing with Integer
             // Note: Negative indices are not supported for ranges (return nil)
-            (Value::Range { start, end, inclusive }, Value::Integer(idx)) => {
+            (
+                Value::Range {
+                    start,
+                    end,
+                    inclusive,
+                },
+                Value::Integer(idx),
+            ) => {
                 // Negative indices not supported for ranges
                 if *idx < 0 {
                     Value::Nil
@@ -1513,7 +1588,10 @@ impl VM {
             Value::Function(closure) => {
                 self.call_closure(closure, argc)?;
             }
-            Value::PartialApplication { closure, args: partial_args } => {
+            Value::PartialApplication {
+                closure,
+                args: partial_args,
+            } => {
                 // Calling a partial application: combine partial args with new args
                 self.call_partial_application(closure, partial_args, argc)?;
             }
@@ -1525,8 +1603,10 @@ impl VM {
                 }
 
                 // Call external function
-                let external = self.externals.get(&name).cloned()
-                    .ok_or_else(|| self.error(format!("External function '{}' not found", name)))?;
+                let external =
+                    self.externals.get(&name).cloned().ok_or_else(|| {
+                        self.error(format!("External function '{}' not found", name))
+                    })?;
 
                 let result = external(&args, self)?;
 
@@ -1677,7 +1757,10 @@ impl VM {
         }
 
         if total_args > arity && !is_variadic {
-            return Err(self.error(format!("Expected {} arguments but got {}", arity, total_args)));
+            return Err(self.error(format!(
+                "Expected {} arguments but got {}",
+                arity, total_args
+            )));
         }
 
         if self.frames.len() >= 256 {
@@ -1914,7 +1997,10 @@ impl VM {
     ) -> Result<Value, RuntimeError> {
         match callable {
             Value::Function(closure) => self.call_closure_sync(closure, args),
-            Value::PartialApplication { closure, args: partial_args } => {
+            Value::PartialApplication {
+                closure,
+                args: partial_args,
+            } => {
                 // Combine partial args with new args
                 let mut all_args = partial_args.clone();
                 all_args.extend(args);
@@ -1937,7 +2023,10 @@ impl VM {
                 let result = self.call_closure_sync(&closure, args)?;
 
                 // Store in cache
-                memoized_fn.borrow_mut().cache.insert(args_key, result.clone());
+                memoized_fn
+                    .borrow_mut()
+                    .cache
+                    .insert(args_key, result.clone());
 
                 Ok(result)
             }
@@ -2068,10 +2157,11 @@ impl VM {
                             // Swallow errors in filter predicates, treating them as "false"
                             // This matches reference behavior where filter callbacks that error
                             // are treated as if the element doesn't pass the filter
-                            let result = match self.call_closure_sync(predicate, vec![value.clone()]) {
-                                Ok(v) => v,
-                                Err(_) => continue,
-                            };
+                            let result =
+                                match self.call_closure_sync(predicate, vec![value.clone()]) {
+                                    Ok(v) => v,
+                                    Err(_) => continue,
+                                };
                             if result.is_truthy() {
                                 return Ok(Some(value));
                             }
@@ -2127,7 +2217,10 @@ impl VM {
         let collection = &args[1];
 
         // Validate mapper is callable
-        if !matches!(mapper, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !matches!(
+            mapper,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
             return Err(RuntimeError::new(
                 format!(
                     "map expects Function as first argument, got {}",
@@ -2213,7 +2306,8 @@ impl VM {
                             if start <= &actual_end {
                                 for i in *start..=actual_end {
                                     all_args.push(Value::Integer(i));
-                                    let mapped = self.call_closure_sync(closure, all_args.clone())?;
+                                    let mapped =
+                                        self.call_closure_sync(closure, all_args.clone())?;
                                     result.push_back(mapped);
                                     all_args.pop();
                                 }
@@ -2221,7 +2315,8 @@ impl VM {
                         }
                         None => {
                             return Err(RuntimeError::new(
-                                "Cannot lazily map over unbounded range with partial application".to_string(),
+                                "Cannot lazily map over unbounded range with partial application"
+                                    .to_string(),
                                 line,
                             ));
                         }
@@ -2303,7 +2398,10 @@ impl VM {
         let collection = &args[1];
 
         // Validate predicate is callable
-        if !matches!(predicate, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !matches!(
+            predicate,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
             return Err(RuntimeError::new(
                 format!(
                     "filter expects Function as first argument, got {}",
@@ -2407,7 +2505,9 @@ impl VM {
                                 if start <= &actual_end {
                                     for i in *start..=actual_end {
                                         // Swallow errors in filter predicates, treating them as "false"
-                                        let keep = match self.call_callable_sync(&predicate, vec![Value::Integer(i)]) {
+                                        let keep = match self
+                                            .call_callable_sync(&predicate, vec![Value::Integer(i)])
+                                        {
                                             Ok(v) => v,
                                             Err(_) => continue,
                                         };
@@ -2419,7 +2519,8 @@ impl VM {
                             }
                             None => {
                                 return Err(RuntimeError::new(
-                                    "Cannot lazily filter unbounded range with partial application".to_string(),
+                                    "Cannot lazily filter unbounded range with partial application"
+                                        .to_string(),
                                     line,
                                 ));
                             }
@@ -2451,17 +2552,20 @@ impl VM {
                     Value::Function(c) => c.clone(),
                     Value::PartialApplication { .. } => {
                         return Err(RuntimeError::new(
-                            "Cannot lazily filter lazy sequence with partial application".to_string(),
+                            "Cannot lazily filter lazy sequence with partial application"
+                                .to_string(),
                             line,
                         ));
                     }
                     _ => unreachable!(),
                 };
                 // Wrap in LazySeq::Filter for lazy composition
-                Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Filter {
-                    source: lazy_seq.clone(),
-                    predicate: closure,
-                }))))
+                Ok(Value::LazySequence(Rc::new(RefCell::new(
+                    LazySeq::Filter {
+                        source: lazy_seq.clone(),
+                        predicate: closure,
+                    },
+                ))))
             }
             _ => Err(RuntimeError::new(
                 format!("filter does not support {}", collection.type_name()),
@@ -2493,7 +2597,10 @@ impl VM {
         let mut result = Vector::new();
 
         // Helper to flatten a mapped result into the result vector
-        let flatten_mapped = |result: &mut Vector<Value>, mapped: Value, vm: &mut Self| -> Result<(), RuntimeError> {
+        let flatten_mapped = |result: &mut Vector<Value>,
+                              mapped: Value,
+                              vm: &mut Self|
+         -> Result<(), RuntimeError> {
             match mapped {
                 Value::List(inner) => {
                     for item in inner.iter() {
@@ -2532,28 +2639,30 @@ impl VM {
                     flatten_mapped(&mut result, mapped, self)?;
                 }
             }
-            Value::Range { start, end, inclusive } => {
-                match end {
-                    Some(e) => {
-                        let actual_end = if *inclusive { *e } else { e - 1 };
-                        let range_iter: Box<dyn Iterator<Item = i64>> = if start <= &actual_end {
-                            Box::new(*start..=actual_end)
-                        } else {
-                            Box::new((actual_end..=*start).rev())
-                        };
-                        for i in range_iter {
-                            let mapped = self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
-                            flatten_mapped(&mut result, mapped, self)?;
-                        }
-                    }
-                    None => {
-                        return Err(RuntimeError::new(
-                            "flat_map on unbounded range not supported",
-                            line,
-                        ));
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => match end {
+                Some(e) => {
+                    let actual_end = if *inclusive { *e } else { e - 1 };
+                    let range_iter: Box<dyn Iterator<Item = i64>> = if start <= &actual_end {
+                        Box::new(*start..=actual_end)
+                    } else {
+                        Box::new((actual_end..=*start).rev())
+                    };
+                    for i in range_iter {
+                        let mapped = self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                        flatten_mapped(&mut result, mapped, self)?;
                     }
                 }
-            }
+                None => {
+                    return Err(RuntimeError::new(
+                        "flat_map on unbounded range not supported",
+                        line,
+                    ));
+                }
+            },
             _ => {
                 return Err(RuntimeError::new(
                     format!("flat_map does not support {}", collection.type_name()),
@@ -2648,7 +2757,11 @@ impl VM {
                 }
                 Ok(Value::List(result))
             }
-            Value::Range { start, end, inclusive } => {
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => {
                 let mut result = Vector::new();
                 match end {
                     Some(e) => {
@@ -2659,7 +2772,8 @@ impl VM {
                             Box::new((actual_end..=*start).rev())
                         };
                         for i in range_iter {
-                            let mapped = self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            let mapped =
+                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
                             if mapped.is_truthy() {
                                 result.push_back(mapped);
                             }
@@ -2762,7 +2876,11 @@ impl VM {
                 }
                 Ok(Value::Nil)
             }
-            Value::Range { start, end, inclusive } => {
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => {
                 match end {
                     Some(e) => {
                         let actual_end = if *inclusive { *e } else { e - 1 };
@@ -2772,7 +2890,8 @@ impl VM {
                             Box::new((actual_end..=*start).rev())
                         };
                         for i in range_iter {
-                            let mapped = self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            let mapped =
+                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
                             if mapped.is_truthy() {
                                 return Ok(mapped);
                             }
@@ -2783,7 +2902,8 @@ impl VM {
                         // Unbounded range - keep searching until found
                         let mut i = *start;
                         loop {
-                            let mapped = self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                            let mapped =
+                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
                             if mapped.is_truthy() {
                                 return Ok(mapped);
                             }
@@ -2905,7 +3025,8 @@ impl VM {
                     }
                     let mut acc = Value::Integer(*start);
                     for i in (start + 1)..=actual_end {
-                        match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)]) {
+                        match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)])
+                        {
                             Ok(v) => acc = v,
                             Err(e) if e.is_break => {
                                 return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -2920,7 +3041,8 @@ impl VM {
                     let mut acc = Value::Integer(*start);
                     let mut i = *start + 1;
                     loop {
-                        match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)]) {
+                        match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)])
+                        {
                             Ok(v) => acc = v,
                             Err(e) if e.is_break => {
                                 return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -2971,7 +3093,10 @@ impl VM {
         let collection = &args[2];
 
         // Validate folder is callable
-        if !matches!(folder, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !matches!(
+            folder,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
             return Err(RuntimeError::new(
                 format!(
                     "fold expects Function as second argument, got {}",
@@ -3060,7 +3185,10 @@ impl VM {
                         let actual_end = if *inclusive { *e } else { e - 1 };
                         if start <= &actual_end {
                             for i in *start..=actual_end {
-                                match self.call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)]) {
+                                match self.call_callable_sync(
+                                    &folder,
+                                    vec![acc.clone(), Value::Integer(i)],
+                                ) {
                                     Ok(v) => acc = v,
                                     Err(e) if e.is_break => {
                                         return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -3072,7 +3200,10 @@ impl VM {
                             // Descending range
                             let mut i = *start;
                             while i >= actual_end {
-                                match self.call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)]) {
+                                match self.call_callable_sync(
+                                    &folder,
+                                    vec![acc.clone(), Value::Integer(i)],
+                                ) {
                                     Ok(v) => acc = v,
                                     Err(e) if e.is_break => {
                                         return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -3088,7 +3219,9 @@ impl VM {
                         // Unbounded range - must use break to terminate
                         let mut i = *start;
                         loop {
-                            match self.call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)]) {
+                            match self
+                                .call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)])
+                            {
                                 Ok(v) => acc = v,
                                 Err(e) if e.is_break => {
                                     return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -3746,7 +3879,7 @@ impl VM {
                     return Err(RuntimeError::new(
                         "count on unbounded range may not terminate",
                         line,
-                    ))
+                    ));
                 }
             },
             Value::String(s) => {
@@ -3767,7 +3900,7 @@ impl VM {
                 return Err(RuntimeError::new(
                     format!("count does not support {}", collection.type_name()),
                     line,
-                ))
+                ));
             }
         }
 
@@ -3780,7 +3913,10 @@ impl VM {
         let collection = &args[1];
 
         // Validate comparator is callable
-        if !matches!(comparator, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !matches!(
+            comparator,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
             return Err(RuntimeError::new(
                 format!(
                     "sort expects Function as first argument, got {}",
@@ -3808,18 +3944,13 @@ impl VM {
                         (actual_end..=*start).rev().map(Value::Integer).collect()
                     }
                 }
-                None => {
-                    return Err(RuntimeError::new(
-                        "Cannot sort unbounded range",
-                        line,
-                    ))
-                }
+                None => return Err(RuntimeError::new("Cannot sort unbounded range", line)),
             },
             _ => {
                 return Err(RuntimeError::new(
                     format!("sort does not support {}", collection.type_name()),
                     line,
-                ))
+                ));
             }
         };
 
@@ -3829,10 +3960,8 @@ impl VM {
             let key = elements[i].clone();
             let mut j = i;
             while j > 0 {
-                let cmp_result = self.call_callable_sync(
-                    &comparator,
-                    vec![elements[j - 1].clone(), key.clone()],
-                )?;
+                let cmp_result = self
+                    .call_callable_sync(&comparator, vec![elements[j - 1].clone(), key.clone()])?;
                 let should_swap = match cmp_result {
                     Value::Integer(n) => n > 0,
                     Value::Boolean(b) => b, // Treat true as "should swap"
@@ -4161,7 +4290,7 @@ impl VM {
                 return Err(RuntimeError::new(
                     format!("take expects Integer, got {}", total.type_name()),
                     line,
-                ))
+                ));
             }
         };
 
@@ -4335,7 +4464,10 @@ impl VM {
                     }
                 }
                 _ => Err(RuntimeError::new(
-                    format!("LazySequence index must be Integer, got {}", index.type_name()),
+                    format!(
+                        "LazySequence index must be Integer, got {}",
+                        index.type_name()
+                    ),
                     line,
                 )),
             },

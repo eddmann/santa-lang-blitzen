@@ -45,11 +45,15 @@ fn cli_run_script_with_pipeline() {
 #[test]
 fn cli_run_aoc_solution() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         input: "10\n20\n30"
         part_one: input |> lines |> map(|x| int(x)) |> sum
         part_two: input |> lines |> map(|x| int(x) * 2) |> sum
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg(file.path())
@@ -62,7 +66,9 @@ fn cli_run_aoc_solution() {
 #[test]
 fn cli_run_tests_passing() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         input: "1\n2\n3"
         part_one: input |> lines |> map(|x| int(x)) |> sum
 
@@ -70,7 +76,9 @@ fn cli_run_tests_passing() {
             input: "1\n2\n3"
             part_one: 6
         }}
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg("-t")
@@ -83,7 +91,9 @@ fn cli_run_tests_passing() {
 #[test]
 fn cli_run_tests_failing() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         input: "1\n2\n3"
         part_one: input |> lines |> map(|x| int(x)) |> sum
 
@@ -91,13 +101,15 @@ fn cli_run_tests_failing() {
             input: "1\n2\n3"
             part_one: 100
         }}
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg("-t")
         .arg(file.path())
         .assert()
-        .code(3)  // Test failure exit code
+        .code(3) // Test failure exit code
         .stdout(predicate::str::contains("Some tests failed!"));
 }
 
@@ -106,31 +118,31 @@ fn cli_error_file_not_found() {
     santa_cli()
         .arg("/nonexistent/file.santa")
         .assert()
-        .code(1)  // Argument error
+        .code(1) // Argument error
         .stderr(predicate::str::contains("Error reading file"));
 }
 
 #[test]
 fn cli_error_parse_error() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, "let x = ").unwrap();  // Incomplete expression
+    writeln!(file, "let x = ").unwrap(); // Incomplete expression
 
     santa_cli()
         .arg(file.path())
         .assert()
-        .code(2)  // Runtime/parse error
+        .code(2) // Runtime/parse error
         .stderr(predicate::str::contains("error"));
 }
 
 #[test]
 fn cli_error_runtime_error() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, "1 / 0").unwrap();  // Division by zero
+    writeln!(file, "1 / 0").unwrap(); // Division by zero
 
     santa_cli()
         .arg(file.path())
         .assert()
-        .code(2)  // Runtime error
+        .code(2) // Runtime error
         .stderr(predicate::str::contains("Division by zero"));
 }
 
@@ -187,13 +199,17 @@ fn cli_no_args_shows_help() {
 #[test]
 fn integration_fibonacci_recursive() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         let fib = |n| {{
             if n > 1 {{ fib(n - 1) + fib(n - 2) }}
             else {{ n }}
         }};
         fib(20)
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg(file.path())
@@ -209,7 +225,9 @@ fn integration_aoc_day1_style() {
     // Input has 3 groups: (1000+2000+3000=6000), (4000), (5000+6000=11000)
     // Part 1: max = 11000
     // Part 2: top 3 sums = 11000 + 6000 + 4000 = 21000
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         input: "1000\n2000\n3000\n\n4000\n\n5000\n6000"
 
         let parse_inventories = split("\n\n") >> map(ints >> sum);
@@ -231,7 +249,9 @@ fn integration_aoc_day1_style() {
             part_one: 11000
             part_two: 21000
         }}
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg("-t")
@@ -245,7 +265,9 @@ fn integration_aoc_day1_style() {
 #[test]
 fn integration_word_frequency() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         let text = "hello world hello santa hello world";
 
         text
@@ -256,7 +278,9 @@ fn integration_word_frequency() {
             |> list
             |> sort(|[_, a], [_, b]| a > b)
             |> take(3)
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg(file.path())
@@ -271,14 +295,18 @@ fn integration_word_frequency() {
 #[test]
 fn integration_prime_numbers() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         let is_prime = |n| {{
             if n < 2 {{ return false }};
             (2..n) |> all?(|d| n % d != 0)
         }};
 
         (1..) |> filter(is_prime) |> take(10) |> list
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg(file.path())
@@ -293,14 +321,18 @@ fn integration_prime_numbers() {
 #[test]
 fn integration_recursive_list_sum() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         let sum_list = |list| match list {{
             [] {{ 0 }}
             [head, ..tail] {{ head + sum_list(tail) }}
         }};
 
         sum_list([1, 2, 3, 4, 5])
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg(file.path())
@@ -314,9 +346,13 @@ fn integration_recursive_list_sum() {
 #[test]
 fn integration_lazy_range_unbounded() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         (1..) |> take(5) |> list
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg(file.path())
@@ -328,9 +364,13 @@ fn integration_lazy_range_unbounded() {
 #[test]
 fn integration_operator_as_function() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         reduce(+, [1, 2, 3, 4, 5])
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg(file.path())
@@ -342,12 +382,16 @@ fn integration_operator_as_function() {
 #[test]
 fn integration_function_composition() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         let double = |x| x * 2;
         let add10 = |x| x + 10;
         let composed = double >> add10;
         composed(5)
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg(file.path())
@@ -359,10 +403,14 @@ fn integration_function_composition() {
 #[test]
 fn integration_partial_application() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         let add10 = _ + 10;
         add10(5)
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg(file.path())
@@ -374,10 +422,14 @@ fn integration_partial_application() {
 #[test]
 fn integration_tail_call_optimization() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         let sum_to = |n, acc| if n == 0 {{ acc }} else {{ sum_to(n - 1, acc + n) }};
         sum_to(10000, 0)
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg(file.path())
@@ -389,10 +441,14 @@ fn integration_tail_call_optimization() {
 #[test]
 fn integration_pattern_destructuring() {
     let mut file = NamedTempFile::new().unwrap();
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         let [a, b, ..rest] = [1, 2, 3, 4, 5];
         a + b + sum(rest)
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg(file.path())
@@ -405,10 +461,14 @@ fn integration_pattern_destructuring() {
 fn integration_string_grapheme_indexing() {
     let mut file = NamedTempFile::new().unwrap();
     // Test grapheme cluster indexing per LANG.txt §3.3
-    writeln!(file, r#"
+    writeln!(
+        file,
+        r#"
         let s = "hello";
         s[0]
-    "#).unwrap();
+    "#
+    )
+    .unwrap();
 
     santa_cli()
         .arg(file.path())
