@@ -172,8 +172,7 @@ for day in $(seq -w 1 25); do
         "${HYPERFINE_OPTS[@]}" \
         -n "Blitzen" "$BLITZEN $SANTA_FILE" \
         -n "Baseline" "$BASELINE $SANTA_FILE" \
-        2>&1)
-    EXIT_CODE=$?
+        2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
 
     # Check for timeout
     if [[ $EXIT_CODE -eq 124 ]]; then
