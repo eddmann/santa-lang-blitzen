@@ -1941,7 +1941,6 @@ mod runtime_tests {
     #[test]
     fn eval_set_difference() {
         // Note: Using {2, 2} instead of {2} because single-element {n} parses as block
-        // TODO: Fix parser to handle single-element sets in expression position
         let result = eval("{1, 2, 3} - {2, 2}").unwrap();
         match result {
             Value::Set(s) => {

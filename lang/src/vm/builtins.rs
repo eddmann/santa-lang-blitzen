@@ -594,18 +594,7 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         | BuiltinId::Memoize
         | BuiltinId::Sum
         | BuiltinId::Size => {
-            // TODO: memoize implementation (Phase 14+)
-            // Per LANG.txt §11.16, memoize returns a cached version of a function.
-            // Implementation requires:
-            // 1. Wrapping the input function in a MemoizedFunction value type
-            // 2. MemoizedFunction contains: original function + HashMap<args, result> cache
-            // 3. VM runtime needs special handling for MemoizedFunction calls:
-            //    - Check cache using args as key (requires Value to be hashable)
-            //    - If cached, return cached result
-            //    - Otherwise, call original function, cache result, return
-            // 4. Cache key is the tuple of arguments (need to handle multi-arg functions)
-            // 5. Cache should use im::HashMap for persistence/cloning
-            // See LANG.txt §11.16 example: fib(50) should be fast with memoization
+            // These builtins require callback support and are handled directly by the VM
             Err(RuntimeError::new(
                 format!(
                     "{} requires callback support - should be handled by VM",

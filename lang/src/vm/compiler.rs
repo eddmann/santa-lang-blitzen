@@ -1325,10 +1325,6 @@ impl Compiler {
         self.chunk().functions.push(Rc::new(compiled_fn));
         self.emit_with_operand(OpCode::MakeClosure, fn_idx as u8);
 
-        // Emit upvalue descriptions (captured variables)
-        // For now, this is a simplified implementation
-        // TODO: Proper upvalue handling in Phase 8
-
         Ok(())
     }
 
