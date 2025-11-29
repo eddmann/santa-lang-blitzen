@@ -16,8 +16,8 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # Default settings
-WARMUP=3
-RUNS=10
+WARMUP=5
+RUNS=20
 IGNORE_FAILURES=false
 
 usage() {
@@ -87,6 +87,9 @@ if [[ ! -f "$BASELINE" ]]; then
     exit 1
 fi
 
+# Convert to absolute path
+BASELINE="$(cd "$(dirname "$BASELINE")" && pwd)/$(basename "$BASELINE")"
+
 if ! command -v hyperfine &> /dev/null; then
     echo -e "${RED}Error: hyperfine is not installed${NC}"
     echo "Install with: brew install hyperfine"
@@ -144,8 +147,6 @@ for day in $(seq -w 1 25); do
         continue
     fi
 
-    echo -e "${BOLD}Day $day${NC}"
-
     # Run hyperfine and capture JSON output
     JSON_FILE=$(mktemp)
 
@@ -153,31 +154,60 @@ for day in $(seq -w 1 25); do
         --warmup "$WARMUP"
         --runs "$RUNS"
         --export-json "$JSON_FILE"
+        --shell=none
     )
 
     if [[ "$IGNORE_FAILURES" == "true" ]]; then
         HYPERFINE_OPTS+=(--ignore-failure)
     fi
 
-    hyperfine \
+    HYPERFINE_OUTPUT=$(hyperfine \
         "${HYPERFINE_OPTS[@]}" \
         -n "Blitzen" "$BLITZEN $SANTA_FILE" \
         -n "Baseline" "$BASELINE $SANTA_FILE" \
-        2>&1 || true
+        2>&1) || true
 
     # Extract times from JSON
     BLITZEN_TIME=$(jq -r '.results[] | select(.command | contains("Blitzen")) | .mean' "$JSON_FILE" 2>/dev/null || echo "N/A")
     BASELINE_TIME=$(jq -r '.results[] | select(.command | contains("Baseline")) | .mean' "$JSON_FILE" 2>/dev/null || echo "N/A")
 
+    # Print compact single-line result
     if [[ "$BLITZEN_TIME" != "N/A" && "$BASELINE_TIME" != "N/A" ]]; then
         RATIO=$(echo "scale=2; $BLITZEN_TIME / $BASELINE_TIME" | bc)
         BLITZEN_MS=$(echo "scale=1; $BLITZEN_TIME * 1000" | bc)
         BASELINE_MS=$(echo "scale=1; $BASELINE_TIME * 1000" | bc)
+
+        # Color the ratio based on performance
+        if (( $(echo "$RATIO < 1" | bc -l) )); then
+            RATIO_COLOR="${GREEN}"
+            INDICATOR="▲"
+        elif (( $(echo "$RATIO > 1.1" | bc -l) )); then
+            RATIO_COLOR="${RED}"
+            INDICATOR="▼"
+        else
+            RATIO_COLOR="${NC}"
+            INDICATOR="≈"
+        fi
+
+        printf "${BOLD}Day %s${NC}  Blitzen: %7.1fms  Baseline: %7.1fms  ${RATIO_COLOR}%s %.2fx${NC}\n" \
+            "$day" "$BLITZEN_MS" "$BASELINE_MS" "$INDICATOR" "$RATIO"
+
         echo "| Day $day | ${BLITZEN_MS}ms | ${BASELINE_MS}ms | ${RATIO}x |" >> "$RESULTS_FILE"
+    else
+        printf "${BOLD}Day %s${NC}  ${RED}Failed${NC}\n" "$day"
+
+        # Check for failures and print error details
+        if [[ "$IGNORE_FAILURES" == "true" && "$HYPERFINE_OUTPUT" == *"Ignoring non-zero exit code"* ]]; then
+            BLITZEN_ERROR=$("$BLITZEN" "$SANTA_FILE" 2>&1) || {
+                echo -e "  ${RED}Blitzen:${NC} $(echo "$BLITZEN_ERROR" | head -1)"
+            }
+            BASELINE_ERROR=$("$BASELINE" "$SANTA_FILE" 2>&1) || {
+                echo -e "  ${RED}Baseline:${NC} $(echo "$BASELINE_ERROR" | head -1)"
+            }
+        fi
     fi
 
     rm -f "$JSON_FILE"
-    echo ""
 done
 
 echo "" >> "$RESULTS_FILE"
