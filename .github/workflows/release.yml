@@ -13,7 +13,7 @@ jobs:
     name: Build CLI
     runs-on: ${{ matrix.os }}
     permissions:
-      contents: write
+      contents: read
     env:
       CARGO_TERM_COLOR: always
     strategy:
@@ -70,6 +70,9 @@ jobs:
     name: Build Docker
     runs-on: ubuntu-24.04
     needs: build-cli
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Download Linux x86_64 binary
         uses: actions/download-artifact@v4
@@ -98,19 +101,22 @@ jobs:
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Build image
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/eddmann/santa-lang-blitzen-cli:${{ inputs.version }}
+          push: true
+          tags: |
+            ghcr.io/eddmann/santa-lang-blitzen-cli:${{ inputs.version }}
+            ghcr.io/eddmann/santa-lang-blitzen-cli:latest
           labels: org.opencontainers.image.source=https://github.com/eddmann/santa-lang-blitzen
-          outputs: type=oci,dest=/tmp/santa-lang-blitzen-cli.tar
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-image
-          path: /tmp/santa-lang-blitzen-cli.tar
 
   release:
     name: Create Release
@@ -118,11 +124,11 @@ jobs:
     needs: [build-cli, build-docker]
     permissions:
       contents: write
-      packages: write
     steps:
-      - name: Download all artifacts
+      - name: Download CLI artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: santa-cli-*
           path: ./artifacts
       - name: Prepare release assets
         run: |
@@ -131,20 +137,6 @@ jobs:
             chmod +x artifacts/santa-cli-${target}/santa-cli
             tar -czvf release/santa-cli-${{ inputs.version }}-${target}.tar.gz -C artifacts/santa-cli-${target} santa-cli
           done
-          mv artifacts/docker-image/santa-lang-blitzen-cli.tar release/santa-lang-blitzen-cli-${{ inputs.version }}-docker.tar
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Push Docker image
-        run: |
-          # Load and push the OCI image
-          docker load < release/santa-lang-blitzen-cli-${{ inputs.version }}-docker.tar
-          docker tag ghcr.io/eddmann/santa-lang-blitzen-cli:${{ inputs.version }} ghcr.io/eddmann/santa-lang-blitzen-cli:latest
-          docker push ghcr.io/eddmann/santa-lang-blitzen-cli:${{ inputs.version }}
-          docker push ghcr.io/eddmann/santa-lang-blitzen-cli:latest
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
