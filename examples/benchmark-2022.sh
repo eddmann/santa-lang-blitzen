@@ -172,14 +172,22 @@ for day in $(seq -w 1 25); do
         "${HYPERFINE_OPTS[@]}" \
         -n "Blitzen" "$BLITZEN $SANTA_FILE" \
         -n "Baseline" "$BASELINE $SANTA_FILE" \
-        2>&1) || true
+        2>&1)
+    EXIT_CODE=$?
+
+    # Check for timeout
+    if [[ $EXIT_CODE -eq 124 ]]; then
+        printf "${BOLD}Day %s${NC}  ${RED}TIMEOUT${NC}\n" "$day"
+        rm -f "$JSON_FILE"
+        continue
+    fi
 
     # Extract times from JSON
-    BLITZEN_TIME=$(jq -r '.results[] | select(.command | contains("Blitzen")) | .mean' "$JSON_FILE" 2>/dev/null || echo "N/A")
-    BASELINE_TIME=$(jq -r '.results[] | select(.command | contains("Baseline")) | .mean' "$JSON_FILE" 2>/dev/null || echo "N/A")
+    BLITZEN_TIME=$(jq -r '.results[] | select(.command | contains("Blitzen")) | .mean' "$JSON_FILE" 2>/dev/null)
+    BASELINE_TIME=$(jq -r '.results[] | select(.command | contains("Baseline")) | .mean' "$JSON_FILE" 2>/dev/null)
 
     # Print compact single-line result
-    if [[ "$BLITZEN_TIME" != "N/A" && "$BASELINE_TIME" != "N/A" ]]; then
+    if [[ -n "$BLITZEN_TIME" && -n "$BASELINE_TIME" && "$BLITZEN_TIME" != "null" && "$BASELINE_TIME" != "null" ]]; then
         RATIO=$(echo "scale=2; $BLITZEN_TIME / $BASELINE_TIME" | bc)
         BLITZEN_MS=$(echo "scale=1; $BLITZEN_TIME * 1000" | bc)
         BASELINE_MS=$(echo "scale=1; $BASELINE_TIME * 1000" | bc)
