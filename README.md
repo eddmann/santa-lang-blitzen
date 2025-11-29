@@ -35,7 +35,7 @@ The **FrostByte** bytecode format includes instructions for stack manipulation, 
 ## Building
 
 ```bash
-cargo build --release -p santa-cli
+make release
 ```
 
 The binary will be at `target/release/santa-cli`.
@@ -44,12 +44,20 @@ The binary will be at `target/release/santa-cli`.
 
 ```bash
 # Run a solution
-santa-cli examples/aoc2022_day01.santa
+make run FILE=examples/aoc2022_day01.santa
 
 # Run tests defined in a solution
-santa-cli -t examples/aoc2022_day01.santa
+make run-test FILE=examples/aoc2022_day01.santa
 
 # Interactive REPL
+make repl
+```
+
+Or use the CLI directly:
+
+```bash
+santa-cli examples/aoc2022_day01.santa
+santa-cli -t examples/aoc2022_day01.santa
 santa-cli -r
 ```
 
@@ -100,6 +108,20 @@ Key language features shown:
 - **`>>`** - Function composition
 - **`test:`** - Inline test cases with expected values
 
+## Development
+
+Run `make help` to see all available targets:
+
+```bash
+make help          # Show all targets
+make can-release   # Run all CI checks (lint + test)
+make lint          # Run rustfmt check and clippy
+make fmt           # Format code
+make test          # Run all tests
+make bench         # Run criterion benchmarks
+make test-examples # Run example test suite
+```
+
 ## Scripts
 
 ### Test Runner
@@ -107,6 +129,8 @@ Key language features shown:
 Run all example solutions in test mode:
 
 ```bash
+make test-examples
+# or directly:
 ./examples/run-tests.sh
 ```
 
@@ -166,7 +190,7 @@ Results are saved to `benchmark-results/` as markdown tables.
 Run micro-benchmarks for VM components:
 
 ```bash
-cargo bench
+make bench
 ```
 
 HTML reports are generated in `target/criterion/`.
