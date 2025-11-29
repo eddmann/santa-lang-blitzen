@@ -15,7 +15,7 @@ Both implementations support the same language features:
 - First-class functions and closures
 - Lazy sequences and infinite ranges
 - Pattern matching with guards
-- 58+ built-in functions
+- 70+ built-in functions
 
 ## Architecture
 
