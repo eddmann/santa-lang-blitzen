@@ -30,7 +30,7 @@ usage() {
     echo "Options:"
     echo "  -w, --warmup N        Number of warmup runs (default: $WARMUP)"
     echo "  -r, --runs N          Number of benchmark runs (default: $RUNS)"
-    echo "  -t, --timeout N       Time limit per benchmark in seconds (default: $TIMEOUT)"
+    echo "  -t, --timeout N       Timeout per day in seconds (default: $TIMEOUT)"
     echo "  -i, --ignore-failures Continue on benchmark failures"
     echo "  -h, --help            Show this help message"
     echo ""
@@ -124,7 +124,7 @@ echo "  Blitzen:  $BLITZEN"
 echo "  Baseline: $BASELINE"
 echo "  Warmup:   $WARMUP runs"
 echo "  Runs:     $RUNS"
-echo "  Timeout:  ${TIMEOUT}s per benchmark"
+echo "  Timeout:  ${TIMEOUT}s per day"
 echo "  Ignore failures: $IGNORE_FAILURES"
 echo ""
 
@@ -160,7 +160,6 @@ for day in $(seq -w 1 25); do
     HYPERFINE_OPTS=(
         --warmup "$WARMUP"
         --runs "$RUNS"
-        --time-limit "$TIMEOUT"
         --export-json "$JSON_FILE"
         --shell=none
     )
@@ -169,7 +168,7 @@ for day in $(seq -w 1 25); do
         HYPERFINE_OPTS+=(--ignore-failure)
     fi
 
-    HYPERFINE_OUTPUT=$(hyperfine \
+    HYPERFINE_OUTPUT=$(timeout "$TIMEOUT" hyperfine \
         "${HYPERFINE_OPTS[@]}" \
         -n "Blitzen" "$BLITZEN $SANTA_FILE" \
         -n "Baseline" "$BASELINE $SANTA_FILE" \
