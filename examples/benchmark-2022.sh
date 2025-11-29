@@ -18,6 +18,7 @@ NC='\033[0m'
 # Default settings
 WARMUP=5
 RUNS=20
+TIMEOUT=120
 IGNORE_FAILURES=false
 
 usage() {
@@ -29,6 +30,7 @@ usage() {
     echo "Options:"
     echo "  -w, --warmup N        Number of warmup runs (default: $WARMUP)"
     echo "  -r, --runs N          Number of benchmark runs (default: $RUNS)"
+    echo "  -t, --timeout N       Time limit per benchmark in seconds (default: $TIMEOUT)"
     echo "  -i, --ignore-failures Continue on benchmark failures"
     echo "  -h, --help            Show this help message"
     echo ""
@@ -52,6 +54,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -r|--runs)
             RUNS="$2"
+            shift 2
+            ;;
+        -t|--timeout)
+            TIMEOUT="$2"
             shift 2
             ;;
         -i|--ignore-failures)
@@ -118,6 +124,7 @@ echo "  Blitzen:  $BLITZEN"
 echo "  Baseline: $BASELINE"
 echo "  Warmup:   $WARMUP runs"
 echo "  Runs:     $RUNS"
+echo "  Timeout:  ${TIMEOUT}s per benchmark"
 echo "  Ignore failures: $IGNORE_FAILURES"
 echo ""
 
@@ -153,6 +160,7 @@ for day in $(seq -w 1 25); do
     HYPERFINE_OPTS=(
         --warmup "$WARMUP"
         --runs "$RUNS"
+        --time-limit "$TIMEOUT"
         --export-json "$JSON_FILE"
         --shell=none
     )
