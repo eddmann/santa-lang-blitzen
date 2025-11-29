@@ -1,5 +1,7 @@
 # santa-lang Blitzen
 
+![santa-lang Blitzen](README/heading.png)
+
 A bytecode virtual machine implementation of [santa-lang](https://github.com/eddmann/santa-lang), a functional, expression-oriented language designed for solving Advent of Code puzzles.
 
 ## Overview
