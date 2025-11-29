@@ -2065,7 +2065,13 @@ impl VM {
                 loop {
                     match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
                         Some(value) => {
-                            let result = self.call_closure_sync(predicate, vec![value.clone()])?;
+                            // Swallow errors in filter predicates, treating them as "false"
+                            // This matches reference behavior where filter callbacks that error
+                            // are treated as if the element doesn't pass the filter
+                            let result = match self.call_closure_sync(predicate, vec![value.clone()]) {
+                                Ok(v) => v,
+                                Err(_) => continue,
+                            };
                             if result.is_truthy() {
                                 return Ok(Some(value));
                             }
@@ -2319,7 +2325,11 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    let keep = self.call_callable_sync(&predicate, call_args)?;
+                    // Swallow errors in filter predicates, treating them as "false"
+                    let keep = match self.call_callable_sync(&predicate, call_args) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
                     if keep.is_truthy() {
                         result.push_back(elem.clone());
                     }
@@ -2329,7 +2339,11 @@ impl VM {
             Value::Set(set) => {
                 let mut result = HashSet::new();
                 for elem in set.iter() {
-                    let keep = self.call_callable_sync(&predicate, vec![elem.clone()])?;
+                    // Swallow errors in filter predicates, treating them as "false"
+                    let keep = match self.call_callable_sync(&predicate, vec![elem.clone()]) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
                     if keep.is_truthy() {
                         result.insert(elem.clone());
                     }
@@ -2344,7 +2358,11 @@ impl VM {
                     } else {
                         vec![value.clone()]
                     };
-                    let keep = self.call_callable_sync(&predicate, call_args)?;
+                    // Swallow errors in filter predicates, treating them as "false"
+                    let keep = match self.call_callable_sync(&predicate, call_args) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
                     if keep.is_truthy() {
                         result.insert(key.clone(), value.clone());
                     }
@@ -2361,7 +2379,11 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    let keep = self.call_callable_sync(&predicate, call_args)?;
+                    // Swallow errors in filter predicates, treating them as "false"
+                    let keep = match self.call_callable_sync(&predicate, call_args) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
                     if keep.is_truthy() {
                         result.push_back(elem);
                     }
@@ -2384,7 +2406,11 @@ impl VM {
                                 let actual_end = if *inclusive { *e } else { e - 1 };
                                 if start <= &actual_end {
                                     for i in *start..=actual_end {
-                                        let keep = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
+                                        // Swallow errors in filter predicates, treating them as "false"
+                                        let keep = match self.call_callable_sync(&predicate, vec![Value::Integer(i)]) {
+                                            Ok(v) => v,
+                                            Err(_) => continue,
+                                        };
                                         if keep.is_truthy() {
                                             result.push_back(Value::Integer(i));
                                         }

@@ -1945,10 +1945,15 @@ fn collection_finite_len(value: &Value) -> Option<usize> {
             inclusive,
         } => match end {
             Some(e) => {
+                // For exclusive ranges where start >= end, the range is empty
+                if !*inclusive && *start >= *e {
+                    return Some(0);
+                }
                 let actual_end = if *inclusive { *e } else { e - 1 };
                 if start <= &actual_end {
                     Some((actual_end - start + 1) as usize)
                 } else {
+                    // Descending range (inclusive only reaches here)
                     Some((start - actual_end + 1) as usize)
                 }
             }
