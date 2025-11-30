@@ -1,3 +1,4 @@
+use ordered_float::OrderedFloat;
 use std::rc::Rc;
 
 use crate::lexer::Span;
@@ -9,6 +10,133 @@ use crate::parser::ast::{
 use super::builtins::BuiltinId;
 use super::bytecode::{Chunk, CompiledFunction, OpCode};
 use super::value::Value;
+
+/// Constant folding: attempt to evaluate constant expressions at compile time.
+/// Returns Some(Value) if the expression can be folded, None otherwise.
+fn try_fold_constant(expr: &SpannedExpr) -> Option<Value> {
+    match &expr.node {
+        // Literals are trivially constant
+        Expr::Integer(n) => Some(Value::Integer(*n)),
+        Expr::Decimal(n) => Some(Value::Decimal(OrderedFloat(*n))),
+        Expr::String(s) => Some(Value::String(Rc::new(s.clone()))),
+        Expr::Boolean(b) => Some(Value::Boolean(*b)),
+        Expr::Nil => Some(Value::Nil),
+
+        // Prefix operations on constants
+        Expr::Prefix { op, right } => {
+            let right_val = try_fold_constant(right)?;
+            match (op, right_val) {
+                (PrefixOp::Neg, Value::Integer(n)) => Some(Value::Integer(-n)),
+                (PrefixOp::Neg, Value::Decimal(n)) => Some(Value::Decimal(-n)),
+                (PrefixOp::Not, Value::Boolean(b)) => Some(Value::Boolean(!b)),
+                // Not on other types uses truthiness, but we keep it simple
+                _ => None,
+            }
+        }
+
+        // Infix operations on constants
+        Expr::Infix { left, op, right } => {
+            let left_val = try_fold_constant(left)?;
+            let right_val = try_fold_constant(right)?;
+            fold_infix(left_val, *op, right_val)
+        }
+
+        // Anything else (identifiers, function calls, etc.) is not constant
+        _ => None,
+    }
+}
+
+/// Fold an infix operation on two constant values
+fn fold_infix(left: Value, op: InfixOp, right: Value) -> Option<Value> {
+    match (left, op, right) {
+        // Integer arithmetic
+        (Value::Integer(a), InfixOp::Add, Value::Integer(b)) => Some(Value::Integer(a.wrapping_add(b))),
+        (Value::Integer(a), InfixOp::Sub, Value::Integer(b)) => Some(Value::Integer(a.wrapping_sub(b))),
+        (Value::Integer(a), InfixOp::Mul, Value::Integer(b)) => Some(Value::Integer(a.wrapping_mul(b))),
+        (Value::Integer(a), InfixOp::Div, Value::Integer(b)) if b != 0 => Some(Value::Integer(a / b)),
+        (Value::Integer(a), InfixOp::Mod, Value::Integer(b)) if b != 0 => {
+            // Python-style floored modulo
+            Some(Value::Integer(((a % b) + b) % b))
+        }
+
+        // Decimal arithmetic
+        (Value::Decimal(a), InfixOp::Add, Value::Decimal(b)) => Some(Value::Decimal(a + b)),
+        (Value::Decimal(a), InfixOp::Sub, Value::Decimal(b)) => Some(Value::Decimal(a - b)),
+        (Value::Decimal(a), InfixOp::Mul, Value::Decimal(b)) => Some(Value::Decimal(a * b)),
+        (Value::Decimal(a), InfixOp::Div, Value::Decimal(b)) if *b != 0.0 => Some(Value::Decimal(a / b)),
+
+        // Mixed integer/decimal arithmetic - left operand determines result type (LANG.txt §4.1)
+        (Value::Integer(a), InfixOp::Add, Value::Decimal(b)) => {
+            Some(Value::Integer((a as f64 + *b) as i64))
+        }
+        (Value::Decimal(a), InfixOp::Add, Value::Integer(b)) => {
+            Some(Value::Decimal(OrderedFloat(*a + b as f64)))
+        }
+        (Value::Integer(a), InfixOp::Sub, Value::Decimal(b)) => {
+            Some(Value::Integer((a as f64 - *b) as i64))
+        }
+        (Value::Decimal(a), InfixOp::Sub, Value::Integer(b)) => {
+            Some(Value::Decimal(OrderedFloat(*a - b as f64)))
+        }
+        (Value::Integer(a), InfixOp::Mul, Value::Decimal(b)) => {
+            Some(Value::Integer((a as f64 * *b) as i64))
+        }
+        (Value::Decimal(a), InfixOp::Mul, Value::Integer(b)) => {
+            Some(Value::Decimal(OrderedFloat(*a * b as f64)))
+        }
+        (Value::Integer(a), InfixOp::Div, Value::Decimal(b)) if *b != 0.0 => {
+            Some(Value::Integer((a as f64 / *b) as i64))
+        }
+        (Value::Decimal(a), InfixOp::Div, Value::Integer(b)) if b != 0 => {
+            Some(Value::Decimal(OrderedFloat(*a / b as f64)))
+        }
+
+        // String concatenation
+        (Value::String(a), InfixOp::Add, Value::String(b)) => {
+            Some(Value::String(Rc::new(format!("{}{}", *a, *b))))
+        }
+
+        // Integer comparisons
+        (Value::Integer(a), InfixOp::Eq, Value::Integer(b)) => Some(Value::Boolean(a == b)),
+        (Value::Integer(a), InfixOp::Ne, Value::Integer(b)) => Some(Value::Boolean(a != b)),
+        (Value::Integer(a), InfixOp::Lt, Value::Integer(b)) => Some(Value::Boolean(a < b)),
+        (Value::Integer(a), InfixOp::Le, Value::Integer(b)) => Some(Value::Boolean(a <= b)),
+        (Value::Integer(a), InfixOp::Gt, Value::Integer(b)) => Some(Value::Boolean(a > b)),
+        (Value::Integer(a), InfixOp::Ge, Value::Integer(b)) => Some(Value::Boolean(a >= b)),
+
+        // Decimal comparisons
+        (Value::Decimal(a), InfixOp::Eq, Value::Decimal(b)) => Some(Value::Boolean(a == b)),
+        (Value::Decimal(a), InfixOp::Ne, Value::Decimal(b)) => Some(Value::Boolean(a != b)),
+        (Value::Decimal(a), InfixOp::Lt, Value::Decimal(b)) => Some(Value::Boolean(a < b)),
+        (Value::Decimal(a), InfixOp::Le, Value::Decimal(b)) => Some(Value::Boolean(a <= b)),
+        (Value::Decimal(a), InfixOp::Gt, Value::Decimal(b)) => Some(Value::Boolean(a > b)),
+        (Value::Decimal(a), InfixOp::Ge, Value::Decimal(b)) => Some(Value::Boolean(a >= b)),
+
+        // Boolean comparisons
+        (Value::Boolean(a), InfixOp::Eq, Value::Boolean(b)) => Some(Value::Boolean(a == b)),
+        (Value::Boolean(a), InfixOp::Ne, Value::Boolean(b)) => Some(Value::Boolean(a != b)),
+
+        // String comparisons
+        (Value::String(a), InfixOp::Eq, Value::String(b)) => Some(Value::Boolean(*a == *b)),
+        (Value::String(a), InfixOp::Ne, Value::String(b)) => Some(Value::Boolean(*a != *b)),
+        (Value::String(a), InfixOp::Lt, Value::String(b)) => Some(Value::Boolean(*a < *b)),
+        (Value::String(a), InfixOp::Le, Value::String(b)) => Some(Value::Boolean(*a <= *b)),
+        (Value::String(a), InfixOp::Gt, Value::String(b)) => Some(Value::Boolean(*a > *b)),
+        (Value::String(a), InfixOp::Ge, Value::String(b)) => Some(Value::Boolean(*a >= *b)),
+
+        // Boolean logical operations (note: && and || have short-circuit semantics
+        // but for constants we can evaluate them directly)
+        (Value::Boolean(a), InfixOp::And, Value::Boolean(b)) => Some(Value::Boolean(a && b)),
+        (Value::Boolean(a), InfixOp::Or, Value::Boolean(b)) => Some(Value::Boolean(a || b)),
+
+        // Nil comparisons
+        (Value::Nil, InfixOp::Eq, Value::Nil) => Some(Value::Boolean(true)),
+        (Value::Nil, InfixOp::Ne, Value::Nil) => Some(Value::Boolean(false)),
+
+        // Anything else cannot be folded
+        _ => None,
+    }
+}
 
 /// Compile error with source location
 #[derive(Debug, Clone)]
@@ -271,6 +399,17 @@ impl Compiler {
         Ok(())
     }
 
+    /// Emit a folded constant, using specialized opcodes when available
+    fn emit_folded_constant(&mut self, value: Value) -> Result<(), CompileError> {
+        match value {
+            Value::Boolean(true) => self.emit(OpCode::True),
+            Value::Boolean(false) => self.emit(OpCode::False),
+            Value::Nil => self.emit(OpCode::Nil),
+            _ => self.emit_constant(value)?,
+        }
+        Ok(())
+    }
+
     /// Emit a jump instruction and return the offset for patching
     fn emit_jump(&mut self, op: OpCode) -> usize {
         self.emit(op);
@@ -289,6 +428,14 @@ impl Compiler {
     fn expression(&mut self, expr: &SpannedExpr) -> Result<(), CompileError> {
         self.current_line = expr.span.line;
 
+        // Try constant folding for prefix and infix expressions
+        // This is checked before the match to handle nested constant expressions
+        if matches!(expr.node, Expr::Prefix { .. } | Expr::Infix { .. })
+            && let Some(value) = try_fold_constant(expr)
+        {
+            return self.emit_folded_constant(value);
+        }
+
         match &expr.node {
             // Literals
             Expr::Integer(n) => self.emit_constant(Value::Integer(*n))?,
@@ -300,7 +447,7 @@ impl Compiler {
             Expr::Boolean(false) => self.emit(OpCode::False),
             Expr::Nil => self.emit(OpCode::Nil),
 
-            // Prefix operations
+            // Prefix operations (if we get here, constant folding didn't apply)
             Expr::Prefix { op, right } => {
                 self.expression(right)?;
                 match op {
