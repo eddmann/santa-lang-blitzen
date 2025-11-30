@@ -581,10 +581,8 @@ mod compiler_tests {
             "1 + 2",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (1)
-                0002 [   1] Constant 1 (2)
-                0004 [   1] Add
-                0005 [   1] Return
+                0000 [   1] Constant 0 (3)
+                0002 [   1] Return
             "#]],
         );
     }
@@ -595,10 +593,8 @@ mod compiler_tests {
             "10 - 3",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (10)
-                0002 [   1] Constant 1 (3)
-                0004 [   1] Sub
-                0005 [   1] Return
+                0000 [   1] Constant 0 (7)
+                0002 [   1] Return
             "#]],
         );
     }
@@ -609,10 +605,8 @@ mod compiler_tests {
             "4 * 5",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (4)
-                0002 [   1] Constant 1 (5)
-                0004 [   1] Mul
-                0005 [   1] Return
+                0000 [   1] Constant 0 (20)
+                0002 [   1] Return
             "#]],
         );
     }
@@ -623,10 +617,8 @@ mod compiler_tests {
             "20 / 4",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (20)
-                0002 [   1] Constant 1 (4)
-                0004 [   1] Div
-                0005 [   1] Return
+                0000 [   1] Constant 0 (5)
+                0002 [   1] Return
             "#]],
         );
     }
@@ -637,10 +629,8 @@ mod compiler_tests {
             "17 % 5",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (17)
-                0002 [   1] Constant 1 (5)
-                0004 [   1] Mod
-                0005 [   1] Return
+                0000 [   1] Constant 0 (2)
+                0002 [   1] Return
             "#]],
         );
     }
@@ -652,12 +642,8 @@ mod compiler_tests {
             "1 + 2 * 3",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (1)
-                0002 [   1] Constant 1 (2)
-                0004 [   1] Constant 2 (3)
-                0006 [   1] Mul
-                0007 [   1] Add
-                0008 [   1] Return
+                0000 [   1] Constant 0 (7)
+                0002 [   1] Return
             "#]],
         );
     }
@@ -669,10 +655,8 @@ mod compiler_tests {
             "1 == 2",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (1)
-                0002 [   1] Constant 1 (2)
-                0004 [   1] Eq
-                0005 [   1] Return
+                0000 [   1] False
+                0001 [   1] Return
             "#]],
         );
 
@@ -680,10 +664,8 @@ mod compiler_tests {
             "1 != 2",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (1)
-                0002 [   1] Constant 1 (2)
-                0004 [   1] Ne
-                0005 [   1] Return
+                0000 [   1] True
+                0001 [   1] Return
             "#]],
         );
 
@@ -691,10 +673,8 @@ mod compiler_tests {
             "1 < 2",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (1)
-                0002 [   1] Constant 1 (2)
-                0004 [   1] Lt
-                0005 [   1] Return
+                0000 [   1] True
+                0001 [   1] Return
             "#]],
         );
 
@@ -702,10 +682,8 @@ mod compiler_tests {
             "1 <= 2",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (1)
-                0002 [   1] Constant 1 (2)
-                0004 [   1] Le
-                0005 [   1] Return
+                0000 [   1] True
+                0001 [   1] Return
             "#]],
         );
 
@@ -713,10 +691,8 @@ mod compiler_tests {
             "1 > 2",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (1)
-                0002 [   1] Constant 1 (2)
-                0004 [   1] Gt
-                0005 [   1] Return
+                0000 [   1] False
+                0001 [   1] Return
             "#]],
         );
 
@@ -724,10 +700,8 @@ mod compiler_tests {
             "1 >= 2",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (1)
-                0002 [   1] Constant 1 (2)
-                0004 [   1] Ge
-                0005 [   1] Return
+                0000 [   1] False
+                0001 [   1] Return
             "#]],
         );
     }
@@ -739,9 +713,8 @@ mod compiler_tests {
             "-42",
             expect![[r#"
                 == test ==
-                0000 [   1] Constant 0 (42)
-                0002 [   1] Neg
-                0003 [   1] Return
+                0000 [   1] Constant 0 (-42)
+                0002 [   1] Return
             "#]],
         );
     }
@@ -752,9 +725,8 @@ mod compiler_tests {
             "!true",
             expect![[r#"
                 == test ==
-                0000 [   1] True
-                0001 [   1] Not
-                0002 [   1] Return
+                0000 [   1] False
+                0001 [   1] Return
             "#]],
         );
     }
@@ -766,10 +738,8 @@ mod compiler_tests {
             "true && false",
             expect![[r#"
                 == test ==
-                0000 [   1] True
-                0001 [   1] PopJumpIfFalse -> 5
-                0004 [   1] False
-                0005 [   1] Return
+                0000 [   1] False
+                0001 [   1] Return
             "#]],
         );
     }
@@ -780,10 +750,8 @@ mod compiler_tests {
             "false || true",
             expect![[r#"
                 == test ==
-                0000 [   1] False
-                0001 [   1] PopJumpIfTrue -> 5
-                0004 [   1] True
-                0005 [   1] Return
+                0000 [   1] True
+                0001 [   1] Return
             "#]],
         );
     }
