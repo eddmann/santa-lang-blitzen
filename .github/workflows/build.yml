@@ -1,16 +1,28 @@
-name: Release
+name: Build
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version number (e.g., 0.1.0)'
-        required: true
-        type: string
+  push:
+    branches:
+      - draft-release
 
 jobs:
+  update-draft-release:
+    name: Update Draft Release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      tag_name: ${{ steps.release_drafter.outputs.tag_name }}
+    steps:
+      - name: Update release draft
+        uses: release-drafter/release-drafter@v6
+        id: release_drafter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build-cli:
     name: Build CLI
+    needs: update-draft-release
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -41,7 +53,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Set release version
         run: |
-          sed -i.bak 's/version = "[0-9.]*"$/version = "${{ inputs.version }}"/' runtime/cli/Cargo.toml
+          sed -i.bak 's/version = "[0-9.]*"$/version = "${{ needs.update-draft-release.outputs.tag_name }}"/' runtime/cli/Cargo.toml
       - name: Install cross-compilation tools (ARM64 Linux)
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
@@ -69,59 +81,44 @@ jobs:
   build-docker:
     name: Build Docker
     runs-on: ubuntu-24.04
-    needs: build-cli
+    needs: [update-draft-release, build-cli]
     permissions:
-      contents: read
-      packages: write
+      contents: write
     steps:
       - name: Download Linux x86_64 binary
         uses: actions/download-artifact@v4
         with:
           name: santa-cli-x86_64-unknown-linux-gnu
           path: ./linux-amd64
-      - name: Download Linux aarch64 binary
-        uses: actions/download-artifact@v4
-        with:
-          name: santa-cli-aarch64-unknown-linux-gnu
-          path: ./linux-arm64
       - name: Create Dockerfile
         run: |
           cat > Dockerfile <<'EOF'
           FROM debian:bookworm-slim
-          ARG TARGETARCH
-          COPY linux-${TARGETARCH}/santa-cli /usr/local/bin/santa-cli
+          COPY linux-amd64/santa-cli /usr/local/bin/santa-cli
           RUN chmod +x /usr/local/bin/santa-cli
           ENTRYPOINT ["/usr/local/bin/santa-cli"]
           EOF
-      - name: Rename directories for Docker
-        run: |
-          mv linux-amd64 linux-amd64-tmp && mkdir linux-amd64 && mv linux-amd64-tmp/santa-cli linux-amd64/
-          mv linux-arm64 linux-arm64-tmp && mkdir linux-arm64 && mv linux-arm64-tmp/santa-cli linux-arm64/
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push image
-        uses: docker/build-push-action@v5
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/eddmann/santa-lang-blitzen-cli:${{ inputs.version }}
-            ghcr.io/eddmann/santa-lang-blitzen-cli:latest
+          platforms: linux/amd64
+          tags: ghcr.io/eddmann/santa-lang-blitzen:cli-latest
           labels: org.opencontainers.image.source=https://github.com/eddmann/santa-lang-blitzen
+          outputs: type=docker,dest=/tmp/santa-cli-docker.tar
+      - name: Upload to release
+        run: |
+          mv /tmp/santa-cli-docker.tar santa-cli-${{ needs.update-draft-release.outputs.tag_name }}-docker.tar
+          gh release upload ${{ needs.update-draft-release.outputs.tag_name }} santa-cli-${{ needs.update-draft-release.outputs.tag_name }}-docker.tar --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  release:
-    name: Create Release
+  upload-release-assets:
+    name: Upload Release Assets
     runs-on: ubuntu-24.04
-    needs: [build-cli, build-docker]
+    needs: [update-draft-release, build-cli]
     permissions:
       contents: write
     steps:
@@ -130,20 +127,12 @@ jobs:
         with:
           pattern: santa-cli-*
           path: ./artifacts
-      - name: Prepare release assets
+      - name: Prepare and upload release assets
         run: |
-          mkdir -p release
           for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin; do
             chmod +x artifacts/santa-cli-${target}/santa-cli
-            tar -czvf release/santa-cli-${{ inputs.version }}-${target}.tar.gz -C artifacts/santa-cli-${target} santa-cli
+            tar -czvf santa-cli-${{ needs.update-draft-release.outputs.tag_name }}-${target}.tar.gz -C artifacts/santa-cli-${target} santa-cli
+            gh release upload ${{ needs.update-draft-release.outputs.tag_name }} santa-cli-${{ needs.update-draft-release.outputs.tag_name }}-${target}.tar.gz --clobber
           done
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ inputs.version }}
-          name: v${{ inputs.version }}
-          files: release/*
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
