@@ -109,6 +109,9 @@ false
 - Escape sequences:
   - `\n` - newline
   - `\t` - tab
+  - `\r` - carriage return
+  - `\b` - backspace
+  - `\f` - form feed
   - `\"` - double quote
   - `\\` - backslash
 
@@ -117,6 +120,7 @@ false
 "Line 1\nLine 2"
 "Tab\tseparated"
 "Quote: \"text\""
+"Windows\r\nline ending"
 ```
 
 #### Boolean Literals
@@ -369,14 +373,19 @@ Some types can be used as Set elements and Dictionary keys (they are "hashable")
 
 #### Addition (`+`)
 - **Integers/Decimals**: Numeric addition
-- **Strings**: Concatenation
+- **Strings**: Concatenation (with type coercion when string is on the left)
 - **Lists**: Concatenation
 - **Sets**: Union
 - **Dictionaries**: Merge (right precedence)
 
+**String coercion**: When the left operand is a String, any right operand is coerced to a string. However, `Integer + String` is NOT supported (produces a runtime error). This asymmetric behavior matches the Rust and TypeScript implementations.
+
 ```santa
 1 + 2                  // 3
 "hello" + " " + "world"  // "hello world"
+"count: " + 42         // "count: 42" (Integer coerced to String)
+"value: " + 3.14       // "value: 3.14" (Decimal coerced to String)
+// 42 + " items"       // ERROR: Cannot add Integer and String
 [1, 2] + [3, 4]        // [1, 2, 3, 4]
 {1, 2} + {2, 3}        // {1, 2, 3}
 #{a: 1} + #{b: 2}      // #{a: 1, b: 2}
@@ -403,13 +412,13 @@ Some types can be used as Set elements and Dictionary keys (they are "hashable")
 ```
 
 #### Division (`/`)
-- **Integers**: Integer division (truncates toward zero)
+- **Integers**: Floored division (Python-style, floors toward negative infinity)
 - **Decimals**: Floating-point division
 
 ```santa
 7 / 2                  // 3
--7 / 2                 // -3 (truncates toward zero, NOT floor)
-7 / -2                 // -3
+-7 / 2                 // -4 (floors toward negative infinity)
+7 / -2                 // -4
 -7 / -2                // 3
 7.0 / 2                // 3.5
 -7.0 / 2               // -3.5
@@ -775,6 +784,14 @@ if condition {
 } else {
   expression2
 }
+
+if condition1 {
+  expression1
+} else if condition2 {
+  expression2
+} else {
+  expression3
+}
 ```
 
 **Examples:**
@@ -783,6 +800,14 @@ if condition {
 let x = if 5 > 3 { "yes" } else { "no" };  // "yes"
 
 let y = if false { 1 };  // nil (no else branch)
+
+// Chained conditions with else if
+let grade = |score| {
+  if score >= 90 { "A" }
+  else if score >= 80 { "B" }
+  else if score >= 70 { "C" }
+  else { "F" }
+};
 
 // With let-binding in condition
 if let x = compute() {
@@ -2544,6 +2569,63 @@ regex_match_all("\\w+: \\w+", "name: Bob, age: 30")
 // ["name: Bob", "age: 30"]
 ```
 
+#### `md5(value)` → String
+Return the MD5 hash of a string as a lowercase hexadecimal string.
+
+**Permitted types:** String
+
+```santa
+md5("hello") // "5d41402abc4b2a76b9719d911017c592"
+md5("") // "d41d8cd98f00b204e9800998ecf8427e"
+md5("Santa") // "7eb8e54e9f3ff5e3dd4e6dc90c18f1b5"
+```
+
+#### `upper(string)` → String
+Convert string to uppercase.
+
+**Permitted types:** String
+
+```santa
+upper("hello")                  // "HELLO"
+upper("Hello World")            // "HELLO WORLD"
+upper("123abc")                 // "123ABC"
+```
+
+#### `lower(string)` → String
+Convert string to lowercase.
+
+**Permitted types:** String
+
+```santa
+lower("HELLO")                  // "hello"
+lower("Hello World")            // "hello world"
+lower("123ABC")                 // "123abc"
+```
+
+#### `replace(pattern, replacement, string)` → String
+Replace all occurrences of pattern with replacement in string.
+
+**Permitted types:** pattern: String, replacement: String, string: String
+
+```santa
+replace("o", "0", "hello world")    // "hell0 w0rld"
+replace(" ", "-", "hello world")    // "hello-world"
+replace("abc", "xyz", "abcabc")     // "xyzxyz"
+replace("x", "y", "hello")          // "hello" (no match)
+```
+
+#### `join(separator, collection)` → String
+Join collection elements into a string with separator between each element.
+
+**Permitted types:** separator: String, collection: List | Set
+
+```santa
+join(", ", [1, 2, 3])               // "1, 2, 3"
+join("-", ["a", "b", "c"])          // "a-b-c"
+join("", ["h", "e", "l", "l", "o"]) // "hello"
+join(", ", #{1, 2, 3})              // "1, 2, 3" (set order may vary)
+```
+
 ### 11.15 Math Functions
 
 #### `abs(value)` → Integer | Decimal
@@ -2806,6 +2888,27 @@ test: {
 }
 ```
 
+#### Slow Test Attribute
+
+Tests that are expensive or take a long time to run can be marked with the `@slow` attribute:
+
+```santa
+@slow
+test: {
+  input: read("aoc://2022/1")
+  part_one: 71300
+  part_two: 209691
+}
+```
+
+Slow tests are **skipped by default** during test execution, allowing for faster iteration during development. To include slow tests, use the `-s` or `--slow` CLI flag:
+
+```bash
+santa-cli -t -s solution.santa
+```
+
+This is useful for tests that validate against the actual puzzle input, which may be computationally expensive compared to the smaller example inputs.
+
 ### 12.3 Complete Example
 
 ```santa
@@ -3010,12 +3113,15 @@ From highest to lowest precedence:
 | 5 | `+` `-` | Left | Addition, subtraction |
 | 6 | `>>` `\|>` `..` `..=` | Left | Composition, pipeline, ranges |
 | 7 | `<` `<=` `>` `>=` | Left | Comparison |
-| 8 | `==` `!=` `=` | Left | Equality, assignment |
-| 9 | `&&` `\|\|` | Left | Logical AND, OR |
+| 8 | `==` `!=` | Left | Equality |
+| 9 | `&&` | Left | Logical AND |
+| 10 | `\|\|` | Left | Logical OR |
+| 11 | `=` | Right | Assignment |
 
 **Important notes:**
-- Pipeline `|>`, composition `>>`, and range operators `..`/`..=` share the same precedence level
-- Assignment `=` has the same precedence as equality operators `==`/`!=`
+- Pipeline `|>`, composition `>>`, and range operators `..`/`..=` share the same precedence level (Composition)
+- This means `1..5 + 1` parses as `1..(5+1)` since `+` binds tighter than `..`
+- Logical AND `&&` binds tighter than OR `||`, so `a || b && c` parses as `a || (b && c)`
 - Infix function calls using backticks have the same precedence as multiplication
 
 ### 14.6 Scoping Rules
@@ -3265,7 +3371,7 @@ literal          ::= integer
 integer          ::= "-"? [0-9] ([0-9_])*
 decimal          ::= "-"? [0-9] ([0-9_])* "." [0-9] ([0-9_])*
 string           ::= '"' (escape_seq | [^"\\])* '"'
-escape_seq       ::= "\\" ("n" | "t" | "\\" | '"')
+escape_seq       ::= "\\" ("n" | "t" | "r" | "b" | "f" | "\\" | '"')
 boolean          ::= "true" | "false"
 nil              ::= "nil"
 
@@ -3355,6 +3461,7 @@ keyword          ::= "let" | "mut" | "if" | "else" | "match"
 | `split` | `(sep, string) -> List[String]` | Split by separator |
 | `regex_match` | `(pattern, string) -> List \| Nil` | Match and capture |
 | `regex_match_all` | `(pattern, string) -> List` | Match all |
+| `md5` | `(string) -> String` | MD5 hash |
 | `abs` | `(value) -> Number` | Absolute value |
 | `signum` | `(value) -> Integer` | Sign of number |
 | `vec_add` | `(a, b) -> List` | Vector addition |

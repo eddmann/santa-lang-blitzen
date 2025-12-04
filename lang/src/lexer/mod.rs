@@ -214,6 +214,11 @@ impl<'a> Lexer<'a> {
                     TokenKind::Underscore
                 }
 
+                '@' => {
+                    self.advance();
+                    TokenKind::At
+                }
+
                 '"' => self.string()?,
 
                 c if c.is_ascii_digit() => self.number()?,
@@ -396,6 +401,18 @@ impl<'a> Lexer<'a> {
                         Some('t') => {
                             self.advance();
                             value.push('\t');
+                        }
+                        Some('r') => {
+                            self.advance();
+                            value.push('\r');
+                        }
+                        Some('b') => {
+                            self.advance();
+                            value.push('\x08');
+                        }
+                        Some('f') => {
+                            self.advance();
+                            value.push('\x0C');
                         }
                         Some('\\') => {
                             self.advance();

@@ -962,10 +962,10 @@ impl VM {
             (Value::Decimal(x), Value::Integer(y)) => Value::Decimal(OrderedFloat(x.0 + *y as f64)),
             (Value::Decimal(x), Value::Decimal(y)) => Value::Decimal(OrderedFloat(x.0 + y.0)),
 
-            // String concatenation - String + any type coerces to string
+            // String concatenation - only String + any type coerces to string
+            // Note: Integer + String is NOT supported (matches Rust/TypeScript implementations)
             (Value::String(x), Value::String(y)) => Value::String(Rc::new(format!("{}{}", x, y))),
             (Value::String(x), y) => Value::String(Rc::new(format!("{}{}", x, y))),
-            (x, Value::String(y)) => Value::String(Rc::new(format!("{}{}", x, y))),
 
             // List concatenation
             (Value::List(x), Value::List(y)) => {
@@ -1149,20 +1149,27 @@ impl VM {
         let a = self.pop();
 
         let result = match (&a, &b) {
-            // Integer division (truncates toward zero)
+            // Python-style floored division (floors toward negative infinity)
+            // http://python-history.blogspot.com/2010/08/why-pythons-integer-division-floors.html
             (Value::Integer(x), Value::Integer(y)) => {
                 if *y == 0 {
                     return Err(self.error("Division by zero"));
                 }
-                // Truncate toward zero, not floor
-                Value::Integer(x / y)
+                let d = x / y;
+                let r = x % y;
+                let result = if (r != 0) && ((r < 0) != (*y < 0)) {
+                    d - 1
+                } else {
+                    d
+                };
+                Value::Integer(result)
             }
             // Mixed and decimal division
             (Value::Integer(x), Value::Decimal(y)) => {
                 if y.0 == 0.0 {
                     return Err(self.error("Division by zero"));
                 }
-                Value::Integer((*x as f64 / y.0) as i64)
+                Value::Integer((*x as f64 / y.0).floor() as i64)
             }
             (Value::Decimal(x), Value::Integer(y)) => {
                 if *y == 0 {

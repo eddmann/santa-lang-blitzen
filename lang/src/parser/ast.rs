@@ -1,6 +1,12 @@
 use crate::lexer::Span;
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Attribute {
+    pub name: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,
@@ -225,6 +231,7 @@ pub enum Section {
     PartOne(SpannedExpr),
     PartTwo(SpannedExpr),
     Test {
+        attributes: Vec<Attribute>,
         input: SpannedExpr,
         part_one: Option<SpannedExpr>,
         part_two: Option<SpannedExpr>,

@@ -74,6 +74,11 @@ impl Parser {
     }
 
     fn check_section(&self) -> bool {
+        // Check for attribute prefix (@) before sections
+        if self.check(&TokenKind::At) {
+            return true;
+        }
+
         if let Some(Token {
             kind: TokenKind::Identifier(name),
             ..
@@ -96,7 +101,40 @@ impl Parser {
         false
     }
 
+    fn parse_attribute(&mut self) -> Result<Attribute, ParseError> {
+        let at_span = self.expect(TokenKind::At)?.span;
+
+        let name_token = self.advance().ok_or_else(|| {
+            ParseError::new("Expected attribute name after @", at_span)
+        })?;
+
+        let name = match &name_token.kind {
+            TokenKind::Identifier(s) => s.clone(),
+            _ => {
+                return Err(ParseError::new(
+                    format!("Expected attribute name, got {:?}", name_token.kind),
+                    name_token.span,
+                ));
+            }
+        };
+
+        let span = Span {
+            start: at_span.start,
+            end: name_token.span.end,
+            line: at_span.line,
+            column: at_span.column,
+        };
+
+        Ok(Attribute { name, span })
+    }
+
     fn parse_section(&mut self) -> Result<Section, ParseError> {
+        // Parse any attributes before the section
+        let mut attributes = Vec::new();
+        while self.check(&TokenKind::At) {
+            attributes.push(self.parse_attribute()?);
+        }
+
         let name_token = self.advance().unwrap();
         let name = match &name_token.kind {
             TokenKind::Identifier(s) => s.clone(),
@@ -109,9 +147,17 @@ impl Parser {
             "test" => {
                 // test section has special block structure with input:, part_one:, part_two:
                 // Parse it directly instead of as a normal expression
-                self.parse_test_block()
+                self.parse_test_block(attributes)
             }
             _ => {
+                // Attributes are only valid on test sections
+                if !attributes.is_empty() {
+                    return Err(ParseError::new(
+                        format!("Attributes are only valid on test sections, not '{name}'"),
+                        attributes[0].span,
+                    ));
+                }
+
                 // For part_one/part_two, if the body starts with { it's a block, not a set
                 let is_part_section = name.as_str() == "part_one" || name.as_str() == "part_two";
                 let expr = if is_part_section && self.check(&TokenKind::LeftBrace) {
@@ -132,7 +178,7 @@ impl Parser {
         }
     }
 
-    fn parse_test_block(&mut self) -> Result<Section, ParseError> {
+    fn parse_test_block(&mut self, attributes: Vec<Attribute>) -> Result<Section, ParseError> {
         // Test block has special syntax: test: { input: expr, part_one: expr, part_two: expr }
         // Expect a left brace
         let brace_token = self.expect(TokenKind::LeftBrace)?;
@@ -224,6 +270,7 @@ impl Parser {
         })?;
 
         Ok(Section::Test {
+            attributes,
             input,
             part_one: part_one_expr,
             part_two: part_two_expr,

@@ -59,8 +59,8 @@ fn cli_run_aoc_solution() {
         .arg(file.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Part 1: 60"))
-        .stdout(predicate::str::contains("Part 2: 120"));
+        .stdout(predicate::str::contains("Part 1: \x1b[32m60\x1b[0m"))
+        .stdout(predicate::str::contains("Part 2: \x1b[32m120\x1b[0m"));
 }
 
 #[test]
@@ -85,7 +85,7 @@ fn cli_run_tests_passing() {
         .arg(file.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("All tests passed!"));
+        .stdout(predicate::str::contains("Part 1: 6 \x1b[32m✔\x1b[0m"));
 }
 
 #[test]
@@ -110,7 +110,7 @@ fn cli_run_tests_failing() {
         .arg(file.path())
         .assert()
         .code(3) // Test failure exit code
-        .stdout(predicate::str::contains("Some tests failed!"));
+        .stdout(predicate::str::contains("Part 1: 6 \x1b[31m✘ (Expected: 100)\x1b[0m"));
 }
 
 #[test]
@@ -175,11 +175,69 @@ fn cli_read_file() {
 }
 
 #[test]
-fn cli_no_args_shows_help() {
+fn cli_help_flag() {
     santa_cli()
+        .arg("-h")
         .assert()
-        .code(1)
+        .success()
         .stdout(predicate::str::contains("USAGE:"));
+}
+
+#[test]
+fn cli_stdin_empty() {
+    // Empty stdin should run empty program (returns nil, no output)
+    santa_cli()
+        .write_stdin("")
+        .assert()
+        .success();
+}
+
+#[test]
+fn cli_eval_simple_expression() {
+    santa_cli()
+        .arg("-e")
+        .arg("1 + 2")
+        .assert()
+        .success()
+        .stdout("3\n");
+}
+
+#[test]
+fn cli_eval_complex_expression() {
+    santa_cli()
+        .arg("-e")
+        .arg("map(|x| x * 2, [1, 2, 3])")
+        .assert()
+        .success()
+        .stdout("[2, 4, 6]\n");
+}
+
+#[test]
+fn cli_eval_aoc_solution() {
+    santa_cli()
+        .arg("-e")
+        .arg("part_one: { 42 }")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Part 1: \x1b[32m42\x1b[0m"));
+}
+
+#[test]
+fn cli_stdin_simple_expression() {
+    santa_cli()
+        .write_stdin("1 + 2")
+        .assert()
+        .success()
+        .stdout("3\n");
+}
+
+#[test]
+fn cli_stdin_aoc_solution() {
+    santa_cli()
+        .write_stdin("part_one: { 42 }")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Part 1: \x1b[32m42\x1b[0m"));
 }
 
 // ============================================================================
@@ -258,7 +316,8 @@ fn integration_aoc_day1_style() {
         .arg(file.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("All tests passed!"));
+        .stdout(predicate::str::contains("Part 1: 11000 \x1b[32m✔\x1b[0m"))
+        .stdout(predicate::str::contains("Part 2: 21000 \x1b[32m✔\x1b[0m"));
 }
 
 // Example 3: Word Frequency Counter (simplified - inline input)

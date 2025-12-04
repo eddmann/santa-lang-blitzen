@@ -11,31 +11,88 @@ use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use std::env;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 2 {
-        print_help();
-        process::exit(1);
-    }
+    // Parse flags
+    let mut test_mode = false;
+    let mut include_slow = false;
+    let mut eval_script: Option<String> = None;
+    let mut script_path: Option<String> = None;
 
-    let result = match args[1].as_str() {
-        "-h" | "--help" => {
-            print_help();
-            process::exit(0);
-        }
-        "-r" | "--repl" => run_repl(),
-        "-t" | "--test" => {
-            if args.len() < 3 {
-                eprintln!("Error: --test requires a script file");
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-h" | "--help" => {
+                print_help();
+                process::exit(0);
+            }
+            "-r" | "--repl" => {
+                let result = run_repl();
+                match result {
+                    Ok(()) => process::exit(0),
+                    Err(ExitCode::ArgumentError) => process::exit(1),
+                    Err(ExitCode::RuntimeError) => process::exit(2),
+                    Err(ExitCode::TestFailure) => process::exit(3),
+                }
+            }
+            "-t" | "--test" => {
+                test_mode = true;
+            }
+            "-s" | "--slow" => {
+                include_slow = true;
+            }
+            "-e" | "--eval" => {
+                i += 1;
+                if i < args.len() {
+                    eval_script = Some(args[i].clone());
+                } else {
+                    eprintln!("Error: -e requires a script argument");
+                    process::exit(1);
+                }
+            }
+            arg if !arg.starts_with('-') => {
+                script_path = Some(arg.to_string());
+            }
+            unknown => {
+                eprintln!("Unknown option: {}", unknown);
                 process::exit(1);
             }
-            run_tests(&args[2])
         }
-        script => run_script(script),
+        i += 1;
+    }
+
+    // Determine source: -e > file > stdin
+    let (source, source_path): (String, Option<String>) = if let Some(script) = eval_script {
+        (script, None)
+    } else if let Some(path) = script_path {
+        match fs::read_to_string(&path) {
+            Ok(content) => (content, Some(path)),
+            Err(e) => {
+                eprintln!("Error reading file '{}': {}", path, e);
+                process::exit(1);
+            }
+        }
+    } else if !atty::is(atty::Stream::Stdin) {
+        let mut source = String::new();
+        if let Err(e) = std::io::stdin().read_to_string(&mut source) {
+            eprintln!("Error reading from stdin: {}", e);
+            process::exit(1);
+        }
+        (source, None)
+    } else {
+        print_help();
+        process::exit(1);
+    };
+
+    let result = if test_mode {
+        run_tests_from_source(&source, source_path.as_deref(), include_slow)
+    } else {
+        run_script_from_source(&source, source_path.as_deref())
     };
 
     match result {
@@ -57,22 +114,24 @@ fn print_help() {
     println!();
     println!("USAGE:");
     println!("    santa-cli <SCRIPT>        Run solution file");
+    println!("    santa-cli -e <CODE>       Evaluate inline script");
     println!("    santa-cli -t <SCRIPT>     Run test suite");
+    println!("    santa-cli -t -s <SCRIPT>  Run test suite including @slow tests");
     println!("    santa-cli -r              Start REPL");
     println!("    santa-cli -h              Show this help");
+    println!("    cat file | santa-cli      Read script from stdin");
+    println!();
+    println!("OPTIONS:");
+    println!("    -e, --eval                Evaluate inline script");
+    println!("    -s, --slow                Include @slow tests (use with -t)");
     println!();
     println!("ENVIRONMENT:");
     println!("    SANTA_CLI_SESSION_TOKEN   AOC session token for aoc:// URLs");
 }
 
-fn run_script(path: &str) -> Result<(), ExitCode> {
-    let source = fs::read_to_string(path).map_err(|e| {
-        eprintln!("Error reading file '{}': {}", path, e);
-        ExitCode::ArgumentError
-    })?;
-
+fn run_script_from_source(source: &str, source_path: Option<&str>) -> Result<(), ExitCode> {
     let session_token = env::var("SANTA_CLI_SESSION_TOKEN").ok();
-    let script_dir = Path::new(path).parent().map(|p| p.to_path_buf());
+    let script_dir = source_path.and_then(|p| Path::new(p).parent().map(|d| d.to_path_buf()));
 
     // Lex and parse
     let mut lexer = Lexer::new(&source);
@@ -110,10 +169,16 @@ fn run_script(path: &str) -> Result<(), ExitCode> {
         match runner.run_solution(&mut vm) {
             Ok(result) => {
                 if let Some((value, duration)) = result.part_one {
-                    println!("Part 1: {} ({}ms)", value, duration);
+                    println!(
+                        "Part 1: \x1b[32m{}\x1b[0m \x1b[90m{}ms\x1b[0m",
+                        value, duration
+                    );
                 }
                 if let Some((value, duration)) = result.part_two {
-                    println!("Part 2: {} ({}ms)", value, duration);
+                    println!(
+                        "Part 2: \x1b[32m{}\x1b[0m \x1b[90m{}ms\x1b[0m",
+                        value, duration
+                    );
                 }
                 Ok(())
             }
@@ -125,14 +190,9 @@ fn run_script(path: &str) -> Result<(), ExitCode> {
     }
 }
 
-fn run_tests(path: &str) -> Result<(), ExitCode> {
-    let source = fs::read_to_string(path).map_err(|e| {
-        eprintln!("Error reading file '{}': {}", path, e);
-        ExitCode::ArgumentError
-    })?;
-
+fn run_tests_from_source(source: &str, source_path: Option<&str>, include_slow: bool) -> Result<(), ExitCode> {
     let session_token = env::var("SANTA_CLI_SESSION_TOKEN").ok();
-    let script_dir = Path::new(path).parent().map(|p| p.to_path_buf());
+    let script_dir = source_path.and_then(|p| Path::new(p).parent().map(|d| d.to_path_buf()));
 
     // Lex and parse
     let mut lexer = Lexer::new(&source);
@@ -152,61 +212,63 @@ fn run_tests(path: &str) -> Result<(), ExitCode> {
     // Create VM factory for tests
     let vm_factory = || create_vm(session_token.as_deref(), script_dir.clone());
 
-    match runner.run_tests(&vm_factory) {
+    match runner.run_tests(&vm_factory, include_slow) {
         Ok(test_results) => {
             let mut all_passed = true;
 
             for test_result in &test_results {
-                println!("Test #{}:", test_result.test_index + 1);
+                println!("\x1b[4mTestcase #{}\x1b[0m", test_result.test_index + 1);
 
                 if let Some(passed) = test_result.part_one_passed {
-                    let status = if passed { "✓" } else { "✗" };
-                    let expected = test_result
-                        .part_one_expected
-                        .as_ref()
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "N/A".to_string());
                     let actual = test_result
                         .part_one_actual
                         .as_ref()
                         .map(|v| v.to_string())
                         .unwrap_or_else(|| "N/A".to_string());
-                    println!(
-                        "  Part 1: {} (expected: {}, got: {})",
-                        status, expected, actual
-                    );
-                    if !passed {
+                    if passed {
+                        println!("Part 1: {} \x1b[32m✔\x1b[0m", actual);
+                    } else {
+                        let expected = test_result
+                            .part_one_expected
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "N/A".to_string());
+                        println!(
+                            "Part 1: {} \x1b[31m✘ (Expected: {})\x1b[0m",
+                            actual, expected
+                        );
                         all_passed = false;
                     }
                 }
 
                 if let Some(passed) = test_result.part_two_passed {
-                    let status = if passed { "✓" } else { "✗" };
-                    let expected = test_result
-                        .part_two_expected
-                        .as_ref()
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "N/A".to_string());
                     let actual = test_result
                         .part_two_actual
                         .as_ref()
                         .map(|v| v.to_string())
                         .unwrap_or_else(|| "N/A".to_string());
-                    println!(
-                        "  Part 2: {} (expected: {}, got: {})",
-                        status, expected, actual
-                    );
-                    if !passed {
+                    if passed {
+                        println!("Part 2: {} \x1b[32m✔\x1b[0m", actual);
+                    } else {
+                        let expected = test_result
+                            .part_two_expected
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "N/A".to_string());
+                        println!(
+                            "Part 2: {} \x1b[31m✘ (Expected: {})\x1b[0m",
+                            actual, expected
+                        );
                         all_passed = false;
                     }
                 }
+
+                println!();
             }
 
             if all_passed {
-                println!("\nAll tests passed!");
                 Ok(())
             } else {
-                println!("\nSome tests failed!");
                 Err(ExitCode::TestFailure)
             }
         }
@@ -218,9 +280,9 @@ fn run_tests(path: &str) -> Result<(), ExitCode> {
 }
 
 fn run_repl() -> Result<(), ExitCode> {
-    println!("Santa Language REPL - Blitzen VM");
-    println!("Type 'env()' to see environment, Ctrl+C or Ctrl+D to exit");
-    println!();
+    println!(
+        "   ,--.\n  ()   \\\n   /    \\\n _/______\\_\n(__________)\n(/  @  @  \\)\n(`._,()._,')  Santa REPL\n(  `-'`-'  )\n \\        /\n  \\,,,,,,/\n"
+    );
 
     let session_token = env::var("SANTA_CLI_SESSION_TOKEN").ok();
     let mut vm = create_vm(session_token.as_deref(), None);

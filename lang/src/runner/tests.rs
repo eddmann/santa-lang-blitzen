@@ -68,7 +68,7 @@ fn runner_with_tests() {
     let program = parse(source);
     let mut runner = AocRunner::new(program);
 
-    let test_results = runner.run_tests(&vm_factory).unwrap();
+    let test_results = runner.run_tests(&vm_factory, false).unwrap();
 
     assert_eq!(test_results.len(), 2);
     assert_eq!(test_results[0].part_one_passed, Some(true));
@@ -213,7 +213,7 @@ fn runner_test_with_part_two() {
     let program = parse(source);
     let mut runner = AocRunner::new(program);
 
-    let test_results = runner.run_tests(&vm_factory).unwrap();
+    let test_results = runner.run_tests(&vm_factory, false).unwrap();
 
     assert_eq!(test_results.len(), 1);
     assert_eq!(test_results[0].part_one_passed, Some(true));
@@ -236,7 +236,7 @@ fn runner_test_failure() {
     let program = parse(source);
     let mut runner = AocRunner::new(program);
 
-    let test_results = runner.run_tests(&vm_factory).unwrap();
+    let test_results = runner.run_tests(&vm_factory, false).unwrap();
 
     assert_eq!(test_results.len(), 1);
     assert_eq!(test_results[0].part_one_passed, Some(false));
@@ -356,9 +356,128 @@ fn runner_complex_example() {
     assert_eq!(part_two_value, Value::Integer(45000));
 
     // Test the test execution
-    let test_results = runner.run_tests(&vm_factory).unwrap();
+    let test_results = runner.run_tests(&vm_factory, false).unwrap();
 
     assert_eq!(test_results.len(), 1);
     assert_eq!(test_results[0].part_one_passed, Some(true));
     assert_eq!(test_results[0].part_two_passed, Some(true));
+}
+
+#[test]
+fn runner_slow_test_skipped_by_default() {
+    let source = r#"
+        input: "10"
+
+        part_one: input |> int
+
+        test: {
+            input: "10"
+            part_one: 10
+        }
+
+        @slow
+        test: {
+            input: "20"
+            part_one: 20
+        }
+    "#;
+
+    let program = parse(source);
+    let mut runner = AocRunner::new(program);
+
+    // Without include_slow, only the first test runs
+    let test_results = runner.run_tests(&vm_factory, false).unwrap();
+
+    assert_eq!(test_results.len(), 1);
+    assert_eq!(test_results[0].part_one_passed, Some(true));
+}
+
+#[test]
+fn runner_slow_test_included_with_flag() {
+    let source = r#"
+        input: "10"
+
+        part_one: input |> int
+
+        test: {
+            input: "10"
+            part_one: 10
+        }
+
+        @slow
+        test: {
+            input: "20"
+            part_one: 20
+        }
+    "#;
+
+    let program = parse(source);
+    let mut runner = AocRunner::new(program);
+
+    // With include_slow, both tests run
+    let test_results = runner.run_tests(&vm_factory, true).unwrap();
+
+    assert_eq!(test_results.len(), 2);
+    assert_eq!(test_results[0].part_one_passed, Some(true));
+    assert_eq!(test_results[1].part_one_passed, Some(true));
+}
+
+#[test]
+fn runner_only_slow_tests_all_skipped() {
+    let source = r#"
+        input: "10"
+
+        part_one: input |> int
+
+        @slow
+        test: {
+            input: "10"
+            part_one: 10
+        }
+
+        @slow
+        test: {
+            input: "20"
+            part_one: 20
+        }
+    "#;
+
+    let program = parse(source);
+    let mut runner = AocRunner::new(program);
+
+    // Without include_slow, no tests run
+    let test_results = runner.run_tests(&vm_factory, false).unwrap();
+
+    assert_eq!(test_results.len(), 0);
+}
+
+#[test]
+fn runner_only_slow_tests_included_with_flag() {
+    let source = r#"
+        input: "10"
+
+        part_one: input |> int
+
+        @slow
+        test: {
+            input: "10"
+            part_one: 10
+        }
+
+        @slow
+        test: {
+            input: "20"
+            part_one: 20
+        }
+    "#;
+
+    let program = parse(source);
+    let mut runner = AocRunner::new(program);
+
+    // With include_slow, both tests run
+    let test_results = runner.run_tests(&vm_factory, true).unwrap();
+
+    assert_eq!(test_results.len(), 2);
+    assert_eq!(test_results[0].part_one_passed, Some(true));
+    assert_eq!(test_results[1].part_one_passed, Some(true));
 }

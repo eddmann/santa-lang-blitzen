@@ -503,3 +503,27 @@ fn lex_unicode_string() {
             Eof @ 1:15 [37-37]"#]],
     );
 }
+
+#[test]
+fn lex_at_token() {
+    check(
+        "@slow",
+        expect![[r#"
+            At @ 1:1 [0-1]
+            Identifier("slow") @ 1:2 [1-5]
+            Eof @ 1:6 [5-5]"#]],
+    );
+}
+
+#[test]
+fn lex_attribute_before_test() {
+    check(
+        "@slow test:",
+        expect![[r#"
+            At @ 1:1 [0-1]
+            Identifier("slow") @ 1:2 [1-5]
+            Identifier("test") @ 1:7 [6-10]
+            Colon @ 1:11 [10-11]
+            Eof @ 1:12 [11-11]"#]],
+    );
+}

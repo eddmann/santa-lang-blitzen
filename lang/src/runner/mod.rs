@@ -2,7 +2,7 @@
 // Error paths are not performance-critical for an interpreter.
 #![allow(clippy::result_large_err)]
 
-use crate::parser::ast::{Program, Section, SpannedExpr, SpannedStmt};
+use crate::parser::ast::{Attribute, Program, Section, SpannedExpr, SpannedStmt};
 use crate::vm::compiler::Compiler;
 use crate::vm::runtime::{RuntimeError, VM};
 use crate::vm::value::Value;
@@ -69,6 +69,7 @@ impl AocRunner {
     pub fn run_tests(
         &mut self,
         vm_factory: &dyn Fn() -> VM,
+        include_slow: bool,
     ) -> Result<Vec<TestResult>, RuntimeError> {
         let mut results = Vec::new();
 
@@ -82,17 +83,26 @@ impl AocRunner {
             self.global_names = globals;
         }
 
-        // Get test sections
+        // Get test sections, filtering by @slow attribute
         let test_sections: Vec<_> = self
             .program
             .sections
             .iter()
             .filter_map(|s| match s {
                 Section::Test {
+                    attributes,
                     input,
                     part_one,
                     part_two,
-                } => Some((input.clone(), part_one.clone(), part_two.clone())),
+                } => {
+                    // Skip slow tests unless include_slow is true
+                    let is_slow = Self::has_slow_attribute(attributes);
+                    if is_slow && !include_slow {
+                        None
+                    } else {
+                        Some((input.clone(), part_one.clone(), part_two.clone()))
+                    }
+                }
                 _ => None,
             })
             .collect();
@@ -112,6 +122,10 @@ impl AocRunner {
         }
 
         Ok(results)
+    }
+
+    fn has_slow_attribute(attributes: &[Attribute]) -> bool {
+        attributes.iter().any(|attr| attr.name == "slow")
     }
 
     pub fn run_script(&self, vm: &mut VM) -> Result<Value, RuntimeError> {

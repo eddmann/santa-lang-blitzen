@@ -1632,10 +1632,10 @@ mod runtime_tests {
 
     #[test]
     fn eval_integer_division() {
-        // Integer division truncates toward zero (not floor)
+        // Python-style floored division (floors toward negative infinity)
         assert_eq!(eval("7 / 2"), Ok(Value::Integer(3)));
-        assert_eq!(eval("-7 / 2"), Ok(Value::Integer(-3)));
-        assert_eq!(eval("7 / -2"), Ok(Value::Integer(-3)));
+        assert_eq!(eval("-7 / 2"), Ok(Value::Integer(-4)));
+        assert_eq!(eval("7 / -2"), Ok(Value::Integer(-4)));
         assert_eq!(eval("-7 / -2"), Ok(Value::Integer(3)));
     }
 
@@ -2232,6 +2232,16 @@ mod runtime_tests {
         assert_eq!(eval("5 |> (_ + 1)"), Ok(Value::Integer(6)));
     }
 
+    #[test]
+    fn eval_pipeline_result_in_expression() {
+        // Regression test: a pipeline result should be usable in outer expressions
+        // without the outer expression becoming a partial application.
+        // (3 |> _ + 1) evaluates to 4, then 4 + 0 should evaluate to 4, not <function>
+        assert_eq!(eval("(3 |> _ + 1) + 0"), Ok(Value::Integer(4)));
+        assert_eq!(eval("5 > (3 |> _ + 1)"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("(3 |> _ + 1) == 4"), Ok(Value::Boolean(true)));
+    }
+
     // ============================================================
     // §5 Variables and bindings
     // ============================================================
@@ -2429,12 +2439,9 @@ mod runtime_tests {
     // ============================================================
 
     #[test]
-    fn eval_string_coercion_int_plus_string() {
-        // String coercion: Int + String and String + Int both produce String
-        assert_eq!(
-            eval(r#"1 + "hello""#),
-            Ok(Value::String(Rc::new("1hello".to_string())))
-        );
+    fn eval_string_coercion() {
+        // String coercion: only String + any produces String (not any + String)
+        // This matches the Rust and TypeScript implementations
         assert_eq!(
             eval(r#""hello" + 1"#),
             Ok(Value::String(Rc::new("hello1".to_string())))
@@ -2444,9 +2451,11 @@ mod runtime_tests {
             Ok(Value::String(Rc::new("42".to_string())))
         );
         assert_eq!(
-            eval(r#"1 + "," + 2"#),
-            Ok(Value::String(Rc::new("1,2".to_string())))
+            eval(r#""hello" + 1.5"#),
+            Ok(Value::String(Rc::new("hello1.5".to_string())))
         );
+        // Integer + String is NOT supported - produces an error
+        assert!(eval(r#"1 + "hello""#).is_err());
     }
 
     #[test]
@@ -4370,6 +4379,36 @@ mod runtime_tests {
                 .into_iter()
                 .collect()
             ))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_md5_empty() {
+        assert_eq!(
+            eval("md5(\"\")"),
+            Ok(Value::String(Rc::new(
+                "d41d8cd98f00b204e9800998ecf8427e".to_string()
+            )))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_md5_hello() {
+        assert_eq!(
+            eval("md5(\"hello\")"),
+            Ok(Value::String(Rc::new(
+                "5d41402abc4b2a76b9719d911017c592".to_string()
+            )))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_md5_hello_world() {
+        assert_eq!(
+            eval("md5(\"Hello, World!\")"),
+            Ok(Value::String(Rc::new(
+                "65a8e27d8879283831b664bd8b7f0ad4".to_string()
+            )))
         );
     }
 

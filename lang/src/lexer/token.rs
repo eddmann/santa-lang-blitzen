@@ -71,6 +71,7 @@ pub enum TokenKind {
 
     // Special
     Underscore, // _ (placeholder/wildcard)
+    At,         // @ (attribute prefix)
 
     // End of file
     Eof,
@@ -125,6 +126,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Pipe => write!(f, "|"),
             TokenKind::Backtick => write!(f, "`"),
             TokenKind::Underscore => write!(f, "_"),
+            TokenKind::At => write!(f, "@"),
             TokenKind::Eof => write!(f, "EOF"),
         }
     }

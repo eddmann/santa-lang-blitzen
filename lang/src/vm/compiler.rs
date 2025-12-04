@@ -1341,13 +1341,23 @@ impl Compiler {
 
     /// Check if an expression contains a placeholder at the immediate level
     /// Does NOT recurse into function bodies, since placeholders in nested lambdas
-    /// are scoped to that lambda, not the outer expression
+    /// are scoped to that lambda, not the outer expression.
+    /// Does NOT recurse into Pipeline or Compose expressions, since those consume
+    /// their placeholders internally (e.g., `3 |> _ + 1` evaluates to 4, not a function).
     fn contains_placeholder(expr: &SpannedExpr) -> bool {
         match &expr.node {
             Expr::Placeholder => true,
             Expr::Prefix { right, .. } => Self::contains_placeholder(right),
-            Expr::Infix { left, right, .. } => {
-                Self::contains_placeholder(left) || Self::contains_placeholder(right)
+            Expr::Infix { left, right, op } => {
+                // Pipeline and Compose consume their placeholders internally,
+                // so don't recurse into them. For example:
+                // `(3 |> _ + 1) + 0` should NOT be a partial application -
+                // the `_ + 1` is consumed by the pipe, producing 4.
+                if matches!(op, InfixOp::Pipeline | InfixOp::Compose) {
+                    false
+                } else {
+                    Self::contains_placeholder(left) || Self::contains_placeholder(right)
+                }
             }
             Expr::InfixCall { left, right, .. } => {
                 Self::contains_placeholder(left) || Self::contains_placeholder(right)

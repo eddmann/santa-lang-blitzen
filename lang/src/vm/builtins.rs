@@ -103,6 +103,8 @@ pub enum BuiltinId {
     Upper = 134,
     Lower = 135,
     Replace = 136,
+    Md5 = 137,
+    Join = 138,
 
     // Math Functions (§11.15)
     Abs = 140,
@@ -186,6 +188,8 @@ impl BuiltinId {
             BuiltinId::Upper => "upper",
             BuiltinId::Lower => "lower",
             BuiltinId::Replace => "replace",
+            BuiltinId::Md5 => "md5",
+            BuiltinId::Join => "join",
             BuiltinId::Abs => "abs",
             BuiltinId::Signum => "signum",
             BuiltinId::VecAdd => "vec_add",
@@ -263,6 +267,8 @@ impl BuiltinId {
             "upper" => Some(BuiltinId::Upper),
             "lower" => Some(BuiltinId::Lower),
             "replace" => Some(BuiltinId::Replace),
+            "md5" => Some(BuiltinId::Md5),
+            "join" => Some(BuiltinId::Join),
             "abs" => Some(BuiltinId::Abs),
             "signum" => Some(BuiltinId::Signum),
             "vec_add" => Some(BuiltinId::VecAdd),
@@ -305,6 +311,7 @@ impl BuiltinId {
             | BuiltinId::Lines
             | BuiltinId::Upper
             | BuiltinId::Lower
+            | BuiltinId::Md5
             | BuiltinId::Abs
             | BuiltinId::Signum
             | BuiltinId::BitNot
@@ -339,6 +346,7 @@ impl BuiltinId {
             | BuiltinId::Split
             | BuiltinId::RegexMatch
             | BuiltinId::RegexMatchAll
+            | BuiltinId::Join
             | BuiltinId::VecAdd
             | BuiltinId::BitAnd
             | BuiltinId::BitOr
@@ -466,6 +474,8 @@ impl TryFrom<u16> for BuiltinId {
             134 => Ok(BuiltinId::Upper),
             135 => Ok(BuiltinId::Lower),
             136 => Ok(BuiltinId::Replace),
+            137 => Ok(BuiltinId::Md5),
+            138 => Ok(BuiltinId::Join),
             140 => Ok(BuiltinId::Abs),
             141 => Ok(BuiltinId::Signum),
             142 => Ok(BuiltinId::VecAdd),
@@ -549,7 +559,9 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         BuiltinId::RegexMatchAll => builtin_regex_match_all(&args[0], &args[1], line),
         BuiltinId::Upper => builtin_upper(&args[0], line),
         BuiltinId::Lower => builtin_lower(&args[0], line),
+        BuiltinId::Md5 => builtin_md5(&args[0], line),
         BuiltinId::Replace => builtin_replace(&args[0], &args[1], &args[2], line),
+        BuiltinId::Join => builtin_join(&args[0], &args[1], line),
         // Phase 13: Math functions
         BuiltinId::Abs => builtin_abs(&args[0], line),
         BuiltinId::Signum => builtin_signum(&args[0], line),
@@ -2098,6 +2110,24 @@ fn builtin_lower(value: &Value, line: u32) -> Result<Value, RuntimeError> {
     }
 }
 
+/// md5(string) → String
+/// Compute MD5 hash of string and return as lowercase hexadecimal.
+fn builtin_md5(value: &Value, line: u32) -> Result<Value, RuntimeError> {
+    use md5::{Digest, Md5};
+    match value {
+        Value::String(s) => {
+            let mut hasher = Md5::new();
+            hasher.update(s.as_bytes());
+            let digest = hasher.finalize();
+            Ok(Value::String(Rc::new(format!("{:x}", digest))))
+        }
+        _ => Err(RuntimeError::new(
+            format!("md5 expects String, got {}", value.type_name()),
+            line,
+        )),
+    }
+}
+
 /// replace(pattern, replacement, string) → String
 /// Replace all occurrences of pattern with replacement. Per LANG.txt §11.14
 fn builtin_replace(
@@ -2234,6 +2264,43 @@ fn builtin_regex_match_all(
             format!(
                 "regex_match_all expects String as first argument, got {}",
                 pattern.type_name()
+            ),
+            line,
+        )),
+    }
+}
+
+/// Helper to convert a Value to an unquoted string representation
+fn value_to_unquoted_string(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// join(separator, collection) → String
+/// Join collection elements into a string with separator. Per LANG.txt §11.14
+fn builtin_join(separator: &Value, collection: &Value, line: u32) -> Result<Value, RuntimeError> {
+    match (separator, collection) {
+        (Value::String(sep), Value::List(list)) => {
+            let strings: Vec<String> = list.iter().map(value_to_unquoted_string).collect();
+            Ok(Value::String(Rc::new(strings.join(sep.as_str()))))
+        }
+        (Value::String(sep), Value::Set(set)) => {
+            let strings: Vec<String> = set.iter().map(value_to_unquoted_string).collect();
+            Ok(Value::String(Rc::new(strings.join(sep.as_str()))))
+        }
+        (Value::String(_), _) => Err(RuntimeError::new(
+            format!(
+                "join expects List or Set as second argument, got {}",
+                collection.type_name()
+            ),
+            line,
+        )),
+        _ => Err(RuntimeError::new(
+            format!(
+                "join expects String as first argument, got {}",
+                separator.type_name()
             ),
             line,
         )),
