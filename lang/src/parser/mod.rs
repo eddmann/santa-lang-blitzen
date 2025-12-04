@@ -104,9 +104,9 @@ impl Parser {
     fn parse_attribute(&mut self) -> Result<Attribute, ParseError> {
         let at_span = self.expect(TokenKind::At)?.span;
 
-        let name_token = self.advance().ok_or_else(|| {
-            ParseError::new("Expected attribute name after @", at_span)
-        })?;
+        let name_token = self
+            .advance()
+            .ok_or_else(|| ParseError::new("Expected attribute name after @", at_span))?;
 
         let name = match &name_token.kind {
             TokenKind::Identifier(s) => s.clone(),

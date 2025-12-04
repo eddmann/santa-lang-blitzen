@@ -104,6 +104,7 @@ fn main() {
 }
 
 enum ExitCode {
+    #[allow(dead_code)]
     ArgumentError,
     RuntimeError,
     TestFailure,
@@ -134,7 +135,7 @@ fn run_script_from_source(source: &str, source_path: Option<&str>) -> Result<(),
     let script_dir = source_path.and_then(|p| Path::new(p).parent().map(|d| d.to_path_buf()));
 
     // Lex and parse
-    let mut lexer = Lexer::new(&source);
+    let mut lexer = Lexer::new(source);
     let tokens = lexer.tokenize().map_err(|e| {
         eprintln!("{}", SantaError::Lex(e));
         ExitCode::RuntimeError
@@ -190,12 +191,16 @@ fn run_script_from_source(source: &str, source_path: Option<&str>) -> Result<(),
     }
 }
 
-fn run_tests_from_source(source: &str, source_path: Option<&str>, include_slow: bool) -> Result<(), ExitCode> {
+fn run_tests_from_source(
+    source: &str,
+    source_path: Option<&str>,
+    include_slow: bool,
+) -> Result<(), ExitCode> {
     let session_token = env::var("SANTA_CLI_SESSION_TOKEN").ok();
     let script_dir = source_path.and_then(|p| Path::new(p).parent().map(|d| d.to_path_buf()));
 
     // Lex and parse
-    let mut lexer = Lexer::new(&source);
+    let mut lexer = Lexer::new(source);
     let tokens = lexer.tokenize().map_err(|e| {
         eprintln!("{}", SantaError::Lex(e));
         ExitCode::RuntimeError

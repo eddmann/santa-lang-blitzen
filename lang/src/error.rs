@@ -170,7 +170,7 @@ impl SantaError {
         let mut output = String::new();
 
         // Error header (red and bold)
-        output.push_str("\n");
+        output.push('\n');
         output.push_str(
             &format!("{} at line {}", kind, line)
                 .red()

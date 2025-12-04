@@ -110,7 +110,9 @@ fn cli_run_tests_failing() {
         .arg(file.path())
         .assert()
         .code(3) // Test failure exit code
-        .stdout(predicate::str::contains("Part 1: 6 \x1b[31m✘ (Expected: 100)\x1b[0m"));
+        .stdout(predicate::str::contains(
+            "Part 1: 6 \x1b[31m✘ (Expected: 100)\x1b[0m",
+        ));
 }
 
 #[test]
@@ -186,10 +188,7 @@ fn cli_help_flag() {
 #[test]
 fn cli_stdin_empty() {
     // Empty stdin should run empty program (returns nil, no output)
-    santa_cli()
-        .write_stdin("")
-        .assert()
-        .success();
+    santa_cli().write_stdin("").assert().success();
 }
 
 #[test]
