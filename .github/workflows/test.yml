@@ -32,6 +32,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Push to draft-release
         uses: alice-biometrics/github-push-action@v0.7.0
         with:
