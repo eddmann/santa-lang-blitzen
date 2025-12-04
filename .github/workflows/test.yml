@@ -35,6 +35,6 @@ jobs:
       - name: Push to draft-release
         uses: alice-biometrics/github-push-action@v0.7.0
         with:
-          target-branch: draft-release
+          branch: draft-release
           force: true
-          github-token: ${{ secrets.RELEASE_TOKEN }}
+          github_token: ${{ secrets.RELEASE_TOKEN }}
