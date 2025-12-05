@@ -1979,11 +1979,6 @@ impl VM {
         }
     }
 
-    /// Get the arity of a closure
-    fn closure_arity(&self, closure: &Rc<Closure>) -> usize {
-        closure.function.arity as usize
-    }
-
     /// Get the effective arity of a callable (function, partial application, or memoized function)
     fn callable_arity(&self, callable: &Value) -> usize {
         match callable {
@@ -2587,20 +2582,21 @@ impl VM {
         let mapper = &args[0];
         let collection = &args[1];
 
-        let closure = match mapper {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "flat_map expects Function as first argument, got {}",
-                        mapper.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        if !matches!(
+            mapper,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
+            return Err(RuntimeError::new(
+                format!(
+                    "flat_map expects Function as first argument, got {}",
+                    mapper.type_name()
+                ),
+                line,
+            ));
+        }
 
-        let arity = self.closure_arity(&closure);
+        let mapper = mapper.clone();
+        let arity = self.callable_arity(&mapper);
         let mut result = Vector::new();
 
         // Helper to flatten a mapped result into the result vector
@@ -2635,14 +2631,14 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    let mapped = self.call_callable_sync(&mapper, call_args)?;
                     flatten_mapped(&mut result, mapped, self)?;
                 }
             }
             Value::LazySequence(seq) => {
                 let mut seq_clone = seq.borrow().clone();
                 while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
-                    let mapped = self.call_closure_sync(&closure, vec![elem])?;
+                    let mapped = self.call_callable_sync(&mapper, vec![elem])?;
                     flatten_mapped(&mut result, mapped, self)?;
                 }
             }
@@ -2659,7 +2655,7 @@ impl VM {
                         Box::new((actual_end..=*start).rev())
                     };
                     for i in range_iter {
-                        let mapped = self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                        let mapped = self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
                         flatten_mapped(&mut result, mapped, self)?;
                     }
                 }
@@ -2686,20 +2682,21 @@ impl VM {
         let mapper = &args[0];
         let collection = &args[1];
 
-        let closure = match mapper {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "filter_map expects Function as first argument, got {}",
-                        mapper.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        if !matches!(
+            mapper,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
+            return Err(RuntimeError::new(
+                format!(
+                    "filter_map expects Function as first argument, got {}",
+                    mapper.type_name()
+                ),
+                line,
+            ));
+        }
 
-        let arity = self.closure_arity(&closure);
+        let mapper = mapper.clone();
+        let arity = self.callable_arity(&mapper);
 
         match collection {
             Value::List(list) => {
@@ -2710,7 +2707,7 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    let mapped = self.call_callable_sync(&mapper, call_args)?;
                     if mapped.is_truthy() {
                         result.push_back(mapped);
                     }
@@ -2720,7 +2717,7 @@ impl VM {
             Value::Set(set) => {
                 let mut result = HashSet::new();
                 for elem in set.iter() {
-                    let mapped = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    let mapped = self.call_callable_sync(&mapper, vec![elem.clone()])?;
                     if mapped.is_truthy() {
                         if !mapped.is_hashable() {
                             return Err(RuntimeError::new(
@@ -2741,7 +2738,7 @@ impl VM {
                     } else {
                         vec![value.clone()]
                     };
-                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    let mapped = self.call_callable_sync(&mapper, call_args)?;
                     if mapped.is_truthy() {
                         result.insert(key.clone(), mapped);
                     }
@@ -2757,7 +2754,7 @@ impl VM {
                     } else {
                         vec![elem]
                     };
-                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    let mapped = self.call_callable_sync(&mapper, call_args)?;
                     if mapped.is_truthy() {
                         result.push_back(mapped);
                     }
@@ -2780,7 +2777,7 @@ impl VM {
                         };
                         for i in range_iter {
                             let mapped =
-                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
                             if mapped.is_truthy() {
                                 result.push_back(mapped);
                             }
@@ -2796,6 +2793,18 @@ impl VM {
                 Ok(Value::List(result))
             }
             Value::LazySequence(seq) => {
+                // For lazy sequences, need a raw closure
+                let closure = match &mapper {
+                    Value::Function(c) => c.clone(),
+                    Value::PartialApplication { .. } => {
+                        return Err(RuntimeError::new(
+                            "Cannot lazily filter_map lazy sequence with partial application"
+                                .to_string(),
+                            line,
+                        ));
+                    }
+                    _ => unreachable!(),
+                };
                 // Return a lazy FilterMap sequence instead of eagerly consuming
                 let lazy_filter_map = LazySeq::FilterMap {
                     source: seq.clone(),
@@ -2815,20 +2824,21 @@ impl VM {
         let mapper = &args[0];
         let collection = &args[1];
 
-        let closure = match mapper {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "find_map expects Function as first argument, got {}",
-                        mapper.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        if !matches!(
+            mapper,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
+            return Err(RuntimeError::new(
+                format!(
+                    "find_map expects Function as first argument, got {}",
+                    mapper.type_name()
+                ),
+                line,
+            ));
+        }
 
-        let arity = self.closure_arity(&closure);
+        let mapper = mapper.clone();
+        let arity = self.callable_arity(&mapper);
 
         match collection {
             Value::List(list) => {
@@ -2838,7 +2848,7 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    let mapped = self.call_callable_sync(&mapper, call_args)?;
                     if mapped.is_truthy() {
                         return Ok(mapped);
                     }
@@ -2847,7 +2857,7 @@ impl VM {
             }
             Value::Set(set) => {
                 for elem in set.iter() {
-                    let mapped = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    let mapped = self.call_callable_sync(&mapper, vec![elem.clone()])?;
                     if mapped.is_truthy() {
                         return Ok(mapped);
                     }
@@ -2861,7 +2871,7 @@ impl VM {
                     } else {
                         vec![value.clone()]
                     };
-                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    let mapped = self.call_callable_sync(&mapper, call_args)?;
                     if mapped.is_truthy() {
                         return Ok(mapped);
                     }
@@ -2876,7 +2886,7 @@ impl VM {
                     } else {
                         vec![elem]
                     };
-                    let mapped = self.call_closure_sync(&closure, call_args)?;
+                    let mapped = self.call_callable_sync(&mapper, call_args)?;
                     if mapped.is_truthy() {
                         return Ok(mapped);
                     }
@@ -2898,7 +2908,7 @@ impl VM {
                         };
                         for i in range_iter {
                             let mapped =
-                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
                             if mapped.is_truthy() {
                                 return Ok(mapped);
                             }
@@ -2910,7 +2920,7 @@ impl VM {
                         let mut i = *start;
                         loop {
                             let mapped =
-                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
                             if mapped.is_truthy() {
                                 return Ok(mapped);
                             }
@@ -2924,7 +2934,7 @@ impl VM {
                 loop {
                     match self.lazy_seq_next_with_callback(&mut seq_clone)? {
                         Some(elem) => {
-                            let mapped = self.call_closure_sync(&closure, vec![elem])?;
+                            let mapped = self.call_callable_sync(&mapper, vec![elem])?;
                             if mapped.is_truthy() {
                                 return Ok(mapped);
                             }
@@ -2949,20 +2959,21 @@ impl VM {
         let reducer = &args[0];
         let collection = &args[1];
 
-        let closure = match reducer {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "reduce expects Function as first argument, got {}",
-                        reducer.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        if !matches!(
+            reducer,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
+            return Err(RuntimeError::new(
+                format!(
+                    "reduce expects Function as first argument, got {}",
+                    reducer.type_name()
+                ),
+                line,
+            ));
+        }
 
-        let arity = self.closure_arity(&closure);
+        let reducer = reducer.clone();
+        let arity = self.callable_arity(&reducer);
 
         match collection {
             Value::List(list) => {
@@ -2976,7 +2987,7 @@ impl VM {
                     } else {
                         vec![acc, elem.clone()]
                     };
-                    acc = self.call_closure_sync(&closure, call_args)?;
+                    acc = self.call_callable_sync(&reducer, call_args)?;
                 }
                 Ok(acc)
             }
@@ -2987,7 +2998,7 @@ impl VM {
                 let mut iter = set.iter();
                 let mut acc = iter.next().unwrap().clone();
                 for elem in iter {
-                    acc = self.call_closure_sync(&closure, vec![acc, elem.clone()])?;
+                    acc = self.call_callable_sync(&reducer, vec![acc, elem.clone()])?;
                 }
                 Ok(acc)
             }
@@ -3004,7 +3015,7 @@ impl VM {
                     } else {
                         vec![acc, value.clone()]
                     };
-                    acc = self.call_closure_sync(&closure, call_args)?;
+                    acc = self.call_callable_sync(&reducer, call_args)?;
                 }
                 Ok(acc)
             }
@@ -3016,7 +3027,7 @@ impl VM {
                 let mut acc = Value::String(Rc::new(graphemes[0].to_string()));
                 for grapheme in graphemes.iter().skip(1) {
                     let elem = Value::String(Rc::new(grapheme.to_string()));
-                    acc = self.call_closure_sync(&closure, vec![acc, elem])?;
+                    acc = self.call_callable_sync(&reducer, vec![acc, elem])?;
                 }
                 Ok(acc)
             }
@@ -3032,7 +3043,8 @@ impl VM {
                     }
                     let mut acc = Value::Integer(*start);
                     for i in (start + 1)..=actual_end {
-                        match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)])
+                        match self
+                            .call_callable_sync(&reducer, vec![acc.clone(), Value::Integer(i)])
                         {
                             Ok(v) => acc = v,
                             Err(e) if e.is_break => {
@@ -3048,7 +3060,8 @@ impl VM {
                     let mut acc = Value::Integer(*start);
                     let mut i = *start + 1;
                     loop {
-                        match self.call_closure_sync(&closure, vec![acc.clone(), Value::Integer(i)])
+                        match self
+                            .call_callable_sync(&reducer, vec![acc.clone(), Value::Integer(i)])
                         {
                             Ok(v) => acc = v,
                             Err(e) if e.is_break => {
@@ -3073,7 +3086,7 @@ impl VM {
                     let next = self.lazy_seq_next_with_callback(&mut seq_clone)?;
                     match next {
                         Some(elem) => {
-                            match self.call_closure_sync(&closure, vec![acc.clone(), elem]) {
+                            match self.call_callable_sync(&reducer, vec![acc.clone(), elem]) {
                                 Ok(v) => acc = v,
                                 Err(e) if e.is_break => {
                                     return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -3267,25 +3280,26 @@ impl VM {
         let folder = &args[1];
         let collection = &args[2];
 
-        let closure = match folder {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "fold_s expects Function as second argument, got {}",
-                        folder.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        if !matches!(
+            folder,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
+            return Err(RuntimeError::new(
+                format!(
+                    "fold_s expects Function as second argument, got {}",
+                    folder.type_name()
+                ),
+                line,
+            ));
+        }
 
+        let folder = folder.clone();
         let mut acc = initial.clone();
 
         match collection {
             Value::List(list) => {
                 for elem in list.iter() {
-                    acc = self.call_closure_sync(&closure, vec![acc, elem.clone()])?;
+                    acc = self.call_callable_sync(&folder, vec![acc, elem.clone()])?;
                 }
             }
             Value::Range {
@@ -3297,12 +3311,12 @@ impl VM {
                     let actual_end = if *inclusive { *e } else { e - 1 };
                     if start <= &actual_end {
                         for i in *start..=actual_end {
-                            acc = self.call_closure_sync(&closure, vec![acc, Value::Integer(i)])?;
+                            acc = self.call_callable_sync(&folder, vec![acc, Value::Integer(i)])?;
                         }
                     } else {
                         // Reverse range (start > end)
                         for i in (actual_end..=*start).rev() {
-                            acc = self.call_closure_sync(&closure, vec![acc, Value::Integer(i)])?;
+                            acc = self.call_callable_sync(&folder, vec![acc, Value::Integer(i)])?;
                         }
                     }
                 }
@@ -3316,7 +3330,7 @@ impl VM {
             Value::LazySequence(seq) => {
                 let mut seq_clone = seq.borrow().clone();
                 while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
-                    acc = self.call_closure_sync(&closure, vec![acc, elem])?;
+                    acc = self.call_callable_sync(&folder, vec![acc, elem])?;
                 }
             }
             _ => {
@@ -3340,20 +3354,21 @@ impl VM {
         let folder = &args[1];
         let collection = &args[2];
 
-        let closure = match folder {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "scan expects Function as second argument, got {}",
-                        folder.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        if !matches!(
+            folder,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
+            return Err(RuntimeError::new(
+                format!(
+                    "scan expects Function as second argument, got {}",
+                    folder.type_name()
+                ),
+                line,
+            ));
+        }
 
-        let arity = self.closure_arity(&closure);
+        let folder = folder.clone();
+        let arity = self.callable_arity(&folder);
         let mut acc = initial.clone();
         let mut results = Vector::new();
         results.push_back(initial.clone()); // scan includes initial value as first element
@@ -3366,13 +3381,13 @@ impl VM {
                     } else {
                         vec![acc, elem.clone()]
                     };
-                    acc = self.call_closure_sync(&closure, call_args)?;
+                    acc = self.call_callable_sync(&folder, call_args)?;
                     results.push_back(acc.clone());
                 }
             }
             Value::Set(set) => {
                 for elem in set.iter() {
-                    acc = self.call_closure_sync(&closure, vec![acc, elem.clone()])?;
+                    acc = self.call_callable_sync(&folder, vec![acc, elem.clone()])?;
                     results.push_back(acc.clone());
                 }
             }
@@ -3383,7 +3398,7 @@ impl VM {
                     } else {
                         vec![acc, value.clone()]
                     };
-                    acc = self.call_closure_sync(&closure, call_args)?;
+                    acc = self.call_callable_sync(&folder, call_args)?;
                     results.push_back(acc.clone());
                 }
             }
@@ -3395,7 +3410,7 @@ impl VM {
                     } else {
                         vec![acc, elem]
                     };
-                    acc = self.call_closure_sync(&closure, call_args)?;
+                    acc = self.call_callable_sync(&folder, call_args)?;
                     results.push_back(acc.clone());
                 }
             }
@@ -3408,7 +3423,7 @@ impl VM {
                     let actual_end = if *inclusive { *e } else { e - 1 };
                     if start <= &actual_end {
                         for i in *start..=actual_end {
-                            acc = self.call_closure_sync(&closure, vec![acc, Value::Integer(i)])?;
+                            acc = self.call_callable_sync(&folder, vec![acc, Value::Integer(i)])?;
                             results.push_back(acc.clone());
                         }
                     }
@@ -3440,20 +3455,21 @@ impl VM {
         let side_effect = &args[0];
         let collection = &args[1];
 
-        let closure = match side_effect {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "each expects Function as first argument, got {}",
-                        side_effect.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        if !matches!(
+            side_effect,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
+            return Err(RuntimeError::new(
+                format!(
+                    "each expects Function as first argument, got {}",
+                    side_effect.type_name()
+                ),
+                line,
+            ));
+        }
 
-        let arity = self.closure_arity(&closure);
+        let side_effect = side_effect.clone();
+        let arity = self.callable_arity(&side_effect);
 
         match collection {
             Value::List(list) => {
@@ -3463,12 +3479,12 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    self.call_closure_sync(&closure, call_args)?;
+                    self.call_callable_sync(&side_effect, call_args)?;
                 }
             }
             Value::Set(set) => {
                 for elem in set.iter() {
-                    self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    self.call_callable_sync(&side_effect, vec![elem.clone()])?;
                 }
             }
             Value::Dict(dict) => {
@@ -3478,7 +3494,7 @@ impl VM {
                     } else {
                         vec![value.clone()]
                     };
-                    self.call_closure_sync(&closure, call_args)?;
+                    self.call_callable_sync(&side_effect, call_args)?;
                 }
             }
             Value::String(s) => {
@@ -3489,7 +3505,7 @@ impl VM {
                     } else {
                         vec![elem]
                     };
-                    self.call_closure_sync(&closure, call_args)?;
+                    self.call_callable_sync(&side_effect, call_args)?;
                 }
             }
             Value::Range {
@@ -3502,7 +3518,8 @@ impl VM {
                         let actual_end = if *inclusive { *e } else { e - 1 };
                         if start <= &actual_end {
                             for i in *start..=actual_end {
-                                match self.call_closure_sync(&closure, vec![Value::Integer(i)]) {
+                                match self.call_callable_sync(&side_effect, vec![Value::Integer(i)])
+                                {
                                     Ok(_) => {}
                                     Err(e) if e.is_break => return Ok(Value::Nil),
                                     Err(e) => return Err(e),
@@ -3512,7 +3529,8 @@ impl VM {
                             // Descending range
                             let mut i = *start;
                             while i >= actual_end {
-                                match self.call_closure_sync(&closure, vec![Value::Integer(i)]) {
+                                match self.call_callable_sync(&side_effect, vec![Value::Integer(i)])
+                                {
                                     Ok(_) => {}
                                     Err(e) if e.is_break => return Ok(Value::Nil),
                                     Err(e) => return Err(e),
@@ -3525,7 +3543,7 @@ impl VM {
                         // Unbounded range - must use break to terminate
                         let mut i = *start;
                         loop {
-                            match self.call_closure_sync(&closure, vec![Value::Integer(i)]) {
+                            match self.call_callable_sync(&side_effect, vec![Value::Integer(i)]) {
                                 Ok(_) => {}
                                 Err(e) if e.is_break => return Ok(Value::Nil),
                                 Err(e) => return Err(e),
@@ -3538,7 +3556,7 @@ impl VM {
             Value::LazySequence(seq) => {
                 let mut seq_clone = seq.borrow().clone();
                 while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
-                    match self.call_closure_sync(&closure, vec![elem]) {
+                    match self.call_callable_sync(&side_effect, vec![elem]) {
                         Ok(_) => {}
                         Err(e) if e.is_break => return Ok(Value::Nil),
                         Err(e) => return Err(e),
@@ -3566,18 +3584,20 @@ impl VM {
         let updater = &args[1];
         let collection = &args[2];
 
-        let closure = match updater {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "update expects Function as second argument, got {}",
-                        updater.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        if !matches!(
+            updater,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
+            return Err(RuntimeError::new(
+                format!(
+                    "update expects Function as second argument, got {}",
+                    updater.type_name()
+                ),
+                line,
+            ));
+        }
+
+        let updater = updater.clone();
 
         match collection {
             Value::List(list) => match key {
@@ -3592,7 +3612,7 @@ impl VM {
                         return Ok(collection.clone());
                     }
                     let current = list[actual_idx].clone();
-                    let new_value = self.call_closure_sync(&closure, vec![current])?;
+                    let new_value = self.call_callable_sync(&updater, vec![current])?;
                     let mut result = list.clone();
                     result.set(actual_idx, new_value);
                     Ok(Value::List(result))
@@ -3604,7 +3624,7 @@ impl VM {
             },
             Value::Dict(dict) => match dict.get(key) {
                 Some(current) => {
-                    let new_value = self.call_closure_sync(&closure, vec![current.clone()])?;
+                    let new_value = self.call_callable_sync(&updater, vec![current.clone()])?;
                     let mut result = dict.clone();
                     result.insert(key.clone(), new_value);
                     Ok(Value::Dict(result))
@@ -3628,23 +3648,25 @@ impl VM {
         let updater = &args[2];
         let collection = &args[3];
 
-        let closure = match updater {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "update_d expects Function as third argument, got {}",
-                        updater.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        if !matches!(
+            updater,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
+            return Err(RuntimeError::new(
+                format!(
+                    "update_d expects Function as third argument, got {}",
+                    updater.type_name()
+                ),
+                line,
+            ));
+        }
+
+        let updater = updater.clone();
 
         match collection {
             Value::Dict(dict) => {
                 let current = dict.get(key).cloned().unwrap_or_else(|| default.clone());
-                let new_value = self.call_closure_sync(&closure, vec![current])?;
+                let new_value = self.call_callable_sync(&updater, vec![current])?;
                 let mut result = dict.clone();
                 result.insert(key.clone(), new_value);
                 Ok(Value::Dict(result))
@@ -3668,20 +3690,21 @@ impl VM {
         let predicate = &args[0];
         let collection = &args[1];
 
-        let closure = match predicate {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "find expects Function as first argument, got {}",
-                        predicate.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        if !matches!(
+            predicate,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
+            return Err(RuntimeError::new(
+                format!(
+                    "find expects Function as first argument, got {}",
+                    predicate.type_name()
+                ),
+                line,
+            ));
+        }
 
-        let arity = self.closure_arity(&closure);
+        let predicate = predicate.clone();
+        let arity = self.callable_arity(&predicate);
 
         match collection {
             Value::List(list) => {
@@ -3691,7 +3714,7 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    let result = self.call_closure_sync(&closure, call_args)?;
+                    let result = self.call_callable_sync(&predicate, call_args)?;
                     if result.is_truthy() {
                         return Ok(elem.clone());
                     }
@@ -3700,7 +3723,7 @@ impl VM {
             }
             Value::Set(set) => {
                 for elem in set.iter() {
-                    let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    let result = self.call_callable_sync(&predicate, vec![elem.clone()])?;
                     if result.is_truthy() {
                         return Ok(elem.clone());
                     }
@@ -3714,7 +3737,7 @@ impl VM {
                     } else {
                         vec![value.clone()]
                     };
-                    let result = self.call_closure_sync(&closure, call_args)?;
+                    let result = self.call_callable_sync(&predicate, call_args)?;
                     if result.is_truthy() {
                         return Ok(value.clone());
                     }
@@ -3730,7 +3753,7 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    let result = self.call_closure_sync(&closure, call_args)?;
+                    let result = self.call_callable_sync(&predicate, call_args)?;
                     if result.is_truthy() {
                         return Ok(elem);
                     }
@@ -3747,7 +3770,7 @@ impl VM {
                     if start <= &actual_end {
                         for i in *start..=actual_end {
                             let elem = Value::Integer(i);
-                            let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                            let result = self.call_callable_sync(&predicate, vec![elem.clone()])?;
                             if result.is_truthy() {
                                 return Ok(elem);
                             }
@@ -3756,7 +3779,7 @@ impl VM {
                         let mut i = *start;
                         while i >= actual_end {
                             let elem = Value::Integer(i);
-                            let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                            let result = self.call_callable_sync(&predicate, vec![elem.clone()])?;
                             if result.is_truthy() {
                                 return Ok(elem);
                             }
@@ -3770,7 +3793,7 @@ impl VM {
                     let mut i = *start;
                     loop {
                         let elem = Value::Integer(i);
-                        let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                        let result = self.call_callable_sync(&predicate, vec![elem.clone()])?;
                         if result.is_truthy() {
                             return Ok(elem);
                         }
@@ -3783,7 +3806,7 @@ impl VM {
                 loop {
                     match self.lazy_seq_next_with_callback(&mut seq_clone)? {
                         Some(elem) => {
-                            let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                            let result = self.call_callable_sync(&predicate, vec![elem.clone()])?;
                             if result.is_truthy() {
                                 return Ok(elem);
                             }
@@ -3804,20 +3827,21 @@ impl VM {
         let predicate = &args[0];
         let collection = &args[1];
 
-        let closure = match predicate {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "count expects Function as first argument, got {}",
-                        predicate.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        if !matches!(
+            predicate,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
+            return Err(RuntimeError::new(
+                format!(
+                    "count expects Function as first argument, got {}",
+                    predicate.type_name()
+                ),
+                line,
+            ));
+        }
 
-        let arity = self.closure_arity(&closure);
+        let predicate = predicate.clone();
+        let arity = self.callable_arity(&predicate);
         let mut count = 0i64;
 
         match collection {
@@ -3828,7 +3852,7 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    let result = self.call_closure_sync(&closure, call_args)?;
+                    let result = self.call_callable_sync(&predicate, call_args)?;
                     if result.is_truthy() {
                         count += 1;
                     }
@@ -3836,7 +3860,7 @@ impl VM {
             }
             Value::Set(set) => {
                 for elem in set.iter() {
-                    let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    let result = self.call_callable_sync(&predicate, vec![elem.clone()])?;
                     if result.is_truthy() {
                         count += 1;
                     }
@@ -3849,7 +3873,7 @@ impl VM {
                     } else {
                         vec![value.clone()]
                     };
-                    let result = self.call_closure_sync(&closure, call_args)?;
+                    let result = self.call_callable_sync(&predicate, call_args)?;
                     if result.is_truthy() {
                         count += 1;
                     }
@@ -3865,7 +3889,7 @@ impl VM {
                     if start <= &actual_end {
                         for i in *start..=actual_end {
                             let result =
-                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
                             if result.is_truthy() {
                                 count += 1;
                             }
@@ -3874,7 +3898,7 @@ impl VM {
                         let mut i = *start;
                         while i >= actual_end {
                             let result =
-                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
                             if result.is_truthy() {
                                 count += 1;
                             }
@@ -3897,7 +3921,7 @@ impl VM {
                     } else {
                         vec![elem]
                     };
-                    let result = self.call_closure_sync(&closure, call_args)?;
+                    let result = self.call_callable_sync(&predicate, call_args)?;
                     if result.is_truthy() {
                         count += 1;
                     }
@@ -3995,20 +4019,21 @@ impl VM {
         let predicate = &args[0];
         let collection = &args[1];
 
-        let closure = match predicate {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "any? expects Function as first argument, got {}",
-                        predicate.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        if !matches!(
+            predicate,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
+            return Err(RuntimeError::new(
+                format!(
+                    "any? expects Function as first argument, got {}",
+                    predicate.type_name()
+                ),
+                line,
+            ));
+        }
 
-        let arity = self.closure_arity(&closure);
+        let predicate = predicate.clone();
+        let arity = self.callable_arity(&predicate);
 
         match collection {
             Value::List(list) => {
@@ -4018,7 +4043,7 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    let result = self.call_closure_sync(&closure, call_args)?;
+                    let result = self.call_callable_sync(&predicate, call_args)?;
                     if result.is_truthy() {
                         return Ok(Value::Boolean(true));
                     }
@@ -4027,7 +4052,7 @@ impl VM {
             }
             Value::Set(set) => {
                 for elem in set.iter() {
-                    let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    let result = self.call_callable_sync(&predicate, vec![elem.clone()])?;
                     if result.is_truthy() {
                         return Ok(Value::Boolean(true));
                     }
@@ -4041,7 +4066,7 @@ impl VM {
                     } else {
                         vec![value.clone()]
                     };
-                    let result = self.call_closure_sync(&closure, call_args)?;
+                    let result = self.call_callable_sync(&predicate, call_args)?;
                     if result.is_truthy() {
                         return Ok(Value::Boolean(true));
                     }
@@ -4057,7 +4082,7 @@ impl VM {
                     } else {
                         vec![elem]
                     };
-                    let result = self.call_closure_sync(&closure, call_args)?;
+                    let result = self.call_callable_sync(&predicate, call_args)?;
                     if result.is_truthy() {
                         return Ok(Value::Boolean(true));
                     }
@@ -4074,7 +4099,7 @@ impl VM {
                     if start <= &actual_end {
                         for i in *start..=actual_end {
                             let result =
-                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
                             if result.is_truthy() {
                                 return Ok(Value::Boolean(true));
                             }
@@ -4083,7 +4108,7 @@ impl VM {
                         let mut i = *start;
                         while i >= actual_end {
                             let result =
-                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
                             if result.is_truthy() {
                                 return Ok(Value::Boolean(true));
                             }
@@ -4102,7 +4127,7 @@ impl VM {
                 loop {
                     match self.lazy_seq_next_with_callback(&mut seq_clone)? {
                         Some(elem) => {
-                            let result = self.call_closure_sync(&closure, vec![elem])?;
+                            let result = self.call_callable_sync(&predicate, vec![elem])?;
                             if result.is_truthy() {
                                 return Ok(Value::Boolean(true));
                             }
@@ -4123,20 +4148,21 @@ impl VM {
         let predicate = &args[0];
         let collection = &args[1];
 
-        let closure = match predicate {
-            Value::Function(c) => c.clone(),
-            _ => {
-                return Err(RuntimeError::new(
-                    format!(
-                        "all? expects Function as first argument, got {}",
-                        predicate.type_name()
-                    ),
-                    line,
-                ));
-            }
-        };
+        if !matches!(
+            predicate,
+            Value::Function(_) | Value::PartialApplication { .. }
+        ) {
+            return Err(RuntimeError::new(
+                format!(
+                    "all? expects Function as first argument, got {}",
+                    predicate.type_name()
+                ),
+                line,
+            ));
+        }
 
-        let arity = self.closure_arity(&closure);
+        let predicate = predicate.clone();
+        let arity = self.callable_arity(&predicate);
 
         match collection {
             Value::List(list) => {
@@ -4146,7 +4172,7 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    let result = self.call_closure_sync(&closure, call_args)?;
+                    let result = self.call_callable_sync(&predicate, call_args)?;
                     if !result.is_truthy() {
                         return Ok(Value::Boolean(false));
                     }
@@ -4155,7 +4181,7 @@ impl VM {
             }
             Value::Set(set) => {
                 for elem in set.iter() {
-                    let result = self.call_closure_sync(&closure, vec![elem.clone()])?;
+                    let result = self.call_callable_sync(&predicate, vec![elem.clone()])?;
                     if !result.is_truthy() {
                         return Ok(Value::Boolean(false));
                     }
@@ -4169,7 +4195,7 @@ impl VM {
                     } else {
                         vec![value.clone()]
                     };
-                    let result = self.call_closure_sync(&closure, call_args)?;
+                    let result = self.call_callable_sync(&predicate, call_args)?;
                     if !result.is_truthy() {
                         return Ok(Value::Boolean(false));
                     }
@@ -4185,7 +4211,7 @@ impl VM {
                     } else {
                         vec![elem]
                     };
-                    let result = self.call_closure_sync(&closure, call_args)?;
+                    let result = self.call_callable_sync(&predicate, call_args)?;
                     if !result.is_truthy() {
                         return Ok(Value::Boolean(false));
                     }
@@ -4202,7 +4228,7 @@ impl VM {
                     if start <= &actual_end {
                         for i in *start..=actual_end {
                             let result =
-                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
                             if !result.is_truthy() {
                                 return Ok(Value::Boolean(false));
                             }
@@ -4211,7 +4237,7 @@ impl VM {
                         let mut i = *start;
                         while i >= actual_end {
                             let result =
-                                self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
+                                self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
                             if !result.is_truthy() {
                                 return Ok(Value::Boolean(false));
                             }
@@ -4234,7 +4260,7 @@ impl VM {
                     } else {
                         vec![elem]
                     };
-                    let result = self.call_closure_sync(&closure, call_args)?;
+                    let result = self.call_callable_sync(&predicate, call_args)?;
                     if !result.is_truthy() {
                         return Ok(Value::Boolean(false));
                     }
