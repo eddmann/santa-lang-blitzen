@@ -2336,6 +2336,10 @@ impl VM {
                     Some(e) => {
                         // Bounded range - eagerly evaluate and return List
                         let mut result = Vector::new();
+                        // For non-inclusive ranges, if start >= end, the range is empty
+                        if !*inclusive && start >= e {
+                            return Ok(Value::List(result));
+                        }
                         let actual_end = if *inclusive { *e } else { e - 1 };
                         if start <= &actual_end {
                             for i in *start..=actual_end {

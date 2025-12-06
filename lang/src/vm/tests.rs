@@ -3084,6 +3084,14 @@ mod runtime_tests {
     }
 
     #[test]
+    fn eval_builtin_map_empty_non_inclusive_range() {
+        // map over empty non-inclusive range (3..3) returns empty list
+        assert_eq!(eval("map(_ + 1, 3..3)"), Ok(Value::List(Vector::new())));
+        // Also test where start > end for non-inclusive
+        assert_eq!(eval("map(_ + 1, 5..3)"), Ok(Value::List(Vector::new())));
+    }
+
+    #[test]
     fn eval_builtin_map_unbounded_range() {
         // map(|x| x + 1, 1..) returns LazySequence for unbounded ranges
         let result = eval("map(|x| x + 1, 1..)").unwrap();
