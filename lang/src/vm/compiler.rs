@@ -2569,10 +2569,11 @@ impl Compiler {
                 self.emit_with_operand(OpCode::SetGlobal, name_idx as u8);
                 // Note: SetGlobal only peeks, doesn't pop, so value stays on stack
             } else {
-                // Local scope - add local first (for self-recursion)
-                self.add_local(name.clone(), mutable);
-                // Compile the value expression (can now reference the name)
+                // Local scope - compile value first, then bind
+                // (For self-recursion in closures like `let f = |x| f(x-1)`,
+                // the closure's upvalue resolution handles it)
                 self.expression(value)?;
+                self.add_local(name.clone(), mutable);
             }
         } else {
             // For other patterns, compile value first, then bind
