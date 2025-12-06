@@ -3368,17 +3368,21 @@ impl Compiler {
 
     /// End current scope and pop locals
     fn end_scope(&mut self) {
-        // Track how many locals to pop from the compiler's locals list
-        // The stack cleanup happens at function return (for captured locals)
-        // or we rely on the block returning a value and proper scope management
+        // Count how many locals to pop
+        let mut count = 0;
         while !self.locals.is_empty()
             && self.locals.last().map(|l| l.depth).unwrap_or(0) > self.scope_depth - 1
         {
-            let _local = self.locals.pop().unwrap();
-            // Captured locals will be closed at function return via close_upvalues
-            // Non-captured locals stay on stack until block returns its value
-            // (the block return value sits on top, locals below it)
+            self.locals.pop();
+            count += 1;
         }
+
+        // Emit PopN to clean up block-local values from the stack
+        // PopN keeps the top value (block result) and pops N values below it
+        if count > 0 {
+            self.emit_with_operand(OpCode::PopN, count);
+        }
+
         self.scope_depth -= 1;
     }
 }
