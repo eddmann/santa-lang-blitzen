@@ -3202,6 +3202,10 @@ impl VM {
             } => {
                 match end {
                     Some(e) => {
+                        // For non-inclusive ranges, if start >= end, the range is empty
+                        if !*inclusive && start >= e {
+                            return Ok(acc);
+                        }
                         let actual_end = if *inclusive { *e } else { e - 1 };
                         if start <= &actual_end {
                             for i in *start..=actual_end {
