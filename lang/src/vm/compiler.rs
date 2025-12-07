@@ -2569,11 +2569,24 @@ impl Compiler {
                 self.emit_with_operand(OpCode::SetGlobal, name_idx as u8);
                 // Note: SetGlobal only peeks, doesn't pop, so value stays on stack
             } else {
-                // Local scope - compile value first, then bind
-                // (For self-recursion in closures like `let f = |x| f(x-1)`,
-                // the closure's upvalue resolution handles it)
-                self.expression(value)?;
-                self.add_local(name.clone(), mutable);
+                // Local scope
+                // For self-recursive closures like `let f = |x| f(x-1)`, we need to
+                // pre-declare the local before compiling the function so it can capture itself
+                if matches!(value.node, Expr::Function { .. }) {
+                    // Pre-declare with nil
+                    self.emit(OpCode::Nil);
+                    self.add_local(name.clone(), mutable);
+                    let idx = self.resolve_local(name).unwrap();
+                    // Compile the function (can now capture itself)
+                    self.expression(value)?;
+                    // Update the slot with the actual closure
+                    self.emit_with_operand(OpCode::SetLocal, idx as u8);
+                    self.emit(OpCode::Pop);
+                } else {
+                    // Non-function values - compile first, then bind
+                    self.expression(value)?;
+                    self.add_local(name.clone(), mutable);
+                }
             }
         } else {
             // For other patterns, compile value first, then bind
