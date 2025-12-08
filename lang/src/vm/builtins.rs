@@ -1127,10 +1127,7 @@ fn builtin_skip(total: &Value, collection: &Value, line: u32) -> Result<Value, R
 
                 // Return a new Range with adjusted start (stays lazy)
                 // Check if we've skipped past the end
-                if step > 0 && new_start > actual_end {
-                    // Empty range - return empty list
-                    Ok(Value::List(Vector::new()))
-                } else if step < 0 && new_start < actual_end {
+                if (step > 0 && new_start > actual_end) || (step < 0 && new_start < actual_end) {
                     // Empty range - return empty list
                     Ok(Value::List(Vector::new()))
                 } else {
