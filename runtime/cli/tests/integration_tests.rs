@@ -816,3 +816,109 @@ fn partial_application_with_update_d() {
         .success()
         .stdout(predicate::str::contains("\"c\": 10")); // default 0 + 10 = 10
 }
+
+// Self-recursive closure tests
+
+#[test]
+fn self_recursive_closure_direct() {
+    // Direct self-recursive closure: let f = |x| f(x)
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        let factorial = |n| if n <= 1 {{ 1 }} else {{ n * factorial(n - 1) }};
+        factorial(5)
+    "#
+    )
+    .unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("120"));
+}
+
+#[test]
+fn self_recursive_closure_with_memoize() {
+    // Self-recursive closure wrapped in memoize: let f = memoize |x| f(x)
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        let fib = memoize |n| if n <= 1 {{ n }} else {{ fib(n - 1) + fib(n - 2) }};
+        fib(10)
+    "#
+    )
+    .unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("55"));
+}
+
+#[test]
+fn self_recursive_closure_with_memoize_large() {
+    // Memoized recursive fibonacci should handle larger values efficiently
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        let fib = memoize |n| if n <= 1 {{ n }} else {{ fib(n - 1) + fib(n - 2) }};
+        fib(30)
+    "#
+    )
+    .unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("832040"));
+}
+
+#[test]
+fn self_recursive_closure_with_memoize_multiple_args() {
+    // Memoized recursive function with multiple arguments
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        let binomial = memoize |n, k| {{
+            if k == 0 || k == n {{ 1 }}
+            else {{ binomial(n - 1, k - 1) + binomial(n - 1, k) }}
+        }};
+        binomial(10, 5)
+    "#
+    )
+    .unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("252")); // C(10,5) = 252
+}
+
+#[test]
+fn self_recursive_closure_nested_in_call() {
+    // Self-recursive closure inside another function call
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        let apply_twice = |f, x| f(f(x));
+        let countdown = memoize |n| if n <= 0 {{ 0 }} else {{ countdown(n - 1) }};
+        apply_twice(countdown, 10)
+    "#
+    )
+    .unwrap();
+
+    santa_cli()
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0"));
+}

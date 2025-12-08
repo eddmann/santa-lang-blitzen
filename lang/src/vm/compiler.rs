@@ -2571,15 +2571,16 @@ impl Compiler {
             } else {
                 // Local scope
                 // For self-recursive closures like `let f = |x| f(x-1)`, we need to
-                // pre-declare the local before compiling the function so it can capture itself
-                if matches!(value.node, Expr::Function { .. }) {
+                // pre-declare the local before compiling the function so it can capture itself.
+                // This also applies to wrapped functions like `let f = memoize |x| f(x-1)`.
+                if Self::contains_function(&value.node) {
                     // Pre-declare with nil
                     self.emit(OpCode::Nil);
                     self.add_local(name.clone(), mutable);
                     let idx = self.resolve_local(name).unwrap();
-                    // Compile the function (can now capture itself)
+                    // Compile the expression (functions can now capture themselves)
                     self.expression(value)?;
-                    // Update the slot with the actual closure
+                    // Update the slot with the actual value
                     self.emit_with_operand(OpCode::SetLocal, idx as u8);
                     self.emit(OpCode::Pop);
                 } else {
@@ -3398,6 +3399,62 @@ impl Compiler {
         }
 
         self.scope_depth -= 1;
+    }
+
+    /// Check if an expression contains a function literal anywhere in its structure.
+    /// This is used to determine if we need to pre-declare a let binding to support
+    /// self-recursive closures like `let f = memoize |x| f(x-1)`.
+    fn contains_function(expr: &Expr) -> bool {
+        match expr {
+            Expr::Function { .. } => true,
+            Expr::Call { function, args } => {
+                Self::contains_function(&function.node)
+                    || args.iter().any(|arg| Self::contains_function(&arg.node))
+            }
+            Expr::InfixCall { left, right, .. } => {
+                Self::contains_function(&left.node) || Self::contains_function(&right.node)
+            }
+            Expr::Prefix { right, .. } => Self::contains_function(&right.node),
+            Expr::Infix { left, right, .. } => {
+                Self::contains_function(&left.node) || Self::contains_function(&right.node)
+            }
+            Expr::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                Self::contains_function(&condition.node)
+                    || Self::contains_function(&then_branch.node)
+                    || else_branch
+                        .as_ref()
+                        .map(|e| Self::contains_function(&e.node))
+                        .unwrap_or(false)
+            }
+            Expr::List(items) | Expr::Set(items) => {
+                items.iter().any(|item| Self::contains_function(&item.node))
+            }
+            Expr::Dict(pairs) => pairs
+                .iter()
+                .any(|(k, v)| Self::contains_function(&k.node) || Self::contains_function(&v.node)),
+            Expr::Index { collection, index } => {
+                Self::contains_function(&collection.node) || Self::contains_function(&index.node)
+            }
+            Expr::Block(stmts) => stmts.iter().any(|stmt| match &stmt.node {
+                Stmt::Expr(e) => Self::contains_function(&e.node),
+                Stmt::Let { value, .. } => Self::contains_function(&value.node),
+                _ => false,
+            }),
+            // Terminal expressions that cannot contain functions
+            Expr::Integer(_)
+            | Expr::Decimal(_)
+            | Expr::String(_)
+            | Expr::Boolean(_)
+            | Expr::Nil
+            | Expr::Identifier(_)
+            | Expr::Placeholder => false,
+            // Other expressions - be conservative and return false
+            _ => false,
+        }
     }
 }
 

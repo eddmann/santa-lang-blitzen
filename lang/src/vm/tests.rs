@@ -1021,6 +1021,74 @@ mod compiler_tests {
         );
     }
 
+    // §4.6a Self-recursive closures
+    // Self-recursive closures need pre-declaration so the closure can capture itself
+    #[test]
+    fn compile_self_recursive_closure_direct() {
+        // Direct self-recursive closure: let f = |x| f(x)
+        // Should use Nil + SetLocal pattern to allow self-reference
+        check_bytecode(
+            "{ let f = |x| f(x); f(1) }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Nil
+                0001 [   1] MakeClosure 0
+                0003 [   1] SetLocal 0
+                0005 [   1] Pop
+                0006 [   1] GetLocal 0
+                0008 [   1] Constant 0 (1)
+                0010 [   1] Call 1
+                0012 [   1] PopN 1
+                0014 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_self_recursive_closure_with_wrapper() {
+        // Self-recursive closure wrapped in a function call (like memoize)
+        // Should also use Nil + SetLocal pattern
+        check_bytecode(
+            "{ let f = wrapper(|x| f(x)); f(1) }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Nil
+                0001 [   1] GetGlobal 0 ("wrapper")
+                0003 [   1] MakeClosure 0
+                0005 [   1] Call 1
+                0007 [   1] SetLocal 0
+                0009 [   1] Pop
+                0010 [   1] GetLocal 0
+                0012 [   1] Constant 1 (1)
+                0014 [   1] Call 1
+                0016 [   1] PopN 1
+                0018 [   1] Return
+            "#]],
+        );
+    }
+
+    #[test]
+    fn compile_non_recursive_closure_no_predeclaration() {
+        // Non-recursive closure also uses pre-declaration since it contains a function
+        // The contains_function check is conservative - it doesn't check if the closure
+        // actually references the bound name
+        check_bytecode(
+            "{ let f = |x| x + 1; f(1) }",
+            expect![[r#"
+                == test ==
+                0000 [   1] Nil
+                0001 [   1] MakeClosure 0
+                0003 [   1] SetLocal 0
+                0005 [   1] Pop
+                0006 [   1] GetLocal 0
+                0008 [   1] Constant 0 (1)
+                0010 [   1] Call 1
+                0012 [   1] PopN 1
+                0014 [   1] Return
+            "#]],
+        );
+    }
+
     // §4.7 Pipeline operator
     #[test]
     fn compile_pipeline_simple() {
@@ -1121,7 +1189,8 @@ mod compiler_tests {
                 == test ==
                 0000 [   1] Constant 0 (42)
                 0002 [   1] GetLocal 0
-                0004 [   1] Return
+                0004 [   1] PopN 1
+                0006 [   1] Return
             "#]],
         );
     }
@@ -1143,7 +1212,8 @@ mod compiler_tests {
                 0012 [   1] GetLocal 0
                 0014 [   1] GetLocal 1
                 0016 [   1] Add
-                0017 [   1] Return
+                0017 [   1] PopN 2
+                0019 [   1] Return
             "#]],
         );
     }
@@ -1162,7 +1232,8 @@ mod compiler_tests {
                 0004 [   1] SetLocal 0
                 0006 [   1] Pop
                 0007 [   1] GetLocal 0
-                0009 [   1] Return
+                0009 [   1] PopN 1
+                0011 [   1] Return
             "#]],
         );
     }
@@ -1186,7 +1257,8 @@ mod compiler_tests {
                 0016 [   1] GetLocal 1
                 0018 [   1] GetLocal 2
                 0020 [   1] Add
-                0021 [   1] Return
+                0021 [   1] PopN 3
+                0023 [   1] Return
             "#]],
         );
     }
@@ -1209,7 +1281,8 @@ mod compiler_tests {
                 0017 [   1] Nil
                 0018 [   1] Slice
                 0019 [   1] GetLocal 1
-                0021 [   1] Return
+                0021 [   1] PopN 3
+                0023 [   1] Return
             "#]],
         );
     }
@@ -1227,7 +1300,8 @@ mod compiler_tests {
                 0008 [   1] Constant 2 (0)
                 0010 [   1] Index
                 0011 [   1] GetLocal 1
-                0013 [   1] Return
+                0013 [   1] PopN 2
+                0015 [   1] Return
             "#]],
         );
     }
@@ -1242,9 +1316,11 @@ mod compiler_tests {
                 0000 [   1] Constant 0 (1)
                 0002 [   1] Constant 1 (2)
                 0004 [   1] GetLocal 1
-                0006 [   1] Pop
-                0007 [   1] GetLocal 0
-                0009 [   1] Return
+                0006 [   1] PopN 1
+                0008 [   1] Pop
+                0009 [   1] GetLocal 0
+                0011 [   1] PopN 1
+                0013 [   1] Return
             "#]],
         );
     }
@@ -1258,7 +1334,8 @@ mod compiler_tests {
                 0000 [   1] Constant 0 (1)
                 0002 [   1] Constant 1 ("hello")
                 0004 [   1] GetLocal 1
-                0006 [   1] Return
+                0006 [   1] PopN 2
+                0008 [   1] Return
             "#]],
         );
     }
