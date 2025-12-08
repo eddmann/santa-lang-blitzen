@@ -1907,6 +1907,7 @@ impl VM {
             BuiltinId::Iterate => self.builtin_iterate(args, line),
             BuiltinId::Take => self.builtin_take(args, line),
             BuiltinId::Second => self.builtin_second(args, line),
+            BuiltinId::Last => self.builtin_last(args, line),
             BuiltinId::Rest => self.builtin_rest(args, line),
             BuiltinId::Get => self.builtin_get(args, line),
             BuiltinId::First => self.builtin_first(args, line),
@@ -4572,6 +4573,62 @@ impl VM {
             }
             _ => Err(RuntimeError::new(
                 format!("second not supported for {}", collection.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// last(collection) → Value | Nil
+    /// Get last element. Returns nil if collection is empty.
+    fn builtin_last(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let collection = &args[0];
+
+        match collection {
+            Value::List(v) => Ok(v.back().cloned().unwrap_or(Value::Nil)),
+            Value::Set(s) => Ok(s.iter().last().cloned().unwrap_or(Value::Nil)),
+            Value::String(s) => Ok(s
+                .graphemes(true)
+                .next_back()
+                .map(|g| Value::String(Rc::new(g.to_string())))
+                .unwrap_or(Value::Nil)),
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                match end {
+                    Some(e) => {
+                        if *inclusive {
+                            Ok(Value::Integer(*e))
+                        } else {
+                            // Exclusive range: last element is end - step
+                            let step = if *e < *start { -1 } else { 1 };
+                            let last = e - step;
+                            // Check if range is empty
+                            if (step > 0 && last < *start) || (step < 0 && last > *start) {
+                                Ok(Value::Nil)
+                            } else {
+                                Ok(Value::Integer(last))
+                            }
+                        }
+                    }
+                    None => Err(RuntimeError::new(
+                        "last not supported for unbounded range".to_string(),
+                        line,
+                    )),
+                }
+            }
+            Value::LazySequence(seq) => {
+                // Consume all elements, return the last
+                let mut seq_clone = seq.borrow().clone();
+                let mut last_value = None;
+                while let Some(value) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    last_value = Some(value);
+                }
+                Ok(last_value.unwrap_or(Value::Nil))
+            }
+            _ => Err(RuntimeError::new(
+                format!("last not supported for {}", collection.type_name()),
                 line,
             )),
         }

@@ -32,6 +32,7 @@ pub enum BuiltinId {
     Size = 11,
     First = 12,
     Second = 13,
+    Last = 17,
     Rest = 14,
     Keys = 15,
     Values = 16,
@@ -123,8 +124,6 @@ pub enum BuiltinId {
     Id = 160,
     Type = 161,
     Memoize = 162,
-    Or = 163,
-    And = 164,
     Evaluate = 165,
 }
 
@@ -141,6 +140,7 @@ impl BuiltinId {
             BuiltinId::Size => "size",
             BuiltinId::First => "first",
             BuiltinId::Second => "second",
+            BuiltinId::Last => "last",
             BuiltinId::Rest => "rest",
             BuiltinId::Keys => "keys",
             BuiltinId::Values => "values",
@@ -202,8 +202,6 @@ impl BuiltinId {
             BuiltinId::Id => "id",
             BuiltinId::Type => "type",
             BuiltinId::Memoize => "memoize",
-            BuiltinId::Or => "or",
-            BuiltinId::And => "and",
             BuiltinId::Evaluate => "evaluate",
         }
     }
@@ -220,6 +218,7 @@ impl BuiltinId {
             "size" => Some(BuiltinId::Size),
             "first" => Some(BuiltinId::First),
             "second" => Some(BuiltinId::Second),
+            "last" => Some(BuiltinId::Last),
             "rest" => Some(BuiltinId::Rest),
             "keys" => Some(BuiltinId::Keys),
             "values" => Some(BuiltinId::Values),
@@ -281,8 +280,6 @@ impl BuiltinId {
             "id" => Some(BuiltinId::Id),
             "type" => Some(BuiltinId::Type),
             "memoize" => Some(BuiltinId::Memoize),
-            "or" => Some(BuiltinId::Or),
-            "and" => Some(BuiltinId::And),
             "evaluate" => Some(BuiltinId::Evaluate),
             _ => None,
         }
@@ -301,6 +298,7 @@ impl BuiltinId {
             | BuiltinId::Size
             | BuiltinId::First
             | BuiltinId::Second
+            | BuiltinId::Last
             | BuiltinId::Rest
             | BuiltinId::Keys
             | BuiltinId::Values
@@ -352,9 +350,7 @@ impl BuiltinId {
             | BuiltinId::BitOr
             | BuiltinId::BitXor
             | BuiltinId::BitShiftLeft
-            | BuiltinId::BitShiftRight
-            | BuiltinId::Or
-            | BuiltinId::And => (2, 2),
+            | BuiltinId::BitShiftRight => (2, 2),
 
             // Three argument functions
             BuiltinId::Assoc
@@ -401,6 +397,7 @@ impl BuiltinId {
                 | BuiltinId::Iterate
                 | BuiltinId::Take
                 | BuiltinId::Second
+                | BuiltinId::Last
                 | BuiltinId::Rest
                 | BuiltinId::Get
                 | BuiltinId::First
@@ -429,6 +426,7 @@ impl TryFrom<u16> for BuiltinId {
             11 => Ok(BuiltinId::Size),
             12 => Ok(BuiltinId::First),
             13 => Ok(BuiltinId::Second),
+            17 => Ok(BuiltinId::Last),
             14 => Ok(BuiltinId::Rest),
             15 => Ok(BuiltinId::Keys),
             16 => Ok(BuiltinId::Values),
@@ -490,8 +488,6 @@ impl TryFrom<u16> for BuiltinId {
             160 => Ok(BuiltinId::Id),
             161 => Ok(BuiltinId::Type),
             162 => Ok(BuiltinId::Memoize),
-            163 => Ok(BuiltinId::Or),
-            164 => Ok(BuiltinId::And),
             165 => Ok(BuiltinId::Evaluate),
             _ => Err(value),
         }
@@ -576,12 +572,11 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         // Phase 13: Utility functions
         BuiltinId::Id => builtin_id(&args[0], line),
         BuiltinId::Type => builtin_type(&args[0], line),
-        BuiltinId::Or => builtin_or(&args[0], &args[1], line),
-        BuiltinId::And => builtin_and(&args[0], &args[1], line),
         BuiltinId::Evaluate => builtin_evaluate(&args[0], line),
         // Callback-based builtins - handled specially in runtime
         BuiltinId::Get
         | BuiltinId::First
+        | BuiltinId::Last
         | BuiltinId::Update
         | BuiltinId::UpdateD
         | BuiltinId::Map
@@ -2362,26 +2357,6 @@ fn builtin_id(value: &Value, _line: u32) -> Result<Value, RuntimeError> {
 /// Get type name. Per LANG.txt §11.16
 fn builtin_type(value: &Value, _line: u32) -> Result<Value, RuntimeError> {
     Ok(Value::String(Rc::new(value.type_name().to_string())))
-}
-
-/// or(a, b) → Value
-/// Logical OR as function. Per LANG.txt §11.16
-fn builtin_or(a: &Value, b: &Value, _line: u32) -> Result<Value, RuntimeError> {
-    if a.is_truthy() {
-        Ok(a.clone())
-    } else {
-        Ok(b.clone())
-    }
-}
-
-/// and(a, b) → Value
-/// Logical AND as function. Per LANG.txt §11.16
-fn builtin_and(a: &Value, b: &Value, _line: u32) -> Result<Value, RuntimeError> {
-    if !a.is_truthy() {
-        Ok(a.clone())
-    } else {
-        Ok(b.clone())
-    }
 }
 
 /// evaluate(source) → Value

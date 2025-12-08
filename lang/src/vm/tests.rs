@@ -2983,6 +2983,21 @@ mod runtime_tests {
     }
 
     #[test]
+    fn eval_builtin_last() {
+        assert_eq!(eval("last([1, 2, 3])"), Ok(Value::Integer(3)));
+        assert_eq!(eval("last([])"), Ok(Value::Nil));
+        assert_eq!(
+            eval(r#"last("hello")"#),
+            Ok(Value::String(Rc::new("o".to_string())))
+        );
+        assert_eq!(eval("last(1..5)"), Ok(Value::Integer(4)));
+        assert_eq!(eval("last(1..=5)"), Ok(Value::Integer(5)));
+        assert_eq!(eval("last(5..1)"), Ok(Value::Integer(2)));
+        assert_eq!(eval("last(5..=1)"), Ok(Value::Integer(1)));
+        assert_eq!(eval("last(1..1)"), Ok(Value::Nil)); // empty range
+    }
+
+    #[test]
     fn eval_builtin_rest() {
         let result = eval("rest([1, 2, 3])").unwrap();
         match result {
@@ -4755,22 +4770,6 @@ mod runtime_tests {
             eval("type(#{\"a\": 1})"),
             Ok(Value::String(Rc::new("Dictionary".to_string())))
         );
-    }
-
-    #[test]
-    fn eval_builtin_or() {
-        assert_eq!(eval("or(true, false)"), Ok(Value::Boolean(true)));
-        assert_eq!(eval("or(false, false)"), Ok(Value::Boolean(false)));
-        assert_eq!(eval("or(nil, 5)"), Ok(Value::Integer(5)));
-        assert_eq!(eval("or(0, 10)"), Ok(Value::Integer(10)));
-    }
-
-    #[test]
-    fn eval_builtin_and() {
-        assert_eq!(eval("and(true, true)"), Ok(Value::Boolean(true)));
-        assert_eq!(eval("and(true, false)"), Ok(Value::Boolean(false)));
-        assert_eq!(eval("and(5, 10)"), Ok(Value::Integer(10)));
-        assert_eq!(eval("and(nil, 5)"), Ok(Value::Nil));
     }
 
     #[test]

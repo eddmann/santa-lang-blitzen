@@ -1600,6 +1600,35 @@ second(1..)                 // 2
 second(iterate(_ + 1, 1))   // 2
 ```
 
+#### `last(collection)` → Value | Nil
+Get last element. Returns `nil` if collection is empty.
+
+**Permitted types:** List, Set, String, Range (bounded only)
+
+```santa
+// List
+last([1, 2])                // 2
+last([])                    // nil
+
+// Set
+last({1, 2})                // 2
+
+// String
+last("ab")                  // "b"
+
+// Exclusive Range
+last(1..5)                  // 4
+
+// Inclusive Range
+last(1..=5)                 // 5
+
+// Descending Range
+last(5..1)                  // 2
+last(5..=1)                 // 1
+```
+
+> **Note:** `last` is not supported for unbounded ranges or infinite lazy sequences as they have no end.
+
 #### `rest(collection)` → Collection
 Get all but first element. Returns empty collection if input has ≤1 element.
 
