@@ -3158,8 +3158,16 @@ mod runtime_tests {
 
     #[test]
     fn eval_builtin_map_range() {
-        // map(_ + 1, 1..5) returns List for bounded ranges (eagerly evaluated)
+        // map(_ + 1, 1..5) returns LazySequence for bounded ranges
         let result = eval("map(_ + 1, 1..5)").unwrap();
+        match result {
+            Value::LazySequence(_) => {
+                // LazySequence returned as expected
+            }
+            _ => panic!("Expected LazySequence for bounded range"),
+        }
+        // Force evaluation with list to verify values
+        let result = eval("map(_ + 1, 1..5) |> list").unwrap();
         match result {
             Value::List(v) => {
                 assert_eq!(v.len(), 4);
@@ -3168,29 +3176,35 @@ mod runtime_tests {
                 assert_eq!(v[2], Value::Integer(4));
                 assert_eq!(v[3], Value::Integer(5));
             }
-            _ => panic!("Expected List for bounded range"),
+            _ => panic!("Expected List after forcing with list"),
         }
     }
 
     #[test]
     fn eval_builtin_map_empty_non_inclusive_range() {
-        // map over empty non-inclusive range (3..3) returns empty list
-        assert_eq!(eval("map(_ + 1, 3..3)"), Ok(Value::List(Vector::new())));
+        // map over empty non-inclusive range (3..3) returns LazySequence
+        let result = eval("map(_ + 1, 3..3)").unwrap();
+        match result {
+            Value::LazySequence(_) => {}
+            _ => panic!("Expected LazySequence"),
+        }
+        // Force evaluation - should be empty
+        assert_eq!(eval("map(_ + 1, 3..3) |> list"), Ok(Value::List(Vector::new())));
     }
 
     #[test]
     fn eval_builtin_map_descending_range() {
-        // Descending non-inclusive range: 5..3 yields [5, 4]
+        // Descending non-inclusive range: 5..3 yields [5, 4] when forced
         assert_eq!(
-            eval("map(|x| x, 5..3)"),
+            eval("map(|x| x, 5..3) |> list"),
             Ok(Value::List(Vector::from(vec![
                 Value::Integer(5),
                 Value::Integer(4)
             ])))
         );
-        // Descending inclusive range: 5..=3 yields [5, 4, 3]
+        // Descending inclusive range: 5..=3 yields [5, 4, 3] when forced
         assert_eq!(
-            eval("map(|x| x, 5..=3)"),
+            eval("map(|x| x, 5..=3) |> list"),
             Ok(Value::List(Vector::from(vec![
                 Value::Integer(5),
                 Value::Integer(4),
@@ -3201,9 +3215,10 @@ mod runtime_tests {
 
     #[test]
     fn eval_builtin_map_range_comprehensive() {
+        // All map over range tests use |> list to force evaluation
         // Ascending non-inclusive: 1..3 yields [1, 2]
         assert_eq!(
-            eval("map(|x| x, 1..3)"),
+            eval("map(|x| x, 1..3) |> list"),
             Ok(Value::List(Vector::from(vec![
                 Value::Integer(1),
                 Value::Integer(2)
@@ -3211,7 +3226,7 @@ mod runtime_tests {
         );
         // Ascending inclusive: 1..=3 yields [1, 2, 3]
         assert_eq!(
-            eval("map(|x| x, 1..=3)"),
+            eval("map(|x| x, 1..=3) |> list"),
             Ok(Value::List(Vector::from(vec![
                 Value::Integer(1),
                 Value::Integer(2),
@@ -3220,7 +3235,7 @@ mod runtime_tests {
         );
         // Descending non-inclusive: 3..1 yields [3, 2]
         assert_eq!(
-            eval("map(|x| x, 3..1)"),
+            eval("map(|x| x, 3..1) |> list"),
             Ok(Value::List(Vector::from(vec![
                 Value::Integer(3),
                 Value::Integer(2)
@@ -3228,7 +3243,7 @@ mod runtime_tests {
         );
         // Descending inclusive: 3..=1 yields [3, 2, 1]
         assert_eq!(
-            eval("map(|x| x, 3..=1)"),
+            eval("map(|x| x, 3..=1) |> list"),
             Ok(Value::List(Vector::from(vec![
                 Value::Integer(3),
                 Value::Integer(2),
@@ -3237,7 +3252,7 @@ mod runtime_tests {
         );
         // Crossing zero non-inclusive: 1..-1 yields [1, 0]
         assert_eq!(
-            eval("map(|x| x, 1..-1)"),
+            eval("map(|x| x, 1..-1) |> list"),
             Ok(Value::List(Vector::from(vec![
                 Value::Integer(1),
                 Value::Integer(0)
@@ -3245,7 +3260,7 @@ mod runtime_tests {
         );
         // Crossing zero inclusive: 1..=-1 yields [1, 0, -1]
         assert_eq!(
-            eval("map(|x| x, 1..=-1)"),
+            eval("map(|x| x, 1..=-1) |> list"),
             Ok(Value::List(Vector::from(vec![
                 Value::Integer(1),
                 Value::Integer(0),
@@ -3254,7 +3269,7 @@ mod runtime_tests {
         );
         // Negative ascending non-inclusive: -1..1 yields [-1, 0]
         assert_eq!(
-            eval("map(|x| x, -1..1)"),
+            eval("map(|x| x, -1..1) |> list"),
             Ok(Value::List(Vector::from(vec![
                 Value::Integer(-1),
                 Value::Integer(0)
@@ -3262,7 +3277,7 @@ mod runtime_tests {
         );
         // Negative ascending inclusive: -1..=1 yields [-1, 0, 1]
         assert_eq!(
-            eval("map(|x| x, -1..=1)"),
+            eval("map(|x| x, -1..=1) |> list"),
             Ok(Value::List(Vector::from(vec![
                 Value::Integer(-1),
                 Value::Integer(0),

@@ -2332,48 +2332,20 @@ impl VM {
                     _ => unreachable!(),
                 };
 
-                match end {
-                    Some(e) => {
-                        // Bounded range - eagerly evaluate and return List
-                        let mut result = Vector::new();
-                        // For non-inclusive ranges where start == end, the range is empty
-                        if !*inclusive && start == e {
-                            return Ok(Value::List(result));
-                        }
-                        if start <= e {
-                            // Ascending range
-                            let actual_end = if *inclusive { *e } else { e - 1 };
-                            for i in *start..=actual_end {
-                                let mapped =
-                                    self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
-                                result.push_back(mapped);
-                            }
-                        } else {
-                            // Descending range
-                            let actual_end = if *inclusive { *e } else { e + 1 };
-                            let mut i = *start;
-                            while i >= actual_end {
-                                let mapped =
-                                    self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
-                                result.push_back(mapped);
-                                i -= 1;
-                            }
-                        }
-                        Ok(Value::List(result))
-                    }
-                    None => {
-                        // Unbounded range - return LazySequence (always ascending)
-                        Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Map {
-                            source: Rc::new(RefCell::new(LazySeq::Range {
-                                current: *start,
-                                end: None,
-                                inclusive: *inclusive,
-                                step: 1,
-                            })),
-                            mapper: closure,
-                        }))))
-                    }
-                }
+                // Both bounded and unbounded ranges stay lazy
+                let step = match end {
+                    Some(e) if start > e => -1,
+                    _ => 1,
+                };
+                Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Map {
+                    source: Rc::new(RefCell::new(LazySeq::Range {
+                        current: *start,
+                        end: *end,
+                        inclusive: *inclusive,
+                        step,
+                    })),
+                    mapper: closure,
+                }))))
             }
             Value::LazySequence(lazy_seq) => {
                 // For lazy sequences with partial application, error for now
