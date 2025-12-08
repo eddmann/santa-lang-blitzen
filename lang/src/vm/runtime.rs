@@ -11,7 +11,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use super::builtins::{BuiltinId, call_builtin};
 use super::bytecode::{Chunk, CompiledFunction, OpCode};
-use super::value::{Closure, LazySeq, Upvalue, Value};
+use super::value::{Closure, FlatMapInner, LazySeq, Upvalue, Value};
 
 /// A frame in the call stack for error reporting
 #[derive(Debug, Clone)]
@@ -2195,6 +2195,61 @@ impl VM {
                 }
                 self.lazy_seq_next_with_callback(&mut source.borrow_mut())
             }
+            LazySeq::FlatMap {
+                source,
+                mapper,
+                current_inner,
+            } => {
+                loop {
+                    // First, try to get next element from current inner sequence
+                    if let Some(inner) = current_inner {
+                        match inner.as_mut() {
+                            FlatMapInner::List { items, index } => {
+                                if *index < items.len() {
+                                    let value = items[*index].clone();
+                                    *index += 1;
+                                    return Ok(Some(value));
+                                }
+                                // Exhausted this list, clear and get next from source
+                            }
+                            FlatMapInner::LazySeq(inner_seq) => {
+                                match self
+                                    .lazy_seq_next_with_callback(&mut inner_seq.borrow_mut())?
+                                {
+                                    Some(value) => return Ok(Some(value)),
+                                    None => {
+                                        // Exhausted this lazy seq, clear and get next from source
+                                    }
+                                }
+                            }
+                        }
+                        *current_inner = None;
+                    }
+
+                    // Get next element from source and map it
+                    match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
+                        Some(elem) => {
+                            let mapped = self.call_closure_sync(mapper, vec![elem])?;
+                            // Set up new inner based on what the mapper returned
+                            match mapped {
+                                Value::List(items) => {
+                                    if items.is_empty() {
+                                        continue; // Skip empty lists
+                                    }
+                                    *current_inner =
+                                        Some(Box::new(FlatMapInner::List { items, index: 0 }));
+                                }
+                                Value::LazySequence(seq) => {
+                                    *current_inner = Some(Box::new(FlatMapInner::LazySeq(seq)));
+                                }
+                                // Non-collection values are yielded directly
+                                other => return Ok(Some(other)),
+                            }
+                        }
+                        None => return Ok(None),
+                    }
+                }
+            }
             LazySeq::Zip { sources } => {
                 let mut tuple = Vector::new();
                 for source in sources {
@@ -2204,6 +2259,31 @@ impl VM {
                     }
                 }
                 Ok(Some(Value::List(tuple)))
+            }
+            LazySeq::Scan {
+                source,
+                folder,
+                accumulator,
+                initial,
+                emitted_initial,
+            } => {
+                // First, emit the initial value
+                if !*emitted_initial {
+                    *emitted_initial = true;
+                    *accumulator = Some(initial.clone());
+                    return Ok(Some(initial.clone()));
+                }
+
+                // Get next element from source
+                match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
+                    Some(elem) => {
+                        let acc = accumulator.take().unwrap_or_else(|| initial.clone());
+                        let new_acc = self.call_closure_sync(folder, vec![acc, elem])?;
+                        *accumulator = Some(new_acc.clone());
+                        Ok(Some(new_acc))
+                    }
+                    None => Ok(None),
+                }
             }
             LazySeq::Empty => Ok(None),
         }
@@ -2614,36 +2694,83 @@ impl VM {
                 }
             }
             Value::LazySequence(seq) => {
-                let mut seq_clone = seq.borrow().clone();
-                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
-                    let mapped = self.call_callable_sync(&mapper, vec![elem])?;
-                    flatten_mapped(&mut result, mapped, self)?;
-                }
+                // For lazy sequences, need a raw closure for lazy composition
+                let closure = match &mapper {
+                    Value::Function(c) => c.clone(),
+                    Value::PartialApplication { .. } => {
+                        // Fall back to eager evaluation for partial applications
+                        let mut seq_clone = seq.borrow().clone();
+                        while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                            let mapped = self.call_callable_sync(&mapper, vec![elem])?;
+                            flatten_mapped(&mut result, mapped, self)?;
+                        }
+                        return Ok(Value::List(result));
+                    }
+                    _ => unreachable!(),
+                };
+                // Return lazy FlatMap sequence
+                return Ok(Value::LazySequence(Rc::new(RefCell::new(
+                    LazySeq::FlatMap {
+                        source: seq.clone(),
+                        mapper: closure,
+                        current_inner: None,
+                    },
+                ))));
             }
             Value::Range {
                 start,
                 end,
                 inclusive,
-            } => match end {
-                Some(e) => {
-                    let actual_end = if *inclusive { *e } else { e - 1 };
-                    let range_iter: Box<dyn Iterator<Item = i64>> = if start <= &actual_end {
-                        Box::new(*start..=actual_end)
-                    } else {
-                        Box::new((actual_end..=*start).rev())
-                    };
-                    for i in range_iter {
-                        let mapped = self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
-                        flatten_mapped(&mut result, mapped, self)?;
+            } => {
+                // For ranges, need a raw closure for lazy composition
+                let closure = match &mapper {
+                    Value::Function(c) => c.clone(),
+                    Value::PartialApplication { .. } => {
+                        // Fall back to eager evaluation for partial applications on bounded ranges
+                        match end {
+                            Some(e) => {
+                                let actual_end = if *inclusive { *e } else { e - 1 };
+                                let range_iter: Box<dyn Iterator<Item = i64>> =
+                                    if start <= &actual_end {
+                                        Box::new(*start..=actual_end)
+                                    } else {
+                                        Box::new((actual_end..=*start).rev())
+                                    };
+                                for i in range_iter {
+                                    let mapped =
+                                        self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
+                                    flatten_mapped(&mut result, mapped, self)?;
+                                }
+                                return Ok(Value::List(result));
+                            }
+                            None => {
+                                return Err(RuntimeError::new(
+                                    "Cannot lazily flat_map unbounded range with partial application",
+                                    line,
+                                ));
+                            }
+                        }
                     }
-                }
-                None => {
-                    return Err(RuntimeError::new(
-                        "flat_map on unbounded range not supported",
-                        line,
-                    ));
-                }
-            },
+                    _ => unreachable!(),
+                };
+                // Convert Range to LazySeq::Range and wrap in FlatMap
+                let step = match end {
+                    Some(e) if start > e => -1,
+                    _ => 1,
+                };
+                return Ok(Value::LazySequence(Rc::new(RefCell::new(
+                    LazySeq::FlatMap {
+                        source: Rc::new(RefCell::new(LazySeq::Range {
+                            current: *start,
+                            end: *end,
+                            inclusive: *inclusive,
+                            step,
+                        })),
+                        mapper: closure,
+                        current_inner: None,
+                    },
+                ))));
+            }
             _ => {
                 return Err(RuntimeError::new(
                     format!("flat_map does not support {}", collection.type_name()),
@@ -2744,31 +2871,56 @@ impl VM {
                 end,
                 inclusive,
             } => {
-                let mut result = Vector::new();
-                match end {
-                    Some(e) => {
-                        let actual_end = if *inclusive { *e } else { e - 1 };
-                        let range_iter: Box<dyn Iterator<Item = i64>> = if start <= &actual_end {
-                            Box::new(*start..=actual_end)
-                        } else {
-                            Box::new((actual_end..=*start).rev())
-                        };
-                        for i in range_iter {
-                            let mapped =
-                                self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
-                            if mapped.is_truthy() {
-                                result.push_back(mapped);
+                // For ranges, need a raw closure for lazy composition
+                let closure = match &mapper {
+                    Value::Function(c) => c.clone(),
+                    Value::PartialApplication { .. } => {
+                        // Fall back to eager evaluation for partial applications on bounded ranges
+                        let mut result = Vector::new();
+                        match end {
+                            Some(e) => {
+                                let actual_end = if *inclusive { *e } else { e - 1 };
+                                let range_iter: Box<dyn Iterator<Item = i64>> =
+                                    if start <= &actual_end {
+                                        Box::new(*start..=actual_end)
+                                    } else {
+                                        Box::new((actual_end..=*start).rev())
+                                    };
+                                for i in range_iter {
+                                    let mapped =
+                                        self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
+                                    if mapped.is_truthy() {
+                                        result.push_back(mapped);
+                                    }
+                                }
+                                return Ok(Value::List(result));
+                            }
+                            None => {
+                                return Err(RuntimeError::new(
+                                    "Cannot lazily filter_map unbounded range with partial application",
+                                    line,
+                                ));
                             }
                         }
                     }
-                    None => {
-                        return Err(RuntimeError::new(
-                            "filter_map on unbounded range not supported",
-                            line,
-                        ));
-                    }
-                }
-                Ok(Value::List(result))
+                    _ => unreachable!(),
+                };
+                // Convert Range to LazySeq::Range and wrap in FilterMap
+                let step = match end {
+                    Some(e) if start > e => -1,
+                    _ => 1,
+                };
+                Ok(Value::LazySequence(Rc::new(RefCell::new(
+                    LazySeq::FilterMap {
+                        source: Rc::new(RefCell::new(LazySeq::Range {
+                            current: *start,
+                            end: *end,
+                            inclusive: *inclusive,
+                            step,
+                        })),
+                        mapper: closure,
+                    },
+                ))))
             }
             Value::LazySequence(seq) => {
                 // For lazy sequences, need a raw closure
@@ -3400,23 +3552,85 @@ impl VM {
                 start,
                 end,
                 inclusive,
-            } => match end {
-                Some(e) => {
-                    let actual_end = if *inclusive { *e } else { e - 1 };
-                    if start <= &actual_end {
-                        for i in *start..=actual_end {
-                            acc = self.call_callable_sync(&folder, vec![acc, Value::Integer(i)])?;
-                            results.push_back(acc.clone());
+            } => {
+                // For ranges, need a raw closure for lazy composition
+                let closure = match &folder {
+                    Value::Function(c) => c.clone(),
+                    Value::PartialApplication { .. } => {
+                        // Fall back to eager evaluation for partial applications
+                        match end {
+                            Some(e) => {
+                                let actual_end = if *inclusive { *e } else { e - 1 };
+                                if start <= &actual_end {
+                                    // Ascending range
+                                    for i in *start..=actual_end {
+                                        acc = self.call_callable_sync(
+                                            &folder,
+                                            vec![acc, Value::Integer(i)],
+                                        )?;
+                                        results.push_back(acc.clone());
+                                    }
+                                } else {
+                                    // Descending range
+                                    for i in (actual_end..=*start).rev() {
+                                        acc = self.call_callable_sync(
+                                            &folder,
+                                            vec![acc, Value::Integer(i)],
+                                        )?;
+                                        results.push_back(acc.clone());
+                                    }
+                                }
+                                return Ok(Value::List(results));
+                            }
+                            None => {
+                                return Err(RuntimeError::new(
+                                    "Cannot lazily scan unbounded range with partial application",
+                                    line,
+                                ));
+                            }
                         }
                     }
-                }
-                None => {
-                    return Err(RuntimeError::new(
-                        "scan on unbounded range not supported",
-                        line,
-                    ));
-                }
-            },
+                    _ => unreachable!(),
+                };
+                // Convert Range to LazySeq::Range and wrap in Scan
+                let step = match end {
+                    Some(e) if start > e => -1,
+                    _ => 1,
+                };
+                return Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Scan {
+                    source: Rc::new(RefCell::new(LazySeq::Range {
+                        current: *start,
+                        end: *end,
+                        inclusive: *inclusive,
+                        step,
+                    })),
+                    folder: closure,
+                    accumulator: None,
+                    initial: initial.clone(),
+                    emitted_initial: false,
+                }))));
+            }
+            Value::LazySequence(seq) => {
+                // For lazy sequences, need a raw closure for lazy composition
+                let closure = match &folder {
+                    Value::Function(c) => c.clone(),
+                    Value::PartialApplication { .. } => {
+                        return Err(RuntimeError::new(
+                            "Cannot lazily scan lazy sequence with partial application".to_string(),
+                            line,
+                        ));
+                    }
+                    _ => unreachable!(),
+                };
+                // Return lazy Scan sequence
+                return Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Scan {
+                    source: seq.clone(),
+                    folder: closure,
+                    accumulator: None,
+                    initial: initial.clone(),
+                    emitted_initial: false,
+                }))));
+            }
             _ => {
                 return Err(RuntimeError::new(
                     format!("scan does not support {}", collection.type_name()),
@@ -4320,8 +4534,9 @@ impl VM {
                 end,
                 inclusive,
             } => {
+                // Materialize to List (eager, like reference implementation)
                 let mut result = Vector::new();
-                let step = match end {
+                let step: i64 = match end {
                     Some(e) if e < start => -1,
                     _ => 1,
                 };

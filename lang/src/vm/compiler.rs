@@ -2483,9 +2483,9 @@ impl Compiler {
                     pattern: Pattern::Identifier(_),
                     ..
                 } = &stmt.node
-                {
-                    self.emit(OpCode::Pop);
-                }
+            {
+                self.emit(OpCode::Pop);
+            }
         }
 
         // If block is empty, push nil

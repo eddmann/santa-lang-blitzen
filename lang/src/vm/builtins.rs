@@ -1122,25 +1122,25 @@ fn builtin_skip(total: &Value, collection: &Value, line: u32) -> Result<Value, R
         } => match end {
             Some(e) => {
                 let actual_end = if *inclusive { *e } else { e - 1 };
-                let step = if start <= &actual_end { 1 } else { -1 };
+                let step: i64 = if start <= &actual_end { 1 } else { -1 };
                 let new_start = start + (n as i64) * step;
 
-                // Materialize to list for bounded ranges after skip
-                let mut result = Vector::new();
-                if step > 0 {
-                    let mut i = new_start;
-                    while i <= actual_end {
-                        result.push_back(Value::Integer(i));
-                        i += 1;
-                    }
+                // Return a new Range with adjusted start (stays lazy)
+                // Check if we've skipped past the end
+                if step > 0 && new_start > actual_end {
+                    // Empty range - return empty list
+                    Ok(Value::List(Vector::new()))
+                } else if step < 0 && new_start < actual_end {
+                    // Empty range - return empty list
+                    Ok(Value::List(Vector::new()))
                 } else {
-                    let mut i = new_start;
-                    while i >= actual_end {
-                        result.push_back(Value::Integer(i));
-                        i -= 1;
-                    }
+                    // Return new bounded range
+                    Ok(Value::Range {
+                        start: new_start,
+                        end: Some(*e),
+                        inclusive: *inclusive,
+                    })
                 }
-                Ok(Value::List(result))
             }
             None => {
                 // Unbounded range - return new range starting later
@@ -1490,7 +1490,7 @@ fn builtin_excludes(collection: &Value, value: &Value, line: u32) -> Result<Valu
 // Lazy Sequence Generation (§11.12)
 // ============================================================================
 
-use super::value::LazySeq;
+use super::value::{FlatMapInner, LazySeq};
 use std::cell::RefCell;
 
 /// repeat(value) → LazySequence
@@ -1891,9 +1891,41 @@ impl Clone for LazySeq {
                 source: Rc::new(RefCell::new(source.borrow().clone())),
                 mapper: mapper.clone(),
             },
+            LazySeq::FlatMap {
+                source,
+                mapper,
+                current_inner,
+            } => LazySeq::FlatMap {
+                source: Rc::new(RefCell::new(source.borrow().clone())),
+                mapper: mapper.clone(),
+                current_inner: current_inner.as_ref().map(|inner| {
+                    Box::new(match inner.as_ref() {
+                        FlatMapInner::List { items, index } => FlatMapInner::List {
+                            items: items.clone(),
+                            index: *index,
+                        },
+                        FlatMapInner::LazySeq(seq) => {
+                            FlatMapInner::LazySeq(Rc::new(RefCell::new(seq.borrow().clone())))
+                        }
+                    })
+                }),
+            },
             LazySeq::Skip { source, remaining } => LazySeq::Skip {
                 source: Rc::new(RefCell::new(source.borrow().clone())),
                 remaining: *remaining,
+            },
+            LazySeq::Scan {
+                source,
+                folder,
+                accumulator,
+                initial,
+                emitted_initial,
+            } => LazySeq::Scan {
+                source: Rc::new(RefCell::new(source.borrow().clone())),
+                folder: folder.clone(),
+                accumulator: accumulator.clone(),
+                initial: initial.clone(),
+                emitted_initial: *emitted_initial,
             },
             LazySeq::Zip { sources } => LazySeq::Zip {
                 sources: sources
@@ -2026,7 +2058,9 @@ fn lazy_seq_next_simple(seq: &mut LazySeq) -> Result<Option<Value>, RuntimeError
         LazySeq::Iterate { .. }
         | LazySeq::Map { .. }
         | LazySeq::Filter { .. }
-        | LazySeq::FilterMap { .. } => Err(RuntimeError::new(
+        | LazySeq::FilterMap { .. }
+        | LazySeq::FlatMap { .. }
+        | LazySeq::Scan { .. } => Err(RuntimeError::new(
             "Cannot iterate callback-based lazy sequence in this context",
             0,
         )),

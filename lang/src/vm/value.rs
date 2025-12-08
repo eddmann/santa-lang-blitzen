@@ -124,6 +124,24 @@ pub enum LazySeq {
         source: Rc<RefCell<LazySeq>>,
         mapper: Rc<Closure>,
     },
+    /// flat_map over lazy sequence (maps then flattens)
+    FlatMap {
+        source: Rc<RefCell<LazySeq>>,
+        mapper: Rc<Closure>,
+        /// Buffer holding elements from the current mapped result being iterated
+        current_inner: Option<Box<FlatMapInner>>,
+    },
+    /// scan over lazy sequence (produces intermediate fold results)
+    Scan {
+        source: Rc<RefCell<LazySeq>>,
+        folder: Rc<Closure>,
+        /// Current accumulator value, None means we need to emit initial value first
+        accumulator: Option<Value>,
+        /// Initial value to emit first
+        initial: Value,
+        /// Whether we've emitted the initial value yet
+        emitted_initial: bool,
+    },
     /// skip n elements
     Skip {
         source: Rc<RefCell<LazySeq>>,
@@ -141,6 +159,15 @@ pub enum LazySeq {
     RangeStep { current: i64, end: i64, step: i64 },
     /// Exhausted sequence
     Empty,
+}
+
+/// Inner state for FlatMap iteration - tracks what we're currently iterating through
+#[derive(Debug)]
+pub enum FlatMapInner {
+    /// Iterating through a List
+    List { items: Vector<Value>, index: usize },
+    /// Iterating through a LazySequence
+    LazySeq(Rc<RefCell<LazySeq>>),
 }
 
 impl Value {

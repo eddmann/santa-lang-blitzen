@@ -3673,8 +3673,9 @@ mod runtime_tests {
 
     #[test]
     fn eval_builtin_scan_range() {
-        // scan(0, |a, b| a + b, 1..5) => [0, 1, 3, 6, 10] (includes initial value)
-        let result = eval("scan(0, |a, b| a + b, 1..5)").unwrap();
+        // scan(0, |a, b| a + b, 1..5) => lazy sequence, materialize with list()
+        // Result should be [0, 1, 3, 6, 10] (includes initial value)
+        let result = eval("list(scan(0, |a, b| a + b, 1..5))").unwrap();
         match result {
             Value::List(v) => {
                 assert_eq!(v.len(), 5);
