@@ -3189,7 +3189,10 @@ mod runtime_tests {
             _ => panic!("Expected LazySequence"),
         }
         // Force evaluation - should be empty
-        assert_eq!(eval("map(_ + 1, 3..3) |> list"), Ok(Value::List(Vector::new())));
+        assert_eq!(
+            eval("map(_ + 1, 3..3) |> list"),
+            Ok(Value::List(Vector::new()))
+        );
     }
 
     #[test]

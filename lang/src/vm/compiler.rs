@@ -2478,11 +2478,14 @@ impl Compiler {
 
             // For simple identifier lets that aren't last, pop the extra value.
             // Both function and non-function lets now leave an extra value for returns.
-            if !is_last {
-                if let Stmt::Let { pattern: Pattern::Identifier(_), .. } = &stmt.node {
+            if !is_last
+                && let Stmt::Let {
+                    pattern: Pattern::Identifier(_),
+                    ..
+                } = &stmt.node
+                {
                     self.emit(OpCode::Pop);
                 }
-            }
         }
 
         // If block is empty, push nil
