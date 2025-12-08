@@ -2336,12 +2336,13 @@ impl VM {
                     Some(e) => {
                         // Bounded range - eagerly evaluate and return List
                         let mut result = Vector::new();
-                        // For non-inclusive ranges, if start >= end, the range is empty
-                        if !*inclusive && start >= e {
+                        // For non-inclusive ranges where start == end, the range is empty
+                        if !*inclusive && start == e {
                             return Ok(Value::List(result));
                         }
-                        let actual_end = if *inclusive { *e } else { e - 1 };
-                        if start <= &actual_end {
+                        if start <= e {
+                            // Ascending range
+                            let actual_end = if *inclusive { *e } else { e - 1 };
                             for i in *start..=actual_end {
                                 let mapped =
                                     self.call_closure_sync(&closure, vec![Value::Integer(i)])?;
@@ -2349,6 +2350,7 @@ impl VM {
                             }
                         } else {
                             // Descending range
+                            let actual_end = if *inclusive { *e } else { e + 1 };
                             let mut i = *start;
                             while i >= actual_end {
                                 let mapped =
