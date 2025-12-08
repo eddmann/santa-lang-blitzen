@@ -110,31 +110,36 @@ pub enum LazySeq {
     /// generator is stored as Value to support both Function and PartialApplication
     Iterate { generator: Value, current: Value },
     /// map over lazy sequence
+    /// mapper is stored as Value to support both Function and PartialApplication
     Map {
         source: Rc<RefCell<LazySeq>>,
-        mapper: Rc<Closure>,
+        mapper: Value,
     },
     /// filter lazy sequence
+    /// predicate is stored as Value to support both Function and PartialApplication
     Filter {
         source: Rc<RefCell<LazySeq>>,
-        predicate: Rc<Closure>,
+        predicate: Value,
     },
     /// filter_map over lazy sequence (lazy version)
+    /// mapper is stored as Value to support both Function and PartialApplication
     FilterMap {
         source: Rc<RefCell<LazySeq>>,
-        mapper: Rc<Closure>,
+        mapper: Value,
     },
     /// flat_map over lazy sequence (maps then flattens)
+    /// mapper is stored as Value to support both Function and PartialApplication
     FlatMap {
         source: Rc<RefCell<LazySeq>>,
-        mapper: Rc<Closure>,
+        mapper: Value,
         /// Buffer holding elements from the current mapped result being iterated
         current_inner: Option<Box<FlatMapInner>>,
     },
     /// scan over lazy sequence (produces intermediate fold results)
+    /// folder is stored as Value to support both Function and PartialApplication
     Scan {
         source: Rc<RefCell<LazySeq>>,
-        folder: Rc<Closure>,
+        folder: Value,
         /// Current accumulator value, None means we need to emit initial value first
         accumulator: Option<Value>,
         /// Initial value to emit first

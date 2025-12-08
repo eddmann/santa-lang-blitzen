@@ -2148,7 +2148,7 @@ impl VM {
             LazySeq::Map { source, mapper } => {
                 match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
                     Some(value) => {
-                        let mapped = self.call_closure_sync(mapper, vec![value])?;
+                        let mapped = self.call_callable_sync(mapper, vec![value])?;
                         Ok(Some(mapped))
                     }
                     None => Ok(None),
@@ -2162,7 +2162,7 @@ impl VM {
                             // This matches reference behavior where filter callbacks that error
                             // are treated as if the element doesn't pass the filter
                             let result =
-                                match self.call_closure_sync(predicate, vec![value.clone()]) {
+                                match self.call_callable_sync(predicate, vec![value.clone()]) {
                                     Ok(v) => v,
                                     Err(_) => continue,
                                 };
@@ -2178,7 +2178,7 @@ impl VM {
                 loop {
                     match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
                         Some(value) => {
-                            let mapped = self.call_closure_sync(mapper, vec![value])?;
+                            let mapped = self.call_callable_sync(mapper, vec![value])?;
                             if mapped.is_truthy() {
                                 return Ok(Some(mapped));
                             }
@@ -2231,7 +2231,7 @@ impl VM {
                     // Get next element from source and map it
                     match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
                         Some(elem) => {
-                            let mapped = self.call_closure_sync(mapper, vec![elem])?;
+                            let mapped = self.call_callable_sync(mapper, vec![elem])?;
                             // Set up new inner based on what the mapper returned
                             match mapped {
                                 Value::List(items) => {
@@ -2280,7 +2280,7 @@ impl VM {
                 match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
                     Some(elem) => {
                         let acc = accumulator.take().unwrap_or_else(|| initial.clone());
-                        let new_acc = self.call_closure_sync(folder, vec![acc, elem])?;
+                        let new_acc = self.call_callable_sync(folder, vec![acc, elem])?;
                         *accumulator = Some(new_acc.clone());
                         Ok(Some(new_acc))
                     }
@@ -2380,41 +2380,8 @@ impl VM {
                 end,
                 inclusive,
             } => {
-                // For ranges with partial application, eagerly evaluate
-                if let Value::PartialApplication { closure, args } = &mapper {
-                    let mut result = Vector::new();
-                    match end {
-                        Some(e) => {
-                            let actual_end = if *inclusive { *e } else { e - 1 };
-                            let mut all_args = args.clone();
-                            if start <= &actual_end {
-                                for i in *start..=actual_end {
-                                    all_args.push(Value::Integer(i));
-                                    let mapped =
-                                        self.call_closure_sync(closure, all_args.clone())?;
-                                    result.push_back(mapped);
-                                    all_args.pop();
-                                }
-                            }
-                        }
-                        None => {
-                            return Err(RuntimeError::new(
-                                "Cannot lazily map over unbounded range with partial application"
-                                    .to_string(),
-                                line,
-                            ));
-                        }
-                    }
-                    return Ok(Value::List(result));
-                }
-
-                // Regular function - can use lazy evaluation
-                let closure = match &mapper {
-                    Value::Function(c) => c.clone(),
-                    _ => unreachable!(),
-                };
-
                 // Both bounded and unbounded ranges stay lazy
+                // Supports both Function and PartialApplication
                 let step = match end {
                     Some(e) if start > e => -1,
                     _ => 1,
@@ -2426,25 +2393,15 @@ impl VM {
                         inclusive: *inclusive,
                         step,
                     })),
-                    mapper: closure,
+                    mapper: mapper.clone(),
                 }))))
             }
             Value::LazySequence(lazy_seq) => {
-                // For lazy sequences with partial application, error for now
-                if let Value::PartialApplication { .. } = &mapper {
-                    return Err(RuntimeError::new(
-                        "Cannot lazily map over lazy sequence with partial application".to_string(),
-                        line,
-                    ));
-                }
-                let closure = match &mapper {
-                    Value::Function(c) => c.clone(),
-                    _ => unreachable!(),
-                };
                 // Wrap in LazySeq::Map for lazy composition
+                // Supports both Function and PartialApplication
                 Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Map {
                     source: lazy_seq.clone(),
-                    mapper: closure,
+                    mapper: mapper.clone(),
                 }))))
             }
             _ => Err(RuntimeError::new(
@@ -2555,44 +2512,8 @@ impl VM {
                 end,
                 inclusive,
             } => {
-                // For lazy sequences, need a raw closure
-                let closure = match &predicate {
-                    Value::Function(c) => c.clone(),
-                    Value::PartialApplication { .. } => {
-                        // For ranges with partial application, eagerly evaluate
-                        let mut result = Vector::new();
-                        match end {
-                            Some(e) => {
-                                let actual_end = if *inclusive { *e } else { e - 1 };
-                                if start <= &actual_end {
-                                    for i in *start..=actual_end {
-                                        // Swallow errors in filter predicates, treating them as "false"
-                                        let keep = match self
-                                            .call_callable_sync(&predicate, vec![Value::Integer(i)])
-                                        {
-                                            Ok(v) => v,
-                                            Err(_) => continue,
-                                        };
-                                        if keep.is_truthy() {
-                                            result.push_back(Value::Integer(i));
-                                        }
-                                    }
-                                }
-                            }
-                            None => {
-                                return Err(RuntimeError::new(
-                                    "Cannot lazily filter unbounded range with partial application"
-                                        .to_string(),
-                                    line,
-                                ));
-                            }
-                        }
-                        return Ok(Value::List(result));
-                    }
-                    _ => unreachable!(),
-                };
-
                 // Range filters to LazySequence
+                // Supports both Function and PartialApplication
                 let step = match end {
                     Some(e) if *e < *start => -1,
                     _ => 1,
@@ -2605,27 +2526,17 @@ impl VM {
                             inclusive: *inclusive,
                             step,
                         })),
-                        predicate: closure,
+                        predicate: predicate.clone(),
                     },
                 ))))
             }
             Value::LazySequence(lazy_seq) => {
-                let closure = match &predicate {
-                    Value::Function(c) => c.clone(),
-                    Value::PartialApplication { .. } => {
-                        return Err(RuntimeError::new(
-                            "Cannot lazily filter lazy sequence with partial application"
-                                .to_string(),
-                            line,
-                        ));
-                    }
-                    _ => unreachable!(),
-                };
                 // Wrap in LazySeq::Filter for lazy composition
+                // Supports both Function and PartialApplication
                 Ok(Value::LazySequence(Rc::new(RefCell::new(
                     LazySeq::Filter {
                         source: lazy_seq.clone(),
-                        predicate: closure,
+                        predicate: predicate.clone(),
                     },
                 ))))
             }
@@ -2696,25 +2607,12 @@ impl VM {
                 }
             }
             Value::LazySequence(seq) => {
-                // For lazy sequences, need a raw closure for lazy composition
-                let closure = match &mapper {
-                    Value::Function(c) => c.clone(),
-                    Value::PartialApplication { .. } => {
-                        // Fall back to eager evaluation for partial applications
-                        let mut seq_clone = seq.borrow().clone();
-                        while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
-                            let mapped = self.call_callable_sync(&mapper, vec![elem])?;
-                            flatten_mapped(&mut result, mapped, self)?;
-                        }
-                        return Ok(Value::List(result));
-                    }
-                    _ => unreachable!(),
-                };
                 // Return lazy FlatMap sequence
+                // Supports both Function and PartialApplication
                 return Ok(Value::LazySequence(Rc::new(RefCell::new(
                     LazySeq::FlatMap {
                         source: seq.clone(),
-                        mapper: closure,
+                        mapper: mapper.clone(),
                         current_inner: None,
                     },
                 ))));
@@ -2724,38 +2622,8 @@ impl VM {
                 end,
                 inclusive,
             } => {
-                // For ranges, need a raw closure for lazy composition
-                let closure = match &mapper {
-                    Value::Function(c) => c.clone(),
-                    Value::PartialApplication { .. } => {
-                        // Fall back to eager evaluation for partial applications on bounded ranges
-                        match end {
-                            Some(e) => {
-                                let actual_end = if *inclusive { *e } else { e - 1 };
-                                let range_iter: Box<dyn Iterator<Item = i64>> =
-                                    if start <= &actual_end {
-                                        Box::new(*start..=actual_end)
-                                    } else {
-                                        Box::new((actual_end..=*start).rev())
-                                    };
-                                for i in range_iter {
-                                    let mapped =
-                                        self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
-                                    flatten_mapped(&mut result, mapped, self)?;
-                                }
-                                return Ok(Value::List(result));
-                            }
-                            None => {
-                                return Err(RuntimeError::new(
-                                    "Cannot lazily flat_map unbounded range with partial application",
-                                    line,
-                                ));
-                            }
-                        }
-                    }
-                    _ => unreachable!(),
-                };
                 // Convert Range to LazySeq::Range and wrap in FlatMap
+                // Supports both Function and PartialApplication
                 let step = match end {
                     Some(e) if start > e => -1,
                     _ => 1,
@@ -2768,7 +2636,7 @@ impl VM {
                             inclusive: *inclusive,
                             step,
                         })),
-                        mapper: closure,
+                        mapper: mapper.clone(),
                         current_inner: None,
                     },
                 ))));
@@ -2873,41 +2741,8 @@ impl VM {
                 end,
                 inclusive,
             } => {
-                // For ranges, need a raw closure for lazy composition
-                let closure = match &mapper {
-                    Value::Function(c) => c.clone(),
-                    Value::PartialApplication { .. } => {
-                        // Fall back to eager evaluation for partial applications on bounded ranges
-                        let mut result = Vector::new();
-                        match end {
-                            Some(e) => {
-                                let actual_end = if *inclusive { *e } else { e - 1 };
-                                let range_iter: Box<dyn Iterator<Item = i64>> =
-                                    if start <= &actual_end {
-                                        Box::new(*start..=actual_end)
-                                    } else {
-                                        Box::new((actual_end..=*start).rev())
-                                    };
-                                for i in range_iter {
-                                    let mapped =
-                                        self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
-                                    if mapped.is_truthy() {
-                                        result.push_back(mapped);
-                                    }
-                                }
-                                return Ok(Value::List(result));
-                            }
-                            None => {
-                                return Err(RuntimeError::new(
-                                    "Cannot lazily filter_map unbounded range with partial application",
-                                    line,
-                                ));
-                            }
-                        }
-                    }
-                    _ => unreachable!(),
-                };
                 // Convert Range to LazySeq::Range and wrap in FilterMap
+                // Supports both Function and PartialApplication
                 let step = match end {
                     Some(e) if start > e => -1,
                     _ => 1,
@@ -2920,27 +2755,16 @@ impl VM {
                             inclusive: *inclusive,
                             step,
                         })),
-                        mapper: closure,
+                        mapper: mapper.clone(),
                     },
                 ))))
             }
             Value::LazySequence(seq) => {
-                // For lazy sequences, need a raw closure
-                let closure = match &mapper {
-                    Value::Function(c) => c.clone(),
-                    Value::PartialApplication { .. } => {
-                        return Err(RuntimeError::new(
-                            "Cannot lazily filter_map lazy sequence with partial application"
-                                .to_string(),
-                            line,
-                        ));
-                    }
-                    _ => unreachable!(),
-                };
                 // Return a lazy FilterMap sequence instead of eagerly consuming
+                // Supports both Function and PartialApplication
                 let lazy_filter_map = LazySeq::FilterMap {
                     source: seq.clone(),
-                    mapper: closure,
+                    mapper: mapper.clone(),
                 };
                 Ok(Value::LazySequence(Rc::new(RefCell::new(lazy_filter_map))))
             }
@@ -3555,46 +3379,8 @@ impl VM {
                 end,
                 inclusive,
             } => {
-                // For ranges, need a raw closure for lazy composition
-                let closure = match &folder {
-                    Value::Function(c) => c.clone(),
-                    Value::PartialApplication { .. } => {
-                        // Fall back to eager evaluation for partial applications
-                        match end {
-                            Some(e) => {
-                                let actual_end = if *inclusive { *e } else { e - 1 };
-                                if start <= &actual_end {
-                                    // Ascending range
-                                    for i in *start..=actual_end {
-                                        acc = self.call_callable_sync(
-                                            &folder,
-                                            vec![acc, Value::Integer(i)],
-                                        )?;
-                                        results.push_back(acc.clone());
-                                    }
-                                } else {
-                                    // Descending range
-                                    for i in (actual_end..=*start).rev() {
-                                        acc = self.call_callable_sync(
-                                            &folder,
-                                            vec![acc, Value::Integer(i)],
-                                        )?;
-                                        results.push_back(acc.clone());
-                                    }
-                                }
-                                return Ok(Value::List(results));
-                            }
-                            None => {
-                                return Err(RuntimeError::new(
-                                    "Cannot lazily scan unbounded range with partial application",
-                                    line,
-                                ));
-                            }
-                        }
-                    }
-                    _ => unreachable!(),
-                };
                 // Convert Range to LazySeq::Range and wrap in Scan
+                // Supports both Function and PartialApplication
                 let step = match end {
                     Some(e) if start > e => -1,
                     _ => 1,
@@ -3606,28 +3392,18 @@ impl VM {
                         inclusive: *inclusive,
                         step,
                     })),
-                    folder: closure,
+                    folder: folder.clone(),
                     accumulator: None,
                     initial: initial.clone(),
                     emitted_initial: false,
                 }))));
             }
             Value::LazySequence(seq) => {
-                // For lazy sequences, need a raw closure for lazy composition
-                let closure = match &folder {
-                    Value::Function(c) => c.clone(),
-                    Value::PartialApplication { .. } => {
-                        return Err(RuntimeError::new(
-                            "Cannot lazily scan lazy sequence with partial application".to_string(),
-                            line,
-                        ));
-                    }
-                    _ => unreachable!(),
-                };
                 // Return lazy Scan sequence
+                // Supports both Function and PartialApplication
                 return Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Scan {
                     source: seq.clone(),
-                    folder: closure,
+                    folder: folder.clone(),
                     accumulator: None,
                     initial: initial.clone(),
                     emitted_initial: false,
@@ -4175,6 +3951,15 @@ impl VM {
                 }
                 None => return Err(RuntimeError::new("Cannot sort unbounded range", line)),
             },
+            Value::LazySequence(seq) => {
+                // Materialize the lazy sequence
+                let mut result = Vec::new();
+                let mut seq_clone = seq.borrow().clone();
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    result.push(elem);
+                }
+                result
+            }
             _ => {
                 return Err(RuntimeError::new(
                     format!("sort does not support {}", collection.type_name()),
