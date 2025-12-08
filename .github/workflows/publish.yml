@@ -18,12 +18,12 @@ jobs:
         uses: actions/checkout@v4
       - name: Download
         run: |
-          gh release download ${{ github.event.release.tag_name }} -p 'santa-cli-${{ github.event.release.tag_name }}-docker.tar'
+          gh release download ${{ github.event.release.tag_name }} -p 'santa-lang-blitzen-cli-${{ github.event.release.tag_name }}-docker.tar'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Load
         run: |
-          docker load -i santa-cli-${{ github.event.release.tag_name }}-docker.tar
+          docker load -i santa-lang-blitzen-cli-${{ github.event.release.tag_name }}-docker.tar
           docker tag ghcr.io/eddmann/santa-lang-blitzen:cli-latest ghcr.io/eddmann/santa-lang-blitzen:cli-${{ github.event.release.tag_name }}
       - name: Publish
         run: |

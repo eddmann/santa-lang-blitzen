@@ -1,21 +1,22 @@
+<p align="center"><a href="https://eddmann.com/santa-lang/"><img src="./README/heading.png" alt="santa-lang" width="400px" /></a></p>
+
 # santa-lang Blitzen
 
-![santa-lang Blitzen](README/heading.png)
-
-A bytecode virtual machine implementation of [santa-lang](https://github.com/eddmann/santa-lang), a functional, expression-oriented language designed for solving Advent of Code puzzles.
+Bytecode virtual machine implementation of [santa-lang](https://eddmann.com/santa-lang/), written in Rust.
 
 ## Overview
 
-This project implements santa-lang using a bytecode compilation approach rather than tree-walking interpretation. The goal is **feature parity** with the reference implementation while exploring a different execution model for potential performance improvements.
+santa-lang is a functional, expression-oriented programming language designed for solving Advent of Code puzzles. This implementation uses a bytecode compilation approach rather than tree-walking interpretation, exploring a different execution model for potential performance improvements.
 
-Both implementations support the same language features:
+All santa-lang implementations support the same language features:
 
 - Tail-call optimization (TCO)
 - Persistent immutable data structures
 - First-class functions and closures
 - Lazy sequences and infinite ranges
 - Pattern matching with guards
-- 70+ built-in functions
+- [70+ built-in functions](https://eddmann.com/santa-lang/builtins/)
+- AoC runner with automatic input fetching
 
 ## Architecture
 
@@ -33,6 +34,26 @@ Source Code → Lexer → Parser → Compiler → Blitzen VM
 | **Blitzen VM** | Stack-based virtual machine that executes bytecode  |
 
 The **FrostByte** bytecode format includes instructions for stack manipulation, variable access, arithmetic, control flow, collection operations, and function calls.
+
+## Installation
+
+### Docker
+
+```bash
+docker pull ghcr.io/eddmann/santa-lang-blitzen:cli-latest
+docker run --rm ghcr.io/eddmann/santa-lang-blitzen:cli-latest --help
+```
+
+### Release Binaries
+
+Download pre-built binaries from [GitHub Releases](https://github.com/eddmann/santa-lang-blitzen/releases):
+
+| Platform              | Artifact                                       |
+| --------------------- | ---------------------------------------------- |
+| Linux (x86_64)        | `santa-lang-blitzen-cli-{version}-linux-amd64` |
+| Linux (ARM64)         | `santa-lang-blitzen-cli-{version}-linux-arm64` |
+| macOS (Intel)         | `santa-lang-blitzen-cli-{version}-macos-amd64` |
+| macOS (Apple Silicon) | `santa-lang-blitzen-cli-{version}-macos-arm64` |
 
 ## Building
 
@@ -213,4 +234,8 @@ HTML reports are generated in `target/criterion/`.
 
 ## See Also
 
-- [santa-lang](https://github.com/eddmann/santa-lang) - Reference implementation and language specification
+- [eddmann/santa-lang](https://github.com/eddmann/santa-lang) - Language specification/documentation
+- [eddmann/santa-lang-editor](https://github.com/eddmann/santa-lang-editor) - Web-based editor
+- [eddmann/santa-lang-ts](https://github.com/eddmann/santa-lang-ts) - Tree-walking interpreter in TypeScript (Prancer)
+- [eddmann/santa-lang-rs](https://github.com/eddmann/santa-lang-rs) - Tree-walking interpreter in Rust (Comet)
+- [eddmann/santa-lang-blitzen](https://github.com/eddmann/santa-lang-blitzen) - Bytecode VM in Rust (Blitzen)
