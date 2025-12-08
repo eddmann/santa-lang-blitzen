@@ -1915,6 +1915,8 @@ impl VM {
             BuiltinId::Memoize => self.builtin_memoize(args, line),
             BuiltinId::Sum => self.builtin_sum(args, line),
             BuiltinId::Size => self.builtin_size(args, line),
+            BuiltinId::Max => self.builtin_max(args, line),
+            BuiltinId::Min => self.builtin_min(args, line),
             _ => Err(RuntimeError::new(
                 format!("{} is not a callback builtin", id.name()),
                 line,
@@ -5245,6 +5247,244 @@ impl VM {
             }
         };
         Ok(Value::Integer(size))
+    }
+
+    /// Helper to compare two values, returning -1, 0, or 1
+    fn compare_values(a: &Value, b: &Value, line: u32) -> Result<i32, RuntimeError> {
+        match (a, b) {
+            (Value::Integer(x), Value::Integer(y)) => Ok(x.cmp(y) as i32),
+            (Value::Integer(x), Value::Decimal(y)) => {
+                let fx = *x as f64;
+                if fx < y.0 {
+                    Ok(-1)
+                } else if fx > y.0 {
+                    Ok(1)
+                } else {
+                    Ok(0)
+                }
+            }
+            (Value::Decimal(x), Value::Integer(y)) => {
+                let fy = *y as f64;
+                if x.0 < fy {
+                    Ok(-1)
+                } else if x.0 > fy {
+                    Ok(1)
+                } else {
+                    Ok(0)
+                }
+            }
+            (Value::Decimal(x), Value::Decimal(y)) => {
+                if x.0 < y.0 {
+                    Ok(-1)
+                } else if x.0 > y.0 {
+                    Ok(1)
+                } else {
+                    Ok(0)
+                }
+            }
+            (Value::String(x), Value::String(y)) => Ok(x.cmp(y) as i32),
+            _ => Err(RuntimeError::new(
+                format!("Cannot compare {} and {}", a.type_name(), b.type_name()),
+                line,
+            )),
+        }
+    }
+
+    /// max(..values) → Value | Nil
+    /// Find the maximum value. Variadic or single collection.
+    /// Supports LazySequence by materializing it.
+    fn builtin_max(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        // If single argument is a collection, find max in collection
+        if args.len() == 1 {
+            let collection = &args[0];
+            match collection {
+                Value::List(list) => {
+                    if list.is_empty() {
+                        return Ok(Value::Nil);
+                    }
+                    let mut max_val = &list[0];
+                    for elem in list.iter().skip(1) {
+                        if Self::compare_values(elem, max_val, line)? > 0 {
+                            max_val = elem;
+                        }
+                    }
+                    Ok(max_val.clone())
+                }
+                Value::Set(set) => {
+                    if set.is_empty() {
+                        return Ok(Value::Nil);
+                    }
+                    let mut iter = set.iter();
+                    let mut max_val = iter.next().unwrap();
+                    for elem in iter {
+                        if Self::compare_values(elem, max_val, line)? > 0 {
+                            max_val = elem;
+                        }
+                    }
+                    Ok(max_val.clone())
+                }
+                Value::Dict(dict) => {
+                    if dict.is_empty() {
+                        return Ok(Value::Nil);
+                    }
+                    let mut iter = dict.values();
+                    let mut max_val = iter.next().unwrap();
+                    for value in iter {
+                        if Self::compare_values(value, max_val, line)? > 0 {
+                            max_val = value;
+                        }
+                    }
+                    Ok(max_val.clone())
+                }
+                Value::Range {
+                    start,
+                    end,
+                    inclusive,
+                } => match end {
+                    Some(e) => {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        if *start > actual_end {
+                            return Ok(Value::Nil);
+                        }
+                        Ok(Value::Integer(actual_end.max(*start)))
+                    }
+                    None => Err(RuntimeError::new(
+                        "Cannot find max of unbounded range",
+                        line,
+                    )),
+                },
+                Value::LazySequence(seq) => {
+                    let mut max_val: Option<Value> = None;
+                    let mut seq_clone = seq.borrow().clone();
+                    while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                        match &max_val {
+                            None => max_val = Some(elem),
+                            Some(current) => {
+                                if Self::compare_values(&elem, current, line)? > 0 {
+                                    max_val = Some(elem);
+                                }
+                            }
+                        }
+                    }
+                    Ok(max_val.unwrap_or(Value::Nil))
+                }
+                _ => Err(RuntimeError::new(
+                    format!("max does not support {}", collection.type_name()),
+                    line,
+                )),
+            }
+        } else {
+            // Otherwise find max among arguments
+            let mut max_val: Option<&Value> = None;
+            for arg in args {
+                match max_val {
+                    None => max_val = Some(arg),
+                    Some(current) => {
+                        if Self::compare_values(arg, current, line)? > 0 {
+                            max_val = Some(arg);
+                        }
+                    }
+                }
+            }
+            Ok(max_val.cloned().unwrap_or(Value::Nil))
+        }
+    }
+
+    /// min(..values) → Value | Nil
+    /// Find the minimum value. Variadic or single collection.
+    /// Supports LazySequence by materializing it.
+    fn builtin_min(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        // If single argument is a collection, find min in collection
+        if args.len() == 1 {
+            let collection = &args[0];
+            match collection {
+                Value::List(list) => {
+                    if list.is_empty() {
+                        return Ok(Value::Nil);
+                    }
+                    let mut min_val = &list[0];
+                    for elem in list.iter().skip(1) {
+                        if Self::compare_values(elem, min_val, line)? < 0 {
+                            min_val = elem;
+                        }
+                    }
+                    Ok(min_val.clone())
+                }
+                Value::Set(set) => {
+                    if set.is_empty() {
+                        return Ok(Value::Nil);
+                    }
+                    let mut iter = set.iter();
+                    let mut min_val = iter.next().unwrap();
+                    for elem in iter {
+                        if Self::compare_values(elem, min_val, line)? < 0 {
+                            min_val = elem;
+                        }
+                    }
+                    Ok(min_val.clone())
+                }
+                Value::Dict(dict) => {
+                    if dict.is_empty() {
+                        return Ok(Value::Nil);
+                    }
+                    let mut iter = dict.values();
+                    let mut min_val = iter.next().unwrap();
+                    for value in iter {
+                        if Self::compare_values(value, min_val, line)? < 0 {
+                            min_val = value;
+                        }
+                    }
+                    Ok(min_val.clone())
+                }
+                Value::Range {
+                    start,
+                    end,
+                    inclusive,
+                } => match end {
+                    Some(e) => {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        if *start > actual_end {
+                            return Ok(Value::Nil);
+                        }
+                        Ok(Value::Integer(actual_end.min(*start)))
+                    }
+                    None => Ok(Value::Integer(*start)),
+                },
+                Value::LazySequence(seq) => {
+                    let mut min_val: Option<Value> = None;
+                    let mut seq_clone = seq.borrow().clone();
+                    while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                        match &min_val {
+                            None => min_val = Some(elem),
+                            Some(current) => {
+                                if Self::compare_values(&elem, current, line)? < 0 {
+                                    min_val = Some(elem);
+                                }
+                            }
+                        }
+                    }
+                    Ok(min_val.unwrap_or(Value::Nil))
+                }
+                _ => Err(RuntimeError::new(
+                    format!("min does not support {}", collection.type_name()),
+                    line,
+                )),
+            }
+        } else {
+            // Otherwise find min among arguments
+            let mut min_val: Option<&Value> = None;
+            for arg in args {
+                match min_val {
+                    None => min_val = Some(arg),
+                    Some(current) => {
+                        if Self::compare_values(arg, current, line)? < 0 {
+                            min_val = Some(arg);
+                        }
+                    }
+                }
+            }
+            Ok(min_val.cloned().unwrap_or(Value::Nil))
+        }
     }
 }
 
