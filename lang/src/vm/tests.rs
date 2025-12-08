@@ -1188,9 +1188,11 @@ mod compiler_tests {
             expect![[r#"
                 == test ==
                 0000 [   1] Constant 0 (42)
-                0002 [   1] GetLocal 0
-                0004 [   1] PopN 1
-                0006 [   1] Return
+                0002 [   1] Dup
+                0003 [   1] Pop
+                0004 [   1] GetLocal 0
+                0006 [   1] PopN 1
+                0008 [   1] Return
             "#]],
         );
     }
@@ -1222,18 +1224,20 @@ mod compiler_tests {
     #[test]
     fn compile_let_mut_and_assign() {
         // SetLocal uses peek (not pop), so the value stays on the stack after assignment.
-        // No Dup is needed before SetLocal.
+        // Dup is emitted for let so the value can be used as implicit return.
         check_bytecode(
             "{ let mut x = 1; x = 2; x }",
             expect![[r#"
                 == test ==
                 0000 [   1] Constant 0 (1)
-                0002 [   1] Constant 1 (2)
-                0004 [   1] SetLocal 0
-                0006 [   1] Pop
-                0007 [   1] GetLocal 0
-                0009 [   1] PopN 1
-                0011 [   1] Return
+                0002 [   1] Dup
+                0003 [   1] Pop
+                0004 [   1] Constant 1 (2)
+                0006 [   1] SetLocal 0
+                0008 [   1] Pop
+                0009 [   1] GetLocal 0
+                0011 [   1] PopN 1
+                0013 [   1] Return
             "#]],
         );
     }
@@ -1314,13 +1318,17 @@ mod compiler_tests {
             expect![[r#"
                 == test ==
                 0000 [   1] Constant 0 (1)
-                0002 [   1] Constant 1 (2)
-                0004 [   1] GetLocal 1
-                0006 [   1] PopN 1
-                0008 [   1] Pop
-                0009 [   1] GetLocal 0
-                0011 [   1] PopN 1
-                0013 [   1] Return
+                0002 [   1] Dup
+                0003 [   1] Pop
+                0004 [   1] Constant 1 (2)
+                0006 [   1] Dup
+                0007 [   1] Pop
+                0008 [   1] GetLocal 1
+                0010 [   1] PopN 1
+                0012 [   1] Pop
+                0013 [   1] GetLocal 0
+                0015 [   1] PopN 1
+                0017 [   1] Return
             "#]],
         );
     }
@@ -1332,10 +1340,14 @@ mod compiler_tests {
             expect![[r#"
                 == test ==
                 0000 [   1] Constant 0 (1)
-                0002 [   1] Constant 1 ("hello")
-                0004 [   1] GetLocal 1
-                0006 [   1] PopN 2
-                0008 [   1] Return
+                0002 [   1] Dup
+                0003 [   1] Pop
+                0004 [   1] Constant 1 ("hello")
+                0006 [   1] Dup
+                0007 [   1] Pop
+                0008 [   1] GetLocal 1
+                0010 [   1] PopN 2
+                0012 [   1] Return
             "#]],
         );
     }

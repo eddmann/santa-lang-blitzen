@@ -2475,6 +2475,14 @@ impl Compiler {
             if !is_last && matches!(&stmt.node, Stmt::Expr(_)) {
                 self.emit(OpCode::Pop);
             }
+
+            // For simple identifier lets that aren't last, pop the extra value.
+            // Both function and non-function lets now leave an extra value for returns.
+            if !is_last {
+                if let Stmt::Let { pattern: Pattern::Identifier(_), .. } = &stmt.node {
+                    self.emit(OpCode::Pop);
+                }
+            }
         }
 
         // If block is empty, push nil
@@ -2552,9 +2560,7 @@ impl Compiler {
                 let idx = self.resolve_local(name).unwrap();
                 self.expression(value)?;
                 self.emit_with_operand(OpCode::SetLocal, idx as u8);
-                // SetLocal copies value to slot but leaves it on stack - pop the extra copy
-                // The value is now in its pre-declared slot, no need to leave it on stack again
-                self.emit(OpCode::Pop);
+                // SetLocal leaves value on stack - compile_block will pop if not last statement
             } else if is_global_scope {
                 // Global scope - compile value then emit SetGlobal
                 // Register the global name so it can shadow builtins
@@ -2582,10 +2588,14 @@ impl Compiler {
                     self.expression(value)?;
                     // Update the slot with the actual value
                     self.emit_with_operand(OpCode::SetLocal, idx as u8);
-                    self.emit(OpCode::Pop);
+                    // Don't pop - leave value on stack for implicit returns
+                    // compile_block will pop it if this isn't the last statement
                 } else {
                     // Non-function values - compile first, then bind
                     self.expression(value)?;
+                    // Dup so we have: [value_as_slot, value_for_return]
+                    // compile_block will pop the return value if not last
+                    self.emit(OpCode::Dup);
                     self.add_local(name.clone(), mutable);
                 }
             }
