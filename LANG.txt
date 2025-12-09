@@ -784,14 +784,6 @@ if condition {
 } else {
   expression2
 }
-
-if condition1 {
-  expression1
-} else if condition2 {
-  expression2
-} else {
-  expression3
-}
 ```
 
 **Examples:**
@@ -801,12 +793,12 @@ let x = if 5 > 3 { "yes" } else { "no" };  // "yes"
 
 let y = if false { 1 };  // nil (no else branch)
 
-// Chained conditions with else if
-let grade = |score| {
-  if score >= 90 { "A" }
-  else if score >= 80 { "B" }
-  else if score >= 70 { "C" }
-  else { "F" }
+// Using match (more declarative)
+let grade = |score| match score {
+  90.. => "A",
+  80..90 => "B",
+  70..80 => "C",
+  _ => "F"
 };
 
 // With let-binding in condition

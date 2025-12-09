@@ -1167,11 +1167,7 @@ impl Parser {
             // Optional else branch
             let else_branch = if self.check(&TokenKind::Else) {
                 self.advance();
-                if self.check(&TokenKind::If) {
-                    Some(Box::new(self.parse_if()?))
-                } else {
-                    Some(Box::new(self.parse_block()?))
-                }
+                Some(Box::new(self.parse_block()?))
             } else {
                 None
             };
@@ -1204,11 +1200,7 @@ impl Parser {
 
         let else_branch = if self.check(&TokenKind::Else) {
             self.advance();
-            if self.check(&TokenKind::If) {
-                Some(Box::new(self.parse_if()?))
-            } else {
-                Some(Box::new(self.parse_block()?))
-            }
+            Some(Box::new(self.parse_block()?))
         } else {
             None
         };

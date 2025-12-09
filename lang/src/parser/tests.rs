@@ -551,14 +551,6 @@ fn parse_if_else() {
 }
 
 #[test]
-fn parse_if_else_if() {
-    check(
-        "if a { 1 } else if b { 2 } else { 3 }",
-        expect!["(if a { 1 } else (if b { 2 } else { 3 }))"],
-    );
-}
-
-#[test]
 fn parse_if_let() {
     check(
         "if let x = get_value() { x }",

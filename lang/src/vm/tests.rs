@@ -4876,13 +4876,13 @@ mod runtime_tests {
     }
 
     #[test]
-    fn tco_tail_call_in_if_branches() {
-        // Tail calls in both if branches
+    fn tco_tail_call_in_match_branches() {
+        // Tail calls in match branches
         let code = r#"{
-            let is_even = |n| {
-                if n == 0 { true }
-                else if n == 1 { false }
-                else { is_even(n - 2) }
+            let is_even = |n| match n {
+                0 { true }
+                1 { false }
+                _ { is_even(n - 2) }
             };
             is_even(10000)
         }"#;
