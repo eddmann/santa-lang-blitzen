@@ -3,11 +3,16 @@ name = "santa-cli"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+profile = ["pprof"]
+
 [dependencies]
 atty = "0.2.14"
 lang = { path = "../../lang" }
 rustyline = "14.0"
 ureq = { version = "2.10", features = ["json"] }
+pprof = { version = "0.14", features = ["flamegraph", "protobuf-codec"], optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.0"

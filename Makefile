@@ -41,8 +41,40 @@ test: ## Run all tests
 bench: ## Run criterion benchmarks
 	cargo bench -p benchmarks
 
+bench/run: ## Run hyperfine benchmarks
+	./benchmark/scripts/run_benchmarks.sh
+
+bench/compare: ## Compare results (BASELINE=file CURRENT=file)
+	python3 benchmark/scripts/compare.py $(BASELINE) $(CURRENT)
+
 test-examples: ## Run example test suite
 	./examples/run-tests.sh
+
+##@ Profiling
+
+profile: ## Run with CPU profiling (FILE=path) - outputs flamegraph.svg
+	cargo build --profile profiling --features profile -p santa-cli
+	./target/profiling/santa-cli -p $(FILE)
+
+##@ Analysis
+
+analyze: ## Full analysis (FILE=path) - tests + timing + profile
+	@echo "=========================================="
+	@echo "ANALYSIS: $(FILE)"
+	@echo "=========================================="
+	@echo ""
+	@echo "--- CORRECTNESS (tests) ---"
+	@cargo test -p lang --quiet 2>&1 | tail -5
+	@echo ""
+	@echo "--- TIMING (single run) ---"
+	@cargo build --release -p santa-cli 2>/dev/null
+	@./target/release/santa-cli $(FILE) 2>&1 | grep -E "(Part|ms|Error)" || true
+	@echo ""
+	@echo "--- PROFILE (generating flamegraph.svg) ---"
+	@cargo build --profile profiling --features profile -p santa-cli 2>/dev/null
+	@./target/profiling/santa-cli -p $(FILE) 2>&1 || true
+	@echo ""
+	@echo "=========================================="
 
 ##@ Maintenance
 
