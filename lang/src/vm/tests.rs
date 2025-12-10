@@ -1449,21 +1449,22 @@ mod compiler_tests {
                 0002 [   1] Dup
                 0003 [   1] Nil
                 0004 [   1] Ne
-                0005 [   1] JumpIfFalse -> 28
+                0005 [   1] JumpIfFalse -> 29
                 0008 [   1] Pop
                 0009 [   1] GetLocal 0
                 0011 [   1] Constant 1 (3)
                 0013 [   1] Gt
-                0014 [   1] JumpIfFalse -> 24
-                0017 [   1] GetLocal 0
-                0019 [   1] PopN 1
-                0021 [   1] Jump -> 32
-                0024 [   1] Pop
-                0025 [   1] Jump -> 29
-                0028 [   1] Pop
+                0014 [   1] JumpIfFalse -> 25
+                0017 [   1] Pop
+                0018 [   1] GetLocal 0
+                0020 [   1] PopN 1
+                0022 [   1] Jump -> 33
+                0025 [   1] Pop
+                0026 [   1] Jump -> 30
                 0029 [   1] Pop
-                0030 [   1] Constant 2 (0)
-                0032 [   1] Return
+                0030 [   1] Pop
+                0031 [   1] Constant 2 (0)
+                0033 [   1] Return
             "#]],
         );
     }

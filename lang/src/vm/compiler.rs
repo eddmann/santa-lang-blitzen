@@ -2919,6 +2919,11 @@ impl Compiler {
             // Check if any locals were bound by the pattern
             let locals_bound = self.locals.len() - locals_before;
 
+            // Pop the guard result in the success path (it's still on stack after JumpIfFalse)
+            if guard_jump.is_some() {
+                self.emit(OpCode::Pop);
+            }
+
             // Pop the subject only if no locals were bound
             // (If locals were bound, the subject IS those locals on stack)
             if locals_bound == 0 {
