@@ -18,3 +18,8 @@ target/criterion/
 
 # Compiled binaries
 santa-lang-cli-*
+
+# Performance analysis
+perf-issues/
+flamegraph.svg
+profile.pb

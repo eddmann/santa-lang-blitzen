@@ -15,6 +15,9 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process;
 
+#[cfg(feature = "profile")]
+use std::fs::File;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -23,6 +26,8 @@ fn main() {
     let mut include_slow = false;
     let mut eval_script: Option<String> = None;
     let mut script_path: Option<String> = None;
+    #[allow(unused_variables, unused_assignments)]
+    let mut profile_mode = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -45,6 +50,12 @@ fn main() {
             }
             "-s" | "--slow" => {
                 include_slow = true;
+            }
+            "-p" | "--profile" => {
+                #[allow(unused_assignments)]
+                {
+                    profile_mode = true;
+                }
             }
             "-e" | "--eval" => {
                 i += 1;
@@ -89,11 +100,25 @@ fn main() {
         process::exit(1);
     };
 
+    // Start profiler if enabled
+    #[cfg(feature = "profile")]
+    let _guard = if profile_mode {
+        Some(start_profiler())
+    } else {
+        None
+    };
+
     let result = if test_mode {
         run_tests_from_source(&source, source_path.as_deref(), include_slow)
     } else {
         run_script_from_source(&source, source_path.as_deref())
     };
+
+    // Stop profiler and write output
+    #[cfg(feature = "profile")]
+    if let Some(guard) = _guard {
+        stop_profiler(guard);
+    }
 
     match result {
         Ok(()) => process::exit(0),
@@ -118,6 +143,7 @@ fn print_help() {
     println!("    santa-cli -e <CODE>       Evaluate inline script");
     println!("    santa-cli -t <SCRIPT>     Run test suite");
     println!("    santa-cli -t -s <SCRIPT>  Run test suite including @slow tests");
+    println!("    santa-cli -p <SCRIPT>     Run with CPU profiling (requires --features profile)");
     println!("    santa-cli -r              Start REPL");
     println!("    santa-cli -h              Show this help");
     println!("    cat file | santa-cli      Read script from stdin");
@@ -125,6 +151,7 @@ fn print_help() {
     println!("OPTIONS:");
     println!("    -e, --eval                Evaluate inline script");
     println!("    -s, --slow                Include @slow tests (use with -t)");
+    println!("    -p, --profile             Enable CPU profiling (outputs flamegraph.svg)");
     println!();
     println!("ENVIRONMENT:");
     println!("    SANTA_CLI_SESSION_TOKEN   AOC session token for aoc:// URLs");
@@ -389,4 +416,35 @@ fn create_vm(session_token: Option<&str>, script_dir: Option<PathBuf>) -> VM {
     });
 
     vm
+}
+
+#[cfg(feature = "profile")]
+fn start_profiler() -> pprof::ProfilerGuard<'static> {
+    pprof::ProfilerGuardBuilder::default()
+        .frequency(1000)
+        .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+        .build()
+        .unwrap()
+}
+
+#[cfg(feature = "profile")]
+fn stop_profiler(guard: pprof::ProfilerGuard<'static>) {
+    if let Ok(report) = guard.report().build() {
+        // Write flamegraph
+        let flamegraph_file =
+            File::create("flamegraph.svg").expect("Failed to create flamegraph.svg");
+        report
+            .flamegraph(flamegraph_file)
+            .expect("Failed to write flamegraph");
+        eprintln!("Wrote flamegraph.svg");
+
+        // Write protobuf profile
+        let profile_file = File::create("profile.pb").expect("Failed to create profile.pb");
+        let profile = report.pprof().expect("Failed to generate pprof");
+        use pprof::protos::Message;
+        profile
+            .write_to_writer(&mut std::io::BufWriter::new(profile_file))
+            .expect("Failed to write profile.pb");
+        eprintln!("Wrote profile.pb");
+    }
 }

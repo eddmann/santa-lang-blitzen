@@ -1,3 +1,13 @@
 [workspace]
 resolver = "2"
 members = ["lang", "runtime/cli", "benchmarks"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = false
