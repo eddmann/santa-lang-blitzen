@@ -36,6 +36,10 @@ fn main() {
                 print_help();
                 process::exit(0);
             }
+            "-v" | "--version" => {
+                println!("santa-lang Blitzen {}", env!("CARGO_PKG_VERSION"));
+                process::exit(0);
+            }
             "-r" | "--repl" => {
                 let result = run_repl();
                 match result {
