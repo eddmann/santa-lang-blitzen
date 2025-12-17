@@ -375,11 +375,20 @@ mod value_tests {
         assert_eq!(
             Value::Range {
                 start: 0,
+                end: Some(10),
+                inclusive: false
+            }
+            .type_name(),
+            "BoundedRange"
+        );
+        assert_eq!(
+            Value::Range {
+                start: 0,
                 end: None,
                 inclusive: false
             }
             .type_name(),
-            "Range"
+            "UnboundedRange"
         );
     }
 }

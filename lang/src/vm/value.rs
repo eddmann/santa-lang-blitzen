@@ -166,6 +166,33 @@ pub enum LazySeq {
     Empty,
 }
 
+impl LazySeq {
+    /// Check if the lazy sequence is bounded (finite)
+    pub fn is_bounded(&self) -> bool {
+        match self {
+            // Range is bounded only if it has an end
+            LazySeq::Range { end, .. } => end.is_some(),
+            // RangeStep is always bounded (has explicit end)
+            LazySeq::RangeStep { .. } => true,
+            // Combinations are bounded
+            LazySeq::Combinations { .. } => true,
+            // Empty is bounded (trivially)
+            LazySeq::Empty => true,
+            // Repeat, Cycle, Iterate are always unbounded
+            LazySeq::Repeat { .. } | LazySeq::Cycle { .. } | LazySeq::Iterate { .. } => false,
+            // Transformations inherit boundedness from source
+            LazySeq::Map { source, .. }
+            | LazySeq::Filter { source, .. }
+            | LazySeq::FilterMap { source, .. }
+            | LazySeq::Skip { source, .. }
+            | LazySeq::FlatMap { source, .. }
+            | LazySeq::Scan { source, .. } => source.borrow().is_bounded(),
+            // Zip is bounded if any source is bounded
+            LazySeq::Zip { sources } => sources.iter().any(|s| s.borrow().is_bounded()),
+        }
+    }
+}
+
 /// Inner state for FlatMap iteration - tracks what we're currently iterating through
 #[derive(Debug)]
 pub enum FlatMapInner {
@@ -213,7 +240,13 @@ impl Value {
             Value::Dict(_) => "Dictionary",
             Value::Function(_) => "Function",
             Value::LazySequence(_) => "LazySequence",
-            Value::Range { .. } => "Range",
+            Value::Range { end, .. } => {
+                if end.is_some() {
+                    "BoundedRange"
+                } else {
+                    "UnboundedRange"
+                }
+            }
             Value::ExternalFunction(_) => "ExternalFunction",
             Value::PartialApplication { .. } => "Function",
             Value::MemoizedFunction(_) => "Function",

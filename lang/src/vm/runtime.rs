@@ -4619,6 +4619,13 @@ impl VM {
                 }
             }
             Value::LazySequence(seq) => {
+                // Check if unbounded before iterating
+                if !seq.borrow().is_bounded() {
+                    return Err(RuntimeError::new(
+                        "last is not supported for unbounded sequences".to_string(),
+                        line,
+                    ));
+                }
                 // Consume all elements, return the last
                 let mut seq_clone = seq.borrow().clone();
                 let mut last_value = None;

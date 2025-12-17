@@ -1199,7 +1199,7 @@ fn builtin_includes(collection: &Value, value: &Value, line: u32) -> Result<Valu
     let result = match collection {
         Value::List(list) => list.contains(value),
         Value::Set(set) => set.contains(value),
-        Value::Dict(dict) => dict.values().any(|v| v == value),
+        Value::Dict(dict) => dict.contains_key(value),
         Value::String(s) => {
             if let Value::String(needle) = value {
                 s.contains(needle.as_str())
