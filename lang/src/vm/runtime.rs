@@ -700,27 +700,32 @@ impl VM {
                 }
                 Ok(OpCode::PopJumpIfFalse) => {
                     // Used for && (AND) short-circuit:
-                    // - If value is falsy: push it back (as result), jump over second operand
-                    // - If value is truthy: discard it, evaluate second operand (becomes result)
+                    // - If value is falsy: push false (boolean result), jump over second operand
+                    // - If value is truthy: discard it, evaluate second operand (then ToBool)
                     let offset = self.read_u16() as usize;
                     let value = self.pop();
                     if !value.is_truthy() {
-                        self.push(value); // Keep falsy value as result
+                        self.push(Value::Boolean(false)); // && short-circuits to false
                         self.current_frame_mut().ip += offset;
                     }
                     // If truthy, value is discarded and we continue to evaluate next operand
                 }
                 Ok(OpCode::PopJumpIfTrue) => {
                     // Used for || (OR) short-circuit:
-                    // - If value is truthy: push it back (as result), jump over second operand
-                    // - If value is falsy: discard it, evaluate second operand (becomes result)
+                    // - If value is truthy: push true (boolean result), jump over second operand
+                    // - If value is falsy: discard it, evaluate second operand (then ToBool)
                     let offset = self.read_u16() as usize;
                     let value = self.pop();
                     if value.is_truthy() {
-                        self.push(value); // Keep truthy value as result
+                        self.push(Value::Boolean(true)); // || short-circuits to true
                         self.current_frame_mut().ip += offset;
                     }
                     // If falsy, value is discarded and we continue to evaluate next operand
+                }
+                Ok(OpCode::ToBool) => {
+                    // Convert top of stack to boolean
+                    let value = self.pop();
+                    self.push(Value::Boolean(value.is_truthy()));
                 }
 
                 // Built-ins

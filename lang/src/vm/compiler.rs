@@ -598,6 +598,7 @@ impl Compiler {
                 self.expression(left)?;
                 let jump = self.emit_jump(OpCode::PopJumpIfFalse);
                 self.expression(right)?;
+                self.emit(OpCode::ToBool); // Convert result to boolean
                 self.patch_jump(jump);
                 self.in_tail_position = saved_tail;
                 return Ok(());
@@ -609,6 +610,7 @@ impl Compiler {
                 self.expression(left)?;
                 let jump = self.emit_jump(OpCode::PopJumpIfTrue);
                 self.expression(right)?;
+                self.emit(OpCode::ToBool); // Convert result to boolean
                 self.patch_jump(jump);
                 self.in_tail_position = saved_tail;
                 return Ok(());

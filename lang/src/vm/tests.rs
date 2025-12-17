@@ -776,9 +776,10 @@ mod compiler_tests {
             expect![[r#"
                 == test ==
                 0000 [   1] True
-                0001 [   1] PopJumpIfFalse -> 5
+                0001 [   1] PopJumpIfFalse -> 6
                 0004 [   1] False
-                0005 [   1] Return
+                0005 [   1] ToBool
+                0006 [   1] Return
             "#]],
         );
     }
@@ -790,9 +791,10 @@ mod compiler_tests {
             expect![[r#"
                 == test ==
                 0000 [   1] False
-                0001 [   1] PopJumpIfTrue -> 5
+                0001 [   1] PopJumpIfTrue -> 6
                 0004 [   1] True
-                0005 [   1] Return
+                0005 [   1] ToBool
+                0006 [   1] Return
             "#]],
         );
     }
@@ -1862,24 +1864,24 @@ mod runtime_tests {
 
     #[test]
     fn eval_logical_and() {
-        // Returns first falsy value, or last value if all truthy
+        // Returns boolean: true if both truthy, false otherwise
         assert_eq!(eval("true && true"), Ok(Value::Boolean(true)));
         assert_eq!(eval("true && false"), Ok(Value::Boolean(false)));
         assert_eq!(eval("false && true"), Ok(Value::Boolean(false)));
-        assert_eq!(eval("1 && 2"), Ok(Value::Integer(2))); // Both truthy, return last
-        assert_eq!(eval("0 && 2"), Ok(Value::Integer(0))); // First is falsy
-        assert_eq!(eval("1 && nil"), Ok(Value::Nil)); // Second is falsy
+        assert_eq!(eval("1 && 2"), Ok(Value::Boolean(true))); // Both truthy
+        assert_eq!(eval("0 && 2"), Ok(Value::Boolean(false))); // First is falsy
+        assert_eq!(eval("1 && nil"), Ok(Value::Boolean(false))); // Second is falsy
     }
 
     #[test]
     fn eval_logical_or() {
-        // Returns first truthy value, or last value if all falsy
+        // Returns boolean: true if either truthy, false otherwise
         assert_eq!(eval("true || false"), Ok(Value::Boolean(true)));
         assert_eq!(eval("false || true"), Ok(Value::Boolean(true)));
         assert_eq!(eval("false || false"), Ok(Value::Boolean(false)));
-        assert_eq!(eval("1 || 0"), Ok(Value::Integer(1))); // First is truthy
-        assert_eq!(eval("0 || 2"), Ok(Value::Integer(2))); // First is falsy, return second
-        assert_eq!(eval("false || nil"), Ok(Value::Nil)); // Both falsy, return last
+        assert_eq!(eval("1 || 0"), Ok(Value::Boolean(true))); // First is truthy
+        assert_eq!(eval("0 || 2"), Ok(Value::Boolean(true))); // Second is truthy
+        assert_eq!(eval("false || nil"), Ok(Value::Boolean(false))); // Both falsy
     }
 
     #[test]

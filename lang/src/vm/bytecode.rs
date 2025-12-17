@@ -121,6 +121,8 @@ pub enum OpCode {
     True = 93,
     /// False literal
     False = 94,
+    /// Convert top of stack to boolean
+    ToBool = 95,
 }
 
 impl TryFrom<u8> for OpCode {
@@ -176,6 +178,7 @@ impl TryFrom<u8> for OpCode {
             92 => Ok(OpCode::Nil),
             93 => Ok(OpCode::True),
             94 => Ok(OpCode::False),
+            95 => Ok(OpCode::ToBool),
             _ => Err(value),
         }
     }
