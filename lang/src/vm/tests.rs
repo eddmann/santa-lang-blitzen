@@ -3010,6 +3010,15 @@ mod runtime_tests {
     }
 
     #[test]
+    fn eval_builtin_last_unbounded_error() {
+        // last on unbounded sequences should error to prevent infinite loops
+        assert!(eval("last(1..)").is_err());
+        assert!(eval("last(iterate(|x| x + 1, 1))").is_err());
+        assert!(eval("last(repeat(42))").is_err());
+        assert!(eval("last(cycle([1, 2, 3]))").is_err());
+    }
+
+    #[test]
     fn eval_builtin_rest() {
         let result = eval("rest([1, 2, 3])").unwrap();
         match result {
@@ -3414,6 +3423,37 @@ mod runtime_tests {
             }
             _ => panic!("Expected LazySequence"),
         }
+    }
+
+    #[test]
+    fn eval_builtin_filter_error_propagation_list() {
+        // Errors in filter predicates should propagate, not be swallowed
+        assert!(eval("filter(|x| 1 / 0, [1, 2, 3])").is_err());
+    }
+
+    #[test]
+    fn eval_builtin_filter_error_propagation_set() {
+        // Errors in filter predicates should propagate for sets
+        assert!(eval("filter(|x| 1 / 0, {1, 2, 3})").is_err());
+    }
+
+    #[test]
+    fn eval_builtin_filter_error_propagation_dict() {
+        // Errors in filter predicates should propagate for dicts
+        assert!(eval("filter(|v| 1 / 0, #{1: 2, 3: 4})").is_err());
+    }
+
+    #[test]
+    fn eval_builtin_filter_error_propagation_string() {
+        // Errors in filter predicates should propagate for strings
+        assert!(eval(r#"filter(|c| 1 / 0, "abc")"#).is_err());
+    }
+
+    #[test]
+    fn eval_builtin_filter_error_propagation_lazy() {
+        // Errors in filter predicates should propagate for lazy sequences
+        // The error manifests when we try to consume the lazy sequence
+        assert!(eval("take(1, filter(|x| 1 / 0, 1..))").is_err());
     }
 
     #[test]
@@ -4096,9 +4136,51 @@ mod runtime_tests {
     }
 
     #[test]
+    fn eval_builtin_includes_dict_checks_keys() {
+        // includes? on Dictionary checks keys, not values
+        assert_eq!(
+            eval("includes?(#{1: 2, 3: 4}, 1)"),
+            Ok(Value::Boolean(true))
+        );
+        assert_eq!(
+            eval("includes?(#{1: 2, 3: 4}, 2)"),
+            Ok(Value::Boolean(false))
+        );
+        assert_eq!(
+            eval("includes?(#{1: 2, 3: 4}, 3)"),
+            Ok(Value::Boolean(true))
+        );
+        assert_eq!(
+            eval("includes?(#{1: 2, 3: 4}, 4)"),
+            Ok(Value::Boolean(false))
+        );
+    }
+
+    #[test]
     fn eval_builtin_excludes_list() {
         // excludes?([1, 2, 3], 5) => true
         assert_eq!(eval("excludes?([1, 2, 3], 5)"), Ok(Value::Boolean(true)));
+    }
+
+    #[test]
+    fn eval_builtin_excludes_dict_checks_keys() {
+        // excludes? on Dictionary checks keys, not values
+        assert_eq!(
+            eval("excludes?(#{1: 2, 3: 4}, 1)"),
+            Ok(Value::Boolean(false))
+        );
+        assert_eq!(
+            eval("excludes?(#{1: 2, 3: 4}, 2)"),
+            Ok(Value::Boolean(true))
+        );
+        assert_eq!(
+            eval("excludes?(#{1: 2, 3: 4}, 3)"),
+            Ok(Value::Boolean(false))
+        );
+        assert_eq!(
+            eval("excludes?(#{1: 2, 3: 4}, 4)"),
+            Ok(Value::Boolean(true))
+        );
     }
 
     #[test]

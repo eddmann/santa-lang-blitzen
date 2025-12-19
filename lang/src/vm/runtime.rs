@@ -2160,19 +2160,17 @@ impl VM {
                     None => Ok(None),
                 }
             }
-            LazySeq::Filter { source, predicate } => {
-                loop {
-                    match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
-                        Some(value) => {
-                            let result = self.call_callable_sync(predicate, vec![value.clone()])?;
-                            if result.is_truthy() {
-                                return Ok(Some(value));
-                            }
+            LazySeq::Filter { source, predicate } => loop {
+                match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
+                    Some(value) => {
+                        let result = self.call_callable_sync(predicate, vec![value.clone()])?;
+                        if result.is_truthy() {
+                            return Ok(Some(value));
                         }
-                        None => return Ok(None),
                     }
+                    None => return Ok(None),
                 }
-            }
+            },
             LazySeq::FilterMap { source, mapper } => {
                 loop {
                     match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
