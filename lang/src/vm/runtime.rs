@@ -2164,14 +2164,7 @@ impl VM {
                 loop {
                     match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
                         Some(value) => {
-                            // Swallow errors in filter predicates, treating them as "false"
-                            // This matches reference behavior where filter callbacks that error
-                            // are treated as if the element doesn't pass the filter
-                            let result =
-                                match self.call_callable_sync(predicate, vec![value.clone()]) {
-                                    Ok(v) => v,
-                                    Err(_) => continue,
-                                };
+                            let result = self.call_callable_sync(predicate, vec![value.clone()])?;
                             if result.is_truthy() {
                                 return Ok(Some(value));
                             }
@@ -2448,11 +2441,7 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    // Swallow errors in filter predicates, treating them as "false"
-                    let keep = match self.call_callable_sync(&predicate, call_args) {
-                        Ok(v) => v,
-                        Err(_) => continue,
-                    };
+                    let keep = self.call_callable_sync(&predicate, call_args)?;
                     if keep.is_truthy() {
                         result.push_back(elem.clone());
                     }
@@ -2462,11 +2451,7 @@ impl VM {
             Value::Set(set) => {
                 let mut result = HashSet::new();
                 for elem in set.iter() {
-                    // Swallow errors in filter predicates, treating them as "false"
-                    let keep = match self.call_callable_sync(&predicate, vec![elem.clone()]) {
-                        Ok(v) => v,
-                        Err(_) => continue,
-                    };
+                    let keep = self.call_callable_sync(&predicate, vec![elem.clone()])?;
                     if keep.is_truthy() {
                         result.insert(elem.clone());
                     }
@@ -2481,11 +2466,7 @@ impl VM {
                     } else {
                         vec![value.clone()]
                     };
-                    // Swallow errors in filter predicates, treating them as "false"
-                    let keep = match self.call_callable_sync(&predicate, call_args) {
-                        Ok(v) => v,
-                        Err(_) => continue,
-                    };
+                    let keep = self.call_callable_sync(&predicate, call_args)?;
                     if keep.is_truthy() {
                         result.insert(key.clone(), value.clone());
                     }
@@ -2502,11 +2483,7 @@ impl VM {
                     } else {
                         vec![elem.clone()]
                     };
-                    // Swallow errors in filter predicates, treating them as "false"
-                    let keep = match self.call_callable_sync(&predicate, call_args) {
-                        Ok(v) => v,
-                        Err(_) => continue,
-                    };
+                    let keep = self.call_callable_sync(&predicate, call_args)?;
                     if keep.is_truthy() {
                         result.push_back(elem);
                     }
