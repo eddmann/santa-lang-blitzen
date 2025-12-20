@@ -2054,6 +2054,25 @@ mod runtime_tests {
         }
     }
 
+    #[test]
+    fn eval_set_membership_indexing() {
+        // Per §14.4: Set indexing checks membership, returns value or nil
+        // {1, 2, 3}[2] => 2 (value present)
+        assert_eq!(eval("{1, 2, 3}[2]"), Ok(Value::Integer(2)));
+
+        // {1, 2, 3}[99] => nil (value not present)
+        assert_eq!(eval("{1, 2, 3}[99]"), Ok(Value::Nil));
+
+        // Works with strings
+        assert_eq!(
+            eval(r#"{"a", "b", "c"}["b"]"#),
+            Ok(Value::String(Rc::new("b".to_string())))
+        );
+
+        // Returns nil for missing string
+        assert_eq!(eval(r#"{"a", "b", "c"}["z"]"#), Ok(Value::Nil));
+    }
+
     // ============================================================
     // §3.7 Dictionary operations
     // ============================================================
@@ -4180,6 +4199,51 @@ mod runtime_tests {
         assert_eq!(
             eval("excludes?(#{1: 2, 3: 4}, 4)"),
             Ok(Value::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_includes_lazy_sequence() {
+        // Per §11.11: includes? supports LazySequence
+        // Test with finite lazy sequence (take) - note: take materializes to List
+        assert_eq!(
+            eval("includes?(1.. |> take(5), 3)"),
+            Ok(Value::Boolean(true))
+        );
+        assert_eq!(
+            eval("includes?(1.. |> take(5), 10)"),
+            Ok(Value::Boolean(false))
+        );
+
+        // Test with mapped lazy sequence (take materializes to List)
+        assert_eq!(
+            eval("includes?(1.. |> map(_ * 2) |> take(5), 6)"),
+            Ok(Value::Boolean(true))
+        );
+        assert_eq!(
+            eval("includes?(1.. |> map(_ * 2) |> take(5), 5)"),
+            Ok(Value::Boolean(false))
+        );
+
+        // Test with actual LazySequence - must search for value that exists (or it loops forever)
+        // Search for 6 in infinite map sequence (will find it at position 3)
+        assert_eq!(
+            eval("includes?(1.. |> map(_ * 2), 6)"),
+            Ok(Value::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn eval_builtin_excludes_lazy_sequence() {
+        // Per §11.11: excludes? supports LazySequence
+        // These use take which materializes to List
+        assert_eq!(
+            eval("excludes?(1.. |> take(5), 10)"),
+            Ok(Value::Boolean(true))
+        );
+        assert_eq!(
+            eval("excludes?(1.. |> take(5), 3)"),
+            Ok(Value::Boolean(false))
         );
     }
 

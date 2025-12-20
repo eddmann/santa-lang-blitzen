@@ -408,6 +408,8 @@ impl BuiltinId {
                 | BuiltinId::Size
                 | BuiltinId::Max
                 | BuiltinId::Min
+                | BuiltinId::Includes
+                | BuiltinId::Excludes
         )
     }
 }
@@ -540,8 +542,8 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         BuiltinId::Chunk => builtin_chunk(&args[0], &args[1], line),
         BuiltinId::Union => builtin_union(args, line),
         BuiltinId::Intersection => builtin_intersection(args, line),
-        BuiltinId::Includes => builtin_includes(&args[0], &args[1], line),
-        BuiltinId::Excludes => builtin_excludes(&args[0], &args[1], line),
+        // Includes/Excludes are callback builtins for LazySequence support
+        // BuiltinId::Includes and BuiltinId::Excludes handled in runtime.rs
         // Phase 12: Lazy sequence generators
         BuiltinId::Zip => builtin_zip(args, line),
         BuiltinId::Repeat => builtin_repeat(&args[0], line),
@@ -602,7 +604,9 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         | BuiltinId::Sum
         | BuiltinId::Size
         | BuiltinId::Max
-        | BuiltinId::Min => {
+        | BuiltinId::Min
+        | BuiltinId::Includes
+        | BuiltinId::Excludes => {
             // These builtins require callback support and are handled directly by the VM
             Err(RuntimeError::new(
                 format!(
@@ -1192,69 +1196,8 @@ fn builtin_intersection(args: &[Value], line: u32) -> Result<Value, RuntimeError
 // ============================================================================
 // Predicates (§11.11)
 // ============================================================================
-
-/// includes?(collection, value) → Boolean
-/// Check if value is in collection. Per LANG.txt §11.11
-fn builtin_includes(collection: &Value, value: &Value, line: u32) -> Result<Value, RuntimeError> {
-    let result = match collection {
-        Value::List(list) => list.contains(value),
-        Value::Set(set) => set.contains(value),
-        Value::Dict(dict) => dict.contains_key(value),
-        Value::String(s) => {
-            if let Value::String(needle) = value {
-                s.contains(needle.as_str())
-            } else {
-                false
-            }
-        }
-        Value::Range {
-            start,
-            end,
-            inclusive,
-        } => {
-            if let Value::Integer(n) = value {
-                match end {
-                    Some(e) => {
-                        if *inclusive {
-                            (*start <= *e && *n >= *start && *n <= *e)
-                                || (*start > *e && *n <= *start && *n >= *e)
-                        } else {
-                            (*start <= *e && *n >= *start && *n < *e)
-                                || (*start > *e && *n <= *start && *n > *e)
-                        }
-                    }
-                    None => *n >= *start,
-                }
-            } else {
-                false
-            }
-        }
-        Value::LazySequence(_) => {
-            return Err(RuntimeError::new(
-                "Cannot check includes? on lazy sequence; may not terminate for infinite sequences",
-                line,
-            ));
-        }
-        _ => {
-            return Err(RuntimeError::new(
-                format!("includes? does not support {}", collection.type_name()),
-                line,
-            ));
-        }
-    };
-
-    Ok(Value::Boolean(result))
-}
-
-/// excludes?(collection, value) → Boolean
-/// Check if value is NOT in collection. Per LANG.txt §11.11
-fn builtin_excludes(collection: &Value, value: &Value, line: u32) -> Result<Value, RuntimeError> {
-    let includes = builtin_includes(collection, value, line)?;
-    match includes {
-        Value::Boolean(b) => Ok(Value::Boolean(!b)),
-        _ => Ok(Value::Boolean(true)), // Should not happen
-    }
-}
+// NOTE: includes? and excludes? are now callback builtins in runtime.rs
+// to support LazySequence iteration.
 
 // ============================================================================
 // Lazy Sequence Generation (§11.12)

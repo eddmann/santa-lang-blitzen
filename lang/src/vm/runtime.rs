@@ -1466,6 +1466,15 @@ impl VM {
             // Dictionary lookup
             (Value::Dict(dict), key) => dict.get(key).cloned().unwrap_or(Value::Nil),
 
+            // Set membership check (returns value if present, nil otherwise)
+            (Value::Set(set), value) => {
+                if set.contains(value) {
+                    value.clone()
+                } else {
+                    Value::Nil
+                }
+            }
+
             // Range indexing with Integer
             // Note: Negative indices are not supported for ranges (return nil)
             (
@@ -1923,6 +1932,8 @@ impl VM {
             BuiltinId::Size => self.builtin_size(args, line),
             BuiltinId::Max => self.builtin_max(args, line),
             BuiltinId::Min => self.builtin_min(args, line),
+            BuiltinId::Includes => self.builtin_includes(args, line),
+            BuiltinId::Excludes => self.builtin_excludes(args, line),
             _ => Err(RuntimeError::new(
                 format!("{} is not a callback builtin", id.name()),
                 line,
@@ -5313,6 +5324,83 @@ impl VM {
                 }
             }
             Ok(min_val.cloned().unwrap_or(Value::Nil))
+        }
+    }
+
+    /// includes?(collection, value) → Boolean
+    /// Check if value is present in collection.
+    /// Per LANG.txt §11.11: supports List, Set, Dictionary, String, Range, LazySequence
+    fn builtin_includes(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let collection = &args[0];
+        let value = &args[1];
+
+        let result = match collection {
+            Value::List(list) => list.contains(value),
+            Value::Set(set) => set.contains(value),
+            Value::Dict(dict) => dict.contains_key(value),
+            Value::String(s) => {
+                if let Value::String(needle) = value {
+                    s.contains(needle.as_str())
+                } else {
+                    false
+                }
+            }
+            Value::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                if let Value::Integer(n) = value {
+                    match end {
+                        Some(e) => {
+                            if *inclusive {
+                                (*start <= *e && *n >= *start && *n <= *e)
+                                    || (*start > *e && *n <= *start && *n >= *e)
+                            } else {
+                                (*start <= *e && *n >= *start && *n < *e)
+                                    || (*start > *e && *n <= *start && *n > *e)
+                            }
+                        }
+                        None => *n >= *start,
+                    }
+                } else {
+                    false
+                }
+            }
+            Value::LazySequence(seq) => {
+                // Iterate through lazy sequence looking for the value
+                // Note: For infinite sequences with no match, this will not terminate
+                let mut seq_clone = seq.borrow().clone();
+                loop {
+                    match self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                        Some(elem) => {
+                            if elem == *value {
+                                return Ok(Value::Boolean(true));
+                            }
+                        }
+                        None => return Ok(Value::Boolean(false)),
+                    }
+                }
+            }
+            _ => {
+                return Err(RuntimeError::new(
+                    format!("includes? does not support {}", collection.type_name()),
+                    line,
+                ));
+            }
+        };
+
+        Ok(Value::Boolean(result))
+    }
+
+    /// excludes?(collection, value) → Boolean
+    /// Check if value is NOT in collection.
+    /// Per LANG.txt §11.11
+    fn builtin_excludes(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let includes = self.builtin_includes(args, line)?;
+        match includes {
+            Value::Boolean(b) => Ok(Value::Boolean(!b)),
+            _ => Ok(Value::Boolean(true)), // Should not happen
         }
     }
 }
