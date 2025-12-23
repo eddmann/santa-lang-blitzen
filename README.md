@@ -200,7 +200,7 @@ Compare Blitzen VM performance against another santa-cli binary:
 
 ```bash
 # Compare against reference implementation
-./examples/benchmark-2022.sh ~/santa-lang-rs/target/release/santa-cli
+./examples/benchmark-2022.sh ~/santa-lang-comet/target/release/santa-cli
 
 # Quick benchmark with fewer runs
 ./examples/benchmark-2022.sh /path/to/baseline -w 2 -r 5
@@ -236,6 +236,6 @@ HTML reports are generated in `target/criterion/`.
 
 - [eddmann/santa-lang](https://github.com/eddmann/santa-lang) - Language specification/documentation
 - [eddmann/santa-lang-editor](https://github.com/eddmann/santa-lang-editor) - Web-based editor
-- [eddmann/santa-lang-ts](https://github.com/eddmann/santa-lang-ts) - Tree-walking interpreter in TypeScript (Prancer)
-- [eddmann/santa-lang-rs](https://github.com/eddmann/santa-lang-rs) - Tree-walking interpreter in Rust (Comet)
+- [eddmann/santa-lang-prancer](https://github.com/eddmann/santa-lang-prancer) - Tree-walking interpreter in TypeScript (Prancer)
+- [eddmann/santa-lang-comet](https://github.com/eddmann/santa-lang-comet) - Tree-walking interpreter in Rust (Comet)
 - [eddmann/santa-lang-blitzen](https://github.com/eddmann/santa-lang-blitzen) - Bytecode VM in Rust (Blitzen)
