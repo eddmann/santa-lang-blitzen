@@ -124,7 +124,6 @@ pub enum BuiltinId {
     Id = 160,
     Type = 161,
     Memoize = 162,
-    Evaluate = 165,
 }
 
 impl BuiltinId {
@@ -202,7 +201,6 @@ impl BuiltinId {
             BuiltinId::Id => "id",
             BuiltinId::Type => "type",
             BuiltinId::Memoize => "memoize",
-            BuiltinId::Evaluate => "evaluate",
         }
     }
 
@@ -280,7 +278,6 @@ impl BuiltinId {
             "id" => Some(BuiltinId::Id),
             "type" => Some(BuiltinId::Type),
             "memoize" => Some(BuiltinId::Memoize),
-            "evaluate" => Some(BuiltinId::Evaluate),
             _ => None,
         }
     }
@@ -315,8 +312,7 @@ impl BuiltinId {
             | BuiltinId::BitNot
             | BuiltinId::Id
             | BuiltinId::Type
-            | BuiltinId::Memoize
-            | BuiltinId::Evaluate => (1, 1),
+            | BuiltinId::Memoize => (1, 1),
 
             // Two argument functions: (fn, collection) or (index, collection)
             BuiltinId::Get
@@ -490,7 +486,6 @@ impl TryFrom<u16> for BuiltinId {
             160 => Ok(BuiltinId::Id),
             161 => Ok(BuiltinId::Type),
             162 => Ok(BuiltinId::Memoize),
-            165 => Ok(BuiltinId::Evaluate),
             _ => Err(value),
         }
     }
@@ -574,7 +569,6 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         // Phase 13: Utility functions
         BuiltinId::Id => builtin_id(&args[0], line),
         BuiltinId::Type => builtin_type(&args[0], line),
-        BuiltinId::Evaluate => builtin_evaluate(&args[0], line),
         // Callback-based builtins - handled specially in runtime
         BuiltinId::Get
         | BuiltinId::First
@@ -2300,45 +2294,4 @@ fn builtin_id(value: &Value, _line: u32) -> Result<Value, RuntimeError> {
 /// Get type name. Per LANG.txt §11.16
 fn builtin_type(value: &Value, _line: u32) -> Result<Value, RuntimeError> {
     Ok(Value::String(Rc::new(value.type_name().to_string())))
-}
-
-/// evaluate(source) → Value
-/// Evaluate string as Santa code. Per LANG.txt §11.16
-fn builtin_evaluate(source: &Value, line: u32) -> Result<Value, RuntimeError> {
-    match source {
-        Value::String(code) => {
-            // Import required modules for evaluation
-            use crate::lexer::Lexer;
-            use crate::parser::Parser;
-            use crate::vm::compiler::Compiler;
-            use crate::vm::runtime::VM;
-
-            // Lex the source
-            let mut lexer = Lexer::new(code);
-            let tokens = lexer.tokenize().map_err(|e| {
-                RuntimeError::new(format!("evaluate: lexer error: {}", e.message), line)
-            })?;
-
-            // Parse the tokens
-            let mut parser = Parser::new(tokens);
-            let program = parser.parse_program().map_err(|e| {
-                RuntimeError::new(format!("evaluate: parser error: {}", e.message), line)
-            })?;
-
-            // Compile all statements in the program
-            let func = Compiler::compile_statements(&program.statements).map_err(|e| {
-                RuntimeError::new(format!("evaluate: compiler error: {}", e.message), line)
-            })?;
-
-            // Execute in sandboxed VM
-            let mut vm = VM::new();
-            vm.run(Rc::new(func)).map_err(|e| {
-                RuntimeError::new(format!("evaluate: runtime error: {}", e.message), line)
-            })
-        }
-        _ => Err(RuntimeError::new(
-            format!("evaluate expects String, got {}", source.type_name()),
-            line,
-        )),
-    }
 }

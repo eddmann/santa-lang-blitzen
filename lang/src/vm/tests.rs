@@ -4930,46 +4930,6 @@ mod runtime_tests {
         );
     }
 
-    #[test]
-    fn eval_builtin_evaluate() {
-        assert_eq!(eval("evaluate(\"1 + 2\")"), Ok(Value::Integer(3)));
-        assert_eq!(
-            eval("evaluate(\"[1, 2, 3]\")"),
-            Ok(Value::List(
-                vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)]
-                    .into_iter()
-                    .collect()
-            ))
-        );
-    }
-
-    #[test]
-    fn eval_builtin_evaluate_with_let() {
-        // Test evaluate with let statements
-        assert_eq!(
-            eval("evaluate(\"let x = 10; x * 2\")"),
-            Ok(Value::Integer(20))
-        );
-    }
-
-    #[test]
-    fn eval_builtin_evaluate_multiple_statements() {
-        // Test multiple statements where only the last value is returned
-        assert_eq!(
-            eval("evaluate(\"let x = 5; let y = 10; x + y\")"),
-            Ok(Value::Integer(15))
-        );
-    }
-
-    #[test]
-    fn eval_builtin_evaluate_with_block() {
-        // Test evaluate with a block expression
-        assert_eq!(
-            eval("evaluate(\"{ let a = 3; let b = 4; a * b }\")"),
-            Ok(Value::Integer(12))
-        );
-    }
-
     // §8.9 Tail-Call Optimization Tests (Phase 14)
 
     #[test]
@@ -5216,14 +5176,6 @@ mod runtime_tests {
         assert!(eval("let map = 42").is_err());
         assert!(eval("let reduce = |x| x").is_err());
         assert!(eval("let filter = 123").is_err());
-    }
-
-    #[test]
-    fn error_invalid_evaluate_syntax() {
-        // Invalid syntax in evaluate() should throw RuntimeErr
-        assert!(eval(r#"evaluate("1 +")"#).is_err());
-        assert!(eval(r#"evaluate("let x = ")"#).is_err());
-        assert!(eval(r#"evaluate("(((")"#).is_err());
     }
 
     // ===== Partial Application and Currying Tests =====
