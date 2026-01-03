@@ -4405,7 +4405,10 @@ impl VM {
                     }
                 }
                 _ => Err(RuntimeError::new(
-                    format!("List index must be Integer or Range, got {}", index.type_name()),
+                    format!(
+                        "List index must be Integer or Range, got {}",
+                        index.type_name()
+                    ),
                     line,
                 )),
             },
@@ -4462,11 +4465,16 @@ impl VM {
                     if actual_start >= actual_end {
                         Ok(Value::String(Rc::new(String::new())))
                     } else {
-                        Ok(Value::String(Rc::new(graphemes[actual_start..actual_end].join(""))))
+                        Ok(Value::String(Rc::new(
+                            graphemes[actual_start..actual_end].join(""),
+                        )))
                     }
                 }
                 _ => Err(RuntimeError::new(
-                    format!("String index must be Integer or Range, got {}", index.type_name()),
+                    format!(
+                        "String index must be Integer or Range, got {}",
+                        index.type_name()
+                    ),
                     line,
                 )),
             },
