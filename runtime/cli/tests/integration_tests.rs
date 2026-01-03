@@ -14,7 +14,7 @@ fn cli_help() {
         .arg("-h")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Santa Language CLI"))
+        .stdout(predicate::str::contains("santa-lang CLI - Blitzen"))
         .stdout(predicate::str::contains("USAGE:"));
 }
 

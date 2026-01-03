@@ -140,29 +140,28 @@ enum ExitCode {
 }
 
 fn print_help() {
-    println!("santa-lang CLI - Blitzen");
+    println!("santa-lang CLI - Blitzen {}", env!("CARGO_PKG_VERSION"));
     println!();
     println!("USAGE:");
-    println!("    santa-cli <SCRIPT>             Run solution file");
-    println!("    santa-cli -e <CODE>            Evaluate inline script");
-    println!("    santa-cli -t <SCRIPT>          Run test suite");
-    println!("    santa-cli -t -s <SCRIPT>       Run test suite including @slow tests");
-    println!("    santa-cli -r                   Start REPL");
-    println!("    santa-cli -h                   Show this help");
-    println!("    cat file | santa-cli           Read script from stdin");
+    println!("    santa-cli <SCRIPT>              Run solution file");
+    println!("    santa-cli -e <CODE>             Evaluate inline script");
+    println!("    santa-cli -t <SCRIPT>           Run test suite");
+    println!("    santa-cli -t -s <SCRIPT>        Run tests including @slow");
+    println!("    santa-cli -r                    Start REPL");
+    println!("    santa-cli -h                    Show this help");
+    println!("    cat file | santa-cli            Read from stdin");
     println!();
     println!("OPTIONS:");
-    println!("    -e, --eval <CODE>              Evaluate inline script");
-    println!("    -t, --test                     Run the solution's test suite");
-    println!("    -s, --slow                     Include @slow tests (use with -t)");
-    println!("    -r, --repl                     Begin an interactive REPL session");
-    #[cfg(feature = "profile")]
-    println!("    -p, --profile                  Enable CPU profiling");
-    println!("    -h, --help                     Show this help message");
-    println!("    -v, --version                  Display version information");
+    println!("    -e, --eval <CODE>    Evaluate inline script");
+    println!("    -t, --test           Run the solution's test suite");
+    println!("    -s, --slow           Include @slow tests (use with -t)");
+    println!("    -r, --repl           Start interactive REPL");
+    println!("    -p, --profile        Enable CPU profiling");
+    println!("    -h, --help           Show this help message");
+    println!("    -v, --version        Display version information");
     println!();
     println!("ENVIRONMENT:");
-    println!("    SANTA_CLI_SESSION_TOKEN        AOC session token for aoc:// URLs");
+    println!("    SANTA_CLI_SESSION_TOKEN    AOC session token for aoc:// URLs");
 }
 
 fn run_script_from_source(source: &str, source_path: Option<&str>) -> Result<(), ExitCode> {
