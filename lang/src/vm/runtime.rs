@@ -4370,8 +4370,42 @@ impl VM {
                         Ok(list[actual_idx as usize].clone())
                     }
                 }
+                Value::Range {
+                    start,
+                    end,
+                    inclusive,
+                } => {
+                    let len = list.len() as i64;
+                    let actual_start = if *start < 0 {
+                        (len + start).max(0)
+                    } else {
+                        (*start).min(len)
+                    } as usize;
+
+                    let actual_end = match end {
+                        None => list.len(),
+                        Some(e) => {
+                            let idx = if *e < 0 {
+                                (len + e).max(0)
+                            } else {
+                                (*e).min(len)
+                            };
+                            if *inclusive {
+                                (idx + 1).min(len) as usize
+                            } else {
+                                idx as usize
+                            }
+                        }
+                    };
+
+                    if actual_start >= actual_end {
+                        Ok(Value::List(Vector::new()))
+                    } else {
+                        Ok(Value::List(list.clone().slice(actual_start..actual_end)))
+                    }
+                }
                 _ => Err(RuntimeError::new(
-                    format!("List index must be Integer, got {}", index.type_name()),
+                    format!("List index must be Integer or Range, got {}", index.type_name()),
                     line,
                 )),
             },
@@ -4396,8 +4430,43 @@ impl VM {
                         )))
                     }
                 }
+                Value::Range {
+                    start,
+                    end,
+                    inclusive,
+                } => {
+                    let graphemes: Vec<&str> = s.graphemes(true).collect();
+                    let len = graphemes.len() as i64;
+                    let actual_start = if *start < 0 {
+                        (len + start).max(0)
+                    } else {
+                        (*start).min(len)
+                    } as usize;
+
+                    let actual_end = match end {
+                        None => graphemes.len(),
+                        Some(e) => {
+                            let idx = if *e < 0 {
+                                (len + e).max(0)
+                            } else {
+                                (*e).min(len)
+                            };
+                            if *inclusive {
+                                (idx + 1).min(len) as usize
+                            } else {
+                                idx as usize
+                            }
+                        }
+                    };
+
+                    if actual_start >= actual_end {
+                        Ok(Value::String(Rc::new(String::new())))
+                    } else {
+                        Ok(Value::String(Rc::new(graphemes[actual_start..actual_end].join(""))))
+                    }
+                }
                 _ => Err(RuntimeError::new(
-                    format!("String index must be Integer, got {}", index.type_name()),
+                    format!("String index must be Integer or Range, got {}", index.type_name()),
                     line,
                 )),
             },
