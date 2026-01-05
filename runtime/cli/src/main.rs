@@ -1,19 +1,27 @@
 mod external;
+mod output;
 
 use lang::{
     error::SantaError,
     lexer::Lexer,
-    parser::Parser,
+    parser::{ast::Section, Parser},
     runner::AocRunner,
     vm::{RuntimeError, Value, VM},
+};
+use output::{
+    format_error_json, format_script_json, format_solution_json, format_test_json,
+    is_solution_source, CollectedTestInfo, JsonTestPartResult, JsonlPartInitial,
+    JsonlScriptInitial, JsonlSolutionInitial, JsonlTestCaseInitial, JsonlTestInitial,
+    JsonlWriter, OutputMode, TestSummary,
 };
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use std::env;
 use std::fs;
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process;
+use std::time::Instant;
 
 #[cfg(feature = "profile")]
 use std::fs::File;
@@ -26,6 +34,7 @@ fn main() {
     let mut include_slow = false;
     let mut eval_script: Option<String> = None;
     let mut script_path: Option<String> = None;
+    let mut output_mode = OutputMode::Text;
     #[allow(unused_variables, unused_assignments)]
     let mut profile_mode = false;
 
@@ -59,6 +68,26 @@ fn main() {
                 #[allow(unused_assignments)]
                 {
                     profile_mode = true;
+                }
+            }
+            "-o" | "--output" => {
+                i += 1;
+                if i < args.len() {
+                    output_mode = match args[i].as_str() {
+                        "text" => OutputMode::Text,
+                        "json" => OutputMode::Json,
+                        "jsonl" => OutputMode::Jsonl,
+                        other => {
+                            eprintln!(
+                                "Error: Invalid output format '{}'. Use: text, json, jsonl",
+                                other
+                            );
+                            process::exit(1);
+                        }
+                    };
+                } else {
+                    eprintln!("Error: -o requires a format argument (text, json, jsonl)");
+                    process::exit(1);
                 }
             }
             "-e" | "--eval" => {
@@ -113,9 +142,9 @@ fn main() {
     };
 
     let result = if test_mode {
-        run_tests_from_source(&source, source_path.as_deref(), include_slow)
+        run_tests_from_source(&source, source_path.as_deref(), include_slow, output_mode)
     } else {
-        run_script_from_source(&source, source_path.as_deref())
+        run_script_from_source(&source, source_path.as_deref(), output_mode)
     };
 
     // Stop profiler and write output
@@ -147,12 +176,15 @@ fn print_help() {
     println!("    santa-cli -e <CODE>             Evaluate inline script");
     println!("    santa-cli -t <SCRIPT>           Run test suite");
     println!("    santa-cli -t -s <SCRIPT>        Run tests including @slow");
+    println!("    santa-cli -o json <SCRIPT>      Output as JSON");
+    println!("    santa-cli -o jsonl <SCRIPT>     Output as JSON Lines (streaming)");
     println!("    santa-cli -r                    Start REPL");
     println!("    santa-cli -h                    Show this help");
     println!("    cat file | santa-cli            Read from stdin");
     println!();
     println!("OPTIONS:");
     println!("    -e, --eval <CODE>    Evaluate inline script");
+    println!("    -o, --output FORMAT  Output format: text (default), json, jsonl");
     println!("    -t, --test           Run the solution's test suite");
     println!("    -s, --slow           Include @slow tests (use with -t)");
     println!("    -r, --repl           Start interactive REPL");
@@ -164,30 +196,51 @@ fn print_help() {
     println!("    SANTA_CLI_SESSION_TOKEN    AOC session token for aoc:// URLs");
 }
 
-fn run_script_from_source(source: &str, source_path: Option<&str>) -> Result<(), ExitCode> {
+fn run_script_from_source(
+    source: &str,
+    source_path: Option<&str>,
+    output_mode: OutputMode,
+) -> Result<(), ExitCode> {
+    // Enable console capture for JSON/JSONL modes
+    if output_mode != OutputMode::Text {
+        external::enable_console_capture();
+    }
+
     let session_token = env::var("SANTA_CLI_SESSION_TOKEN").ok();
     let script_dir = source_path.and_then(|p| Path::new(p).parent().map(|d| d.to_path_buf()));
 
     // Lex and parse
     let mut lexer = Lexer::new(source);
-    let tokens = lexer.tokenize().map_err(|e| {
-        eprintln!("{}", SantaError::Lex(e));
-        ExitCode::RuntimeError
-    })?;
+    let tokens = match lexer.tokenize() {
+        Ok(t) => t,
+        Err(e) => {
+            let santa_error = SantaError::Lex(e);
+            return handle_error(santa_error, output_mode);
+        }
+    };
 
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().map_err(|e| {
-        eprintln!("{}", SantaError::Parse(e));
-        ExitCode::RuntimeError
-    })?;
+    let program = match parser.parse_program() {
+        Ok(p) => p,
+        Err(e) => {
+            let santa_error = SantaError::Parse(e);
+            return handle_error(santa_error, output_mode);
+        }
+    };
 
     let mut vm = create_vm(session_token.as_deref(), script_dir);
     let mut runner = AocRunner::new(program);
 
-    // Check if this is a script (no AOC sections) or an AOC solution
+    match output_mode {
+        OutputMode::Text => run_script_text(&mut runner, &mut vm),
+        OutputMode::Json => run_script_json(source, &mut runner, &mut vm),
+        OutputMode::Jsonl => run_script_jsonl(source, &mut runner, &mut vm),
+    }
+}
+
+fn run_script_text(runner: &mut AocRunner, vm: &mut VM) -> Result<(), ExitCode> {
     if runner.is_script_mode() {
-        // Run as script
-        match runner.run_script(&mut vm) {
+        match runner.run_script(vm) {
             Ok(script_result) => {
                 if script_result != Value::Nil {
                     println!("{}", script_result);
@@ -200,8 +253,7 @@ fn run_script_from_source(source: &str, source_path: Option<&str>) -> Result<(),
             }
         }
     } else {
-        // Run as AOC solution
-        match runner.run_solution(&mut vm) {
+        match runner.run_solution(vm) {
             Ok(result) => {
                 if let Some((value, duration)) = result.part_one {
                     println!(
@@ -225,33 +277,328 @@ fn run_script_from_source(source: &str, source_path: Option<&str>) -> Result<(),
     }
 }
 
+fn run_script_json(_source: &str, runner: &mut AocRunner, vm: &mut VM) -> Result<(), ExitCode> {
+    if runner.is_script_mode() {
+        let start = Instant::now();
+        match runner.run_script(vm) {
+            Ok(result) => {
+                let duration_ms = start.elapsed().as_millis() as u64;
+                let console = external::disable_console_capture();
+                let json = format_script_json(&result, duration_ms, console);
+                println!("{}", json);
+                Ok(())
+            }
+            Err(e) => {
+                let _ = external::disable_console_capture();
+                let santa_error = SantaError::Runtime(e);
+                let json = serde_json::to_string(&format_error_json(&santa_error)).unwrap();
+                println!("{}", json);
+                Err(ExitCode::RuntimeError)
+            }
+        }
+    } else {
+        match runner.run_solution(vm) {
+            Ok(result) => {
+                let console = external::disable_console_capture();
+                let json = format_solution_json(&result, console);
+                println!("{}", json);
+                Ok(())
+            }
+            Err(e) => {
+                let _ = external::disable_console_capture();
+                let santa_error = SantaError::Runtime(e);
+                let json = serde_json::to_string(&format_error_json(&santa_error)).unwrap();
+                println!("{}", json);
+                Err(ExitCode::RuntimeError)
+            }
+        }
+    }
+}
+
+fn run_script_jsonl(source: &str, runner: &mut AocRunner, vm: &mut VM) -> Result<(), ExitCode> {
+    let mut writer = JsonlWriter::new(io::stdout());
+    let (has_part_one, has_part_two) = is_solution_source(source);
+    let is_solution = has_part_one || has_part_two;
+
+    if is_solution {
+        // Emit initial solution state
+        let initial = JsonlSolutionInitial {
+            output_type: "solution",
+            status: "pending",
+            part_one: if has_part_one {
+                Some(JsonlPartInitial {
+                    status: "pending",
+                    value: None,
+                    duration_ms: None,
+                })
+            } else {
+                None
+            },
+            part_two: if has_part_two {
+                Some(JsonlPartInitial {
+                    status: "pending",
+                    value: None,
+                    duration_ms: None,
+                })
+            } else {
+                None
+            },
+            console: vec![],
+        };
+        writer.write_initial(&initial).ok();
+        writer
+            .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
+            .ok();
+
+        match runner.run_solution(vm) {
+            Ok(result) => {
+                let console = external::disable_console_capture();
+
+                // Emit console entries
+                for entry in &console {
+                    writer
+                        .write_patches(&[JsonlWriter::<io::Stdout>::add_patch("/console/-", entry)])
+                        .ok();
+                }
+
+                if let Some((value, duration)) = &result.part_one {
+                    writer
+                        .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
+                            "/part_one/status",
+                            "running",
+                        )])
+                        .ok();
+                    writer
+                        .write_patches(&[
+                            JsonlWriter::<io::Stdout>::replace_patch("/part_one/status", "complete"),
+                            JsonlWriter::<io::Stdout>::replace_patch(
+                                "/part_one/value",
+                                value.to_string(),
+                            ),
+                            JsonlWriter::<io::Stdout>::replace_patch(
+                                "/part_one/duration_ms",
+                                *duration as u64,
+                            ),
+                        ])
+                        .ok();
+                }
+
+                if let Some((value, duration)) = &result.part_two {
+                    writer
+                        .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
+                            "/part_two/status",
+                            "running",
+                        )])
+                        .ok();
+                    writer
+                        .write_patches(&[
+                            JsonlWriter::<io::Stdout>::replace_patch("/part_two/status", "complete"),
+                            JsonlWriter::<io::Stdout>::replace_patch(
+                                "/part_two/value",
+                                value.to_string(),
+                            ),
+                            JsonlWriter::<io::Stdout>::replace_patch(
+                                "/part_two/duration_ms",
+                                *duration as u64,
+                            ),
+                        ])
+                        .ok();
+                }
+
+                writer
+                    .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
+                        "/status",
+                        "complete",
+                    )])
+                    .ok();
+                Ok(())
+            }
+            Err(e) => {
+                let _ = external::disable_console_capture();
+                let santa_error = SantaError::Runtime(e);
+                let error_output = format_error_json(&santa_error);
+                writer
+                    .write_patches(&[
+                        JsonlWriter::<io::Stdout>::replace_patch("/status", "error"),
+                        JsonlWriter::<io::Stdout>::add_patch("/error", &error_output),
+                    ])
+                    .ok();
+                Err(ExitCode::RuntimeError)
+            }
+        }
+    } else {
+        // Script mode
+        let initial = JsonlScriptInitial {
+            output_type: "script",
+            status: "pending",
+            value: None,
+            duration_ms: None,
+            console: vec![],
+        };
+        writer.write_initial(&initial).ok();
+        writer
+            .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
+            .ok();
+
+        let start = Instant::now();
+        match runner.run_script(vm) {
+            Ok(result) => {
+                let duration_ms = start.elapsed().as_millis() as u64;
+                let console = external::disable_console_capture();
+
+                // Emit console entries
+                for entry in &console {
+                    writer
+                        .write_patches(&[JsonlWriter::<io::Stdout>::add_patch("/console/-", entry)])
+                        .ok();
+                }
+
+                writer
+                    .write_patches(&[
+                        JsonlWriter::<io::Stdout>::replace_patch("/status", "complete"),
+                        JsonlWriter::<io::Stdout>::replace_patch("/value", result.to_string()),
+                        JsonlWriter::<io::Stdout>::replace_patch("/duration_ms", duration_ms),
+                    ])
+                    .ok();
+                Ok(())
+            }
+            Err(e) => {
+                let _ = external::disable_console_capture();
+                let santa_error = SantaError::Runtime(e);
+                let error_output = format_error_json(&santa_error);
+                writer
+                    .write_patches(&[
+                        JsonlWriter::<io::Stdout>::replace_patch("/status", "error"),
+                        JsonlWriter::<io::Stdout>::add_patch("/error", &error_output),
+                    ])
+                    .ok();
+                Err(ExitCode::RuntimeError)
+            }
+        }
+    }
+}
+
+fn handle_error(error: SantaError, output_mode: OutputMode) -> Result<(), ExitCode> {
+    match output_mode {
+        OutputMode::Text => {
+            eprintln!("{}", error);
+            Err(ExitCode::RuntimeError)
+        }
+        OutputMode::Json => {
+            let _ = external::disable_console_capture();
+            let json = serde_json::to_string(&format_error_json(&error)).unwrap();
+            println!("{}", json);
+            Err(ExitCode::RuntimeError)
+        }
+        OutputMode::Jsonl => {
+            let _ = external::disable_console_capture();
+            // For parse errors in JSONL, we emit a minimal initial state then error
+            let mut writer = JsonlWriter::new(io::stdout());
+            let initial = JsonlScriptInitial {
+                output_type: "script",
+                status: "pending",
+                value: None,
+                duration_ms: None,
+                console: vec![],
+            };
+            writer.write_initial(&initial).ok();
+            writer
+                .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
+                .ok();
+            let error_output = format_error_json(&error);
+            writer
+                .write_patches(&[
+                    JsonlWriter::<io::Stdout>::replace_patch("/status", "error"),
+                    JsonlWriter::<io::Stdout>::add_patch("/error", &error_output),
+                ])
+                .ok();
+            Err(ExitCode::RuntimeError)
+        }
+    }
+}
+
 fn run_tests_from_source(
     source: &str,
     source_path: Option<&str>,
     include_slow: bool,
+    output_mode: OutputMode,
 ) -> Result<(), ExitCode> {
+    // Enable console capture for JSON/JSONL modes
+    if output_mode != OutputMode::Text {
+        external::enable_console_capture();
+    }
+
     let session_token = env::var("SANTA_CLI_SESSION_TOKEN").ok();
     let script_dir = source_path.and_then(|p| Path::new(p).parent().map(|d| d.to_path_buf()));
 
     // Lex and parse
     let mut lexer = Lexer::new(source);
-    let tokens = lexer.tokenize().map_err(|e| {
-        eprintln!("{}", SantaError::Lex(e));
-        ExitCode::RuntimeError
-    })?;
+    let tokens = match lexer.tokenize() {
+        Ok(t) => t,
+        Err(e) => {
+            let santa_error = SantaError::Lex(e);
+            return handle_test_error(santa_error, output_mode);
+        }
+    };
 
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().map_err(|e| {
-        eprintln!("{}", SantaError::Parse(e));
-        ExitCode::RuntimeError
-    })?;
+    let program = match parser.parse_program() {
+        Ok(p) => p,
+        Err(e) => {
+            let santa_error = SantaError::Parse(e);
+            return handle_test_error(santa_error, output_mode);
+        }
+    };
+
+    // Collect test info (including @slow tests) for JSON output
+    let test_infos: Vec<(usize, bool)> = program
+        .sections
+        .iter()
+        .filter_map(|s| match s {
+            Section::Test { attributes, .. } => {
+                let is_slow = attributes.iter().any(|a| a.name == "slow");
+                Some(is_slow)
+            }
+            _ => None,
+        })
+        .enumerate()
+        .collect();
+
+    // Determine which parts the solution defines
+    let (has_part_one, has_part_two) = is_solution_source(source);
 
     let mut runner = AocRunner::new(program);
 
     // Create VM factory for tests
     let vm_factory = || create_vm(session_token.as_deref(), script_dir.clone());
 
-    match runner.run_tests(&vm_factory, include_slow) {
+    match output_mode {
+        OutputMode::Text => run_tests_text(&mut runner, &vm_factory, include_slow),
+        OutputMode::Json => run_tests_json(
+            &mut runner,
+            &vm_factory,
+            include_slow,
+            &test_infos,
+            has_part_one,
+            has_part_two,
+        ),
+        OutputMode::Jsonl => run_tests_jsonl(
+            &mut runner,
+            &vm_factory,
+            include_slow,
+            &test_infos,
+            has_part_one,
+            has_part_two,
+        ),
+    }
+}
+
+fn run_tests_text(
+    runner: &mut AocRunner,
+    vm_factory: &dyn Fn() -> VM,
+    include_slow: bool,
+) -> Result<(), ExitCode> {
+    match runner.run_tests(vm_factory, include_slow) {
         Ok(test_results) => {
             let mut all_passed = true;
 
@@ -313,6 +660,304 @@ fn run_tests_from_source(
         }
         Err(e) => {
             eprintln!("{}", e);
+            Err(ExitCode::RuntimeError)
+        }
+    }
+}
+
+fn run_tests_json(
+    runner: &mut AocRunner,
+    vm_factory: &dyn Fn() -> VM,
+    include_slow: bool,
+    test_infos: &[(usize, bool)], // (index, is_slow)
+    has_part_one: bool,
+    has_part_two: bool,
+) -> Result<(), ExitCode> {
+    match runner.run_tests(vm_factory, include_slow) {
+        Ok(test_results) => {
+            let console = external::disable_console_capture();
+
+            // Build collected test info that includes skipped tests
+            let mut collected: Vec<CollectedTestInfo> = Vec::new();
+            let mut result_iter = test_results.iter();
+
+            for (index, is_slow) in test_infos {
+                let skipped = *is_slow && !include_slow;
+                if skipped {
+                    collected.push(CollectedTestInfo {
+                        index: *index,
+                        slow: *is_slow,
+                        skipped: true,
+                        result: None,
+                    });
+                } else if let Some(result) = result_iter.next() {
+                    collected.push(CollectedTestInfo {
+                        index: *index,
+                        slow: *is_slow,
+                        skipped: false,
+                        result: Some(result.clone()),
+                    });
+                }
+            }
+
+            let json = format_test_json(&collected, has_part_one, has_part_two, console);
+            println!("{}", json);
+
+            // Determine exit code
+            let has_failures = collected.iter().any(|info| {
+                if info.skipped {
+                    return false;
+                }
+                if let Some(ref result) = info.result {
+                    let p1_failed = result.part_one_passed == Some(false);
+                    let p2_failed = result.part_two_passed == Some(false);
+                    p1_failed || p2_failed
+                } else {
+                    false
+                }
+            });
+
+            if has_failures {
+                Err(ExitCode::TestFailure)
+            } else {
+                Ok(())
+            }
+        }
+        Err(e) => {
+            let _ = external::disable_console_capture();
+            let santa_error = SantaError::Runtime(e);
+            let json = serde_json::to_string(&format_error_json(&santa_error)).unwrap();
+            println!("{}", json);
+            Err(ExitCode::RuntimeError)
+        }
+    }
+}
+
+fn run_tests_jsonl(
+    runner: &mut AocRunner,
+    vm_factory: &dyn Fn() -> VM,
+    include_slow: bool,
+    test_infos: &[(usize, bool)], // (index, is_slow)
+    has_part_one: bool,
+    has_part_two: bool,
+) -> Result<(), ExitCode> {
+    let mut writer = JsonlWriter::new(io::stdout());
+    let total = test_infos.len() as u32;
+
+    // Emit initial state
+    let initial_tests: Vec<JsonlTestCaseInitial> = test_infos
+        .iter()
+        .map(|(index, is_slow)| JsonlTestCaseInitial {
+            index: (*index + 1) as u32,
+            slow: *is_slow,
+            status: "pending",
+            part_one: None,
+            part_two: None,
+        })
+        .collect();
+
+    let initial = JsonlTestInitial {
+        output_type: "test",
+        status: "pending",
+        success: None,
+        summary: TestSummary {
+            total,
+            passed: 0,
+            failed: 0,
+            skipped: 0,
+        },
+        tests: initial_tests,
+        console: vec![],
+    };
+    writer.write_initial(&initial).ok();
+    writer
+        .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
+        .ok();
+
+    match runner.run_tests(vm_factory, include_slow) {
+        Ok(test_results) => {
+            let console = external::disable_console_capture();
+
+            // Emit console entries
+            for entry in &console {
+                writer
+                    .write_patches(&[JsonlWriter::<io::Stdout>::add_patch("/console/-", entry)])
+                    .ok();
+            }
+
+            let mut passed = 0u32;
+            let mut failed = 0u32;
+            let mut skipped = 0u32;
+            let mut result_iter = test_results.iter();
+
+            for (i, (_, is_slow)) in test_infos.iter().enumerate() {
+                let path_prefix = format!("/tests/{}", i);
+                let test_skipped = *is_slow && !include_slow;
+
+                if test_skipped {
+                    skipped += 1;
+                    writer
+                        .write_patches(&[
+                            JsonlWriter::<io::Stdout>::replace_patch(
+                                &format!("{}/status", path_prefix),
+                                "skipped",
+                            ),
+                            JsonlWriter::<io::Stdout>::replace_patch("/summary/skipped", skipped),
+                        ])
+                        .ok();
+                } else if let Some(result) = result_iter.next() {
+                    // Emit running
+                    writer
+                        .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
+                            &format!("{}/status", path_prefix),
+                            "running",
+                        )])
+                        .ok();
+
+                    // Determine result
+                    let part_one_passed = result.part_one_passed.unwrap_or(true);
+                    let part_two_passed = result.part_two_passed.unwrap_or(true);
+                    let all_passed = part_one_passed && part_two_passed;
+
+                    if all_passed {
+                        passed += 1;
+                    } else {
+                        failed += 1;
+                    }
+
+                    // Build patches
+                    let mut patches = vec![JsonlWriter::<io::Stdout>::replace_patch(
+                        &format!("{}/status", path_prefix),
+                        "complete",
+                    )];
+
+                    if has_part_one {
+                        if let Some(p1_passed) = result.part_one_passed {
+                            patches.push(JsonlWriter::<io::Stdout>::replace_patch(
+                                &format!("{}/part_one", path_prefix),
+                                JsonTestPartResult {
+                                    passed: p1_passed,
+                                    expected: result
+                                        .part_one_expected
+                                        .as_ref()
+                                        .map(|v| v.to_string())
+                                        .unwrap_or_default(),
+                                    actual: result
+                                        .part_one_actual
+                                        .as_ref()
+                                        .map(|v| v.to_string())
+                                        .unwrap_or_default(),
+                                },
+                            ));
+                        }
+                    }
+
+                    if has_part_two {
+                        if let Some(p2_passed) = result.part_two_passed {
+                            patches.push(JsonlWriter::<io::Stdout>::replace_patch(
+                                &format!("{}/part_two", path_prefix),
+                                JsonTestPartResult {
+                                    passed: p2_passed,
+                                    expected: result
+                                        .part_two_expected
+                                        .as_ref()
+                                        .map(|v| v.to_string())
+                                        .unwrap_or_default(),
+                                    actual: result
+                                        .part_two_actual
+                                        .as_ref()
+                                        .map(|v| v.to_string())
+                                        .unwrap_or_default(),
+                                },
+                            ));
+                        }
+                    }
+
+                    if all_passed {
+                        patches.push(JsonlWriter::<io::Stdout>::replace_patch(
+                            "/summary/passed",
+                            passed,
+                        ));
+                    } else {
+                        patches.push(JsonlWriter::<io::Stdout>::replace_patch(
+                            "/summary/failed",
+                            failed,
+                        ));
+                    }
+
+                    writer.write_patches(&patches).ok();
+                }
+            }
+
+            // Emit completion
+            let success = failed == 0;
+            writer
+                .write_patches(&[
+                    JsonlWriter::<io::Stdout>::replace_patch("/status", "complete"),
+                    JsonlWriter::<io::Stdout>::replace_patch("/success", success),
+                ])
+                .ok();
+
+            if !success {
+                Err(ExitCode::TestFailure)
+            } else {
+                Ok(())
+            }
+        }
+        Err(e) => {
+            let _ = external::disable_console_capture();
+            let santa_error = SantaError::Runtime(e);
+            let error_output = format_error_json(&santa_error);
+            writer
+                .write_patches(&[
+                    JsonlWriter::<io::Stdout>::replace_patch("/status", "error"),
+                    JsonlWriter::<io::Stdout>::add_patch("/error", &error_output),
+                ])
+                .ok();
+            Err(ExitCode::RuntimeError)
+        }
+    }
+}
+
+fn handle_test_error(error: SantaError, output_mode: OutputMode) -> Result<(), ExitCode> {
+    match output_mode {
+        OutputMode::Text => {
+            eprintln!("{}", error);
+            Err(ExitCode::RuntimeError)
+        }
+        OutputMode::Json => {
+            let _ = external::disable_console_capture();
+            let json = serde_json::to_string(&format_error_json(&error)).unwrap();
+            println!("{}", json);
+            Err(ExitCode::RuntimeError)
+        }
+        OutputMode::Jsonl => {
+            let _ = external::disable_console_capture();
+            let mut writer = JsonlWriter::new(io::stdout());
+            let initial = JsonlTestInitial {
+                output_type: "test",
+                status: "pending",
+                success: None,
+                summary: TestSummary {
+                    total: 0,
+                    passed: 0,
+                    failed: 0,
+                    skipped: 0,
+                },
+                tests: vec![],
+                console: vec![],
+            };
+            writer.write_initial(&initial).ok();
+            writer
+                .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
+                .ok();
+            let error_output = format_error_json(&error);
+            writer
+                .write_patches(&[
+                    JsonlWriter::<io::Stdout>::replace_patch("/status", "error"),
+                    JsonlWriter::<io::Stdout>::add_patch("/error", &error_output),
+                ])
+                .ok();
             Err(ExitCode::RuntimeError)
         }
     }

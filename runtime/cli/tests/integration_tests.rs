@@ -157,8 +157,8 @@ fn cli_puts_external_function() {
         .arg(file.path())
         .assert()
         .success()
-        // puts prints values with their Display format (strings include quotes)
-        .stdout(predicate::str::contains(r#""Hello" "World""#));
+        // puts prints strings without surrounding quotes (per spec)
+        .stdout(predicate::str::contains("Hello World"));
 }
 
 #[test]
@@ -921,4 +921,328 @@ fn self_recursive_closure_nested_in_call() {
         .assert()
         .success()
         .stdout(predicate::str::contains("0"));
+}
+
+// ============================================================================
+// JSON Output Format Tests (Section 16 of lang.txt)
+// ============================================================================
+
+#[test]
+fn cli_json_script_simple() {
+    santa_cli()
+        .arg("-o")
+        .arg("json")
+        .arg("-e")
+        .arg("1 + 2")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""type":"script""#))
+        .stdout(predicate::str::contains(r#""status":"complete""#))
+        .stdout(predicate::str::contains(r#""value":"3""#));
+}
+
+#[test]
+fn cli_json_script_with_console() {
+    santa_cli()
+        .arg("-o")
+        .arg("json")
+        .arg("-e")
+        .arg(r#"puts("hello"); 42"#)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""type":"script""#))
+        .stdout(predicate::str::contains(r#""value":"42""#))
+        .stdout(predicate::str::contains(r#""message":"hello""#));
+}
+
+#[test]
+fn cli_json_solution() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        input: "10"
+        part_one: input |> int
+        part_two: input |> int |> (_ * 2)
+    "#
+    )
+    .unwrap();
+
+    santa_cli()
+        .arg("-o")
+        .arg("json")
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""type":"solution""#))
+        .stdout(predicate::str::contains(r#""part_one":"#))
+        .stdout(predicate::str::contains(r#""part_two":"#))
+        .stdout(predicate::str::contains(r#""status":"complete""#));
+}
+
+#[test]
+fn cli_json_solution_single_part() {
+    santa_cli()
+        .arg("-o")
+        .arg("json")
+        .arg("-e")
+        .arg("part_one: { 42 }")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""type":"solution""#))
+        .stdout(predicate::str::contains(r#""part_one":"#))
+        .stdout(predicate::str::contains(r#""value":"42""#))
+        // part_two should not be present when not defined
+        .stdout(predicate::str::contains(r#""part_two""#).not());
+}
+
+#[test]
+fn cli_json_error_runtime() {
+    santa_cli()
+        .arg("-o")
+        .arg("json")
+        .arg("-e")
+        .arg(r#"1 / 0"#)
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains(r#""type":"error""#))
+        .stdout(predicate::str::contains(r#""message":"#))
+        .stdout(predicate::str::contains(r#""location":"#))
+        .stdout(predicate::str::contains(r#""line":"#));
+}
+
+#[test]
+fn cli_json_error_parse() {
+    santa_cli()
+        .arg("-o")
+        .arg("json")
+        .arg("-e")
+        .arg("let = ")
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains(r#""type":"error""#))
+        .stdout(predicate::str::contains(r#""message":"#));
+}
+
+#[test]
+fn cli_json_test_passing() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        input: "10"
+        part_one: input |> int
+        part_two: input |> int |> (_ * 2)
+
+        test: {{
+            input: "10"
+            part_one: 10
+            part_two: 20
+        }}
+    "#
+    )
+    .unwrap();
+
+    santa_cli()
+        .arg("-o")
+        .arg("json")
+        .arg("-t")
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""type":"test""#))
+        .stdout(predicate::str::contains(r#""success":true"#))
+        .stdout(predicate::str::contains(r#""passed":1"#))
+        .stdout(predicate::str::contains(r#""failed":0"#));
+}
+
+#[test]
+fn cli_json_test_failing() {
+    santa_cli()
+        .arg("-o")
+        .arg("json")
+        .arg("-t")
+        .arg("-e")
+        .arg(
+            r#"
+            part_one: { 99 }
+            test: {
+                input: "x"
+                part_one: 42
+            }
+            "#,
+        )
+        .assert()
+        .code(3)
+        .stdout(predicate::str::contains(r#""type":"test""#))
+        .stdout(predicate::str::contains(r#""success":false"#))
+        .stdout(predicate::str::contains(r#""passed":false"#))
+        .stdout(predicate::str::contains(r#""expected":"42""#))
+        .stdout(predicate::str::contains(r#""actual":"99""#));
+}
+
+#[test]
+fn cli_json_test_skipped() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        input: "10"
+        part_one: input |> int
+
+        test: {{
+            input: "10"
+            part_one: 10
+        }}
+
+        @slow
+        test: {{
+            input: "20"
+            part_one: 20
+        }}
+    "#
+    )
+    .unwrap();
+
+    santa_cli()
+        .arg("-o")
+        .arg("json")
+        .arg("-t")
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""type":"test""#))
+        .stdout(predicate::str::contains(r#""skipped":1"#))
+        .stdout(predicate::str::contains(r#""status":"skipped""#));
+}
+
+#[test]
+fn cli_json_test_skipped_included_with_slow_flag() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        input: "10"
+        part_one: input |> int
+
+        test: {{
+            input: "10"
+            part_one: 10
+        }}
+
+        @slow
+        test: {{
+            input: "20"
+            part_one: 20
+        }}
+    "#
+    )
+    .unwrap();
+
+    santa_cli()
+        .arg("-o")
+        .arg("json")
+        .arg("-t")
+        .arg("-s")
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""type":"test""#))
+        .stdout(predicate::str::contains(r#""skipped":0"#))
+        .stdout(predicate::str::contains(r#""passed":2"#));
+}
+
+// ============================================================================
+// JSONL Output Format Tests (Streaming)
+// ============================================================================
+
+#[test]
+fn cli_jsonl_script_simple() {
+    santa_cli()
+        .arg("-o")
+        .arg("jsonl")
+        .arg("-e")
+        .arg("1 + 2")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""type":"script""#))
+        .stdout(predicate::str::contains(r#""status":"pending""#))
+        // Patches include running and complete
+        .stdout(predicate::str::contains(r#""op":"replace""#))
+        .stdout(predicate::str::contains(r#""/status""#))
+        .stdout(predicate::str::contains(r#""running""#))
+        .stdout(predicate::str::contains(r#""complete""#));
+}
+
+#[test]
+fn cli_jsonl_solution() {
+    santa_cli()
+        .arg("-o")
+        .arg("jsonl")
+        .arg("-e")
+        .arg("part_one: { 42 }")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""type":"solution""#))
+        .stdout(predicate::str::contains(r#""/part_one/status""#))
+        .stdout(predicate::str::contains(r#""/part_one/value""#));
+}
+
+#[test]
+fn cli_jsonl_error() {
+    santa_cli()
+        .arg("-o")
+        .arg("jsonl")
+        .arg("-e")
+        .arg(r#"1 / 0"#)
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains(r#""type":"script""#))
+        .stdout(predicate::str::contains(r#""/error""#))
+        .stdout(predicate::str::contains(r#""message""#));
+}
+
+#[test]
+fn cli_jsonl_test() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        input: "10"
+        part_one: input |> int
+
+        test: {{
+            input: "10"
+            part_one: 10
+        }}
+    "#
+    )
+    .unwrap();
+
+    santa_cli()
+        .arg("-o")
+        .arg("jsonl")
+        .arg("-t")
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""type":"test""#))
+        .stdout(predicate::str::contains(r#""/tests/0/status""#))
+        .stdout(predicate::str::contains(r#""/summary/passed""#));
+}
+
+// ============================================================================
+// Output Mode Validation
+// ============================================================================
+
+#[test]
+fn cli_invalid_output_mode() {
+    santa_cli()
+        .arg("-o")
+        .arg("xml")
+        .arg("-e")
+        .arg("1")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("Invalid output format"));
 }
