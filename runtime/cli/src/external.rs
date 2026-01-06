@@ -63,7 +63,7 @@ pub fn builtin_puts(args: &[Value]) -> Result<Value, RuntimeError> {
     // Use format_puts_value to avoid quotes around strings
     let output = args
         .iter()
-        .map(|v| format_puts_value(v))
+        .map(format_puts_value)
         .collect::<Vec<_>>()
         .join(" ");
 
