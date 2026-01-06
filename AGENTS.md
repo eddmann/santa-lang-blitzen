@@ -8,6 +8,17 @@ This is **Blitzen**, a santa-lang reindeer implementation. santa-lang is a funct
 - Stack-based architecture: Source → Lexer → Parser → Compiler → Blitzen VM (FrostByte bytecode)
 - Batteries-included standard library for AoC patterns
 
+## Makefile
+
+**Always use Makefile targets.** Never run build tools directly.
+
+- Run `make help` to see all available targets
+- `make fmt` for code formatting
+- `make test` for running tests
+- `make can-release` before submitting a PR (runs lint + all tests)
+
+This ensures consistent, reproducible builds across all environments.
+
 ## Setup
 
 ```bash
@@ -20,12 +31,12 @@ make install            # Install to ~/.cargo/bin
 ## Common Commands
 
 ```bash
-make help               # Show all targets
-make fmt                # Format code
+make help               # Show available targets
+make fmt                # Format code (rustfmt)
 make lint               # rustfmt check + clippy -D warnings
 make test               # Run all unit tests
 make test-examples      # Run 100+ AoC example files
-make can-release        # Full CI: lint + test
+make can-release        # Run before submitting PR (lint + all tests)
 make repl               # Interactive REPL
 make run FILE=<path>    # Execute script
 make run-test FILE=<path>  # Run tests in script
@@ -43,13 +54,6 @@ make profile FILE=<path>   # CPU profiling with flamegraph
 - **Structure**: `lang/` (lexer, parser, vm, runner) + `runtime/cli/` + `benchmarks/`
 
 ## Tests & CI
-
-```bash
-cargo test              # All unit tests (594+ test functions)
-cargo test -p lang      # Lang crate only
-cargo test -p santa-cli # CLI integration tests
-./examples/run-tests.sh # Example AoC solutions
-```
 
 - **CI** (`test.yml`): Runs `make can-release` on ubuntu-24.04
 - **Build** (`build.yml`): Multi-platform builds (linux/macos, amd64/arm64), Docker
