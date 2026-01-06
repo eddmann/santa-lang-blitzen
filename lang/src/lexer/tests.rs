@@ -10,11 +10,7 @@ fn check(input: &str, expect: Expect) {
             for token in &tokens {
                 lines.push(format!(
                     "{:?} @ {}:{} [{}-{}]",
-                    token.kind,
-                    token.span.line,
-                    token.span.column,
-                    token.span.start,
-                    token.span.end
+                    token.kind, token.span.line, token.span.column, token.span.start, token.span.end
                 ));
             }
             lines.join("\n")
@@ -371,10 +367,7 @@ fn lex_infix_call() {
 
 #[test]
 fn lex_error_unterminated_string() {
-    check(
-        r#""hello"#,
-        expect![[r#"Error: Unterminated string literal at 1:1"#]],
-    );
+    check(r#""hello"#, expect![[r#"Error: Unterminated string literal at 1:1"#]]);
 }
 
 #[test]
@@ -387,10 +380,7 @@ fn lex_error_invalid_escape() {
 
 #[test]
 fn lex_error_unexpected_character() {
-    check(
-        "let x = $42;",
-        expect![[r#"Error: Unexpected character: '$' at 1:9"#]],
-    );
+    check("let x = $42;", expect![[r#"Error: Unexpected character: '$' at 1:9"#]]);
 }
 
 #[test]

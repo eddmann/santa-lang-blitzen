@@ -108,9 +108,7 @@ impl AocRunner {
             .collect();
 
         // Run each test
-        for (index, (test_input_expr, expected_part_one, expected_part_two)) in
-            test_sections.iter().enumerate()
-        {
+        for (index, (test_input_expr, expected_part_one, expected_part_two)) in test_sections.iter().enumerate() {
             let result = self.run_single_test(
                 vm_factory,
                 index,
@@ -160,22 +158,13 @@ impl AocRunner {
         }
 
         if input_count > 1 {
-            return Err(RuntimeError::new(
-                "Expected a single 'input' section".to_string(),
-                0,
-            ));
+            return Err(RuntimeError::new("Expected a single 'input' section".to_string(), 0));
         }
         if part_one_count > 1 {
-            return Err(RuntimeError::new(
-                "Expected single 'part_one' solution".to_string(),
-                0,
-            ));
+            return Err(RuntimeError::new("Expected single 'part_one' solution".to_string(), 0));
         }
         if part_two_count > 1 {
-            return Err(RuntimeError::new(
-                "Expected single 'part_two' solution".to_string(),
-                0,
-            ));
+            return Err(RuntimeError::new("Expected single 'part_two' solution".to_string(), 0));
         }
 
         Ok(())
@@ -246,14 +235,8 @@ impl AocRunner {
                 let expected = self.compile_and_execute_expr(&mut vm, expected_expr)?;
 
                 // Find and execute part_one
-                if let Some((actual, _)) =
-                    self.execute_part(&mut vm, "part_one", Some(test_input.clone()))?
-                {
-                    (
-                        Some(actual == expected),
-                        Some(expected.clone()),
-                        Some(actual),
-                    )
+                if let Some((actual, _)) = self.execute_part(&mut vm, "part_one", Some(test_input.clone()))? {
+                    (Some(actual == expected), Some(expected.clone()), Some(actual))
                 } else {
                     (None, Some(expected), None)
                 }
@@ -267,14 +250,8 @@ impl AocRunner {
                 let expected = self.compile_and_execute_expr(&mut vm, expected_expr)?;
 
                 // Find and execute part_two
-                if let Some((actual, _)) =
-                    self.execute_part(&mut vm, "part_two", Some(test_input.clone()))?
-                {
-                    (
-                        Some(actual == expected),
-                        Some(expected.clone()),
-                        Some(actual),
-                    )
+                if let Some((actual, _)) = self.execute_part(&mut vm, "part_two", Some(test_input.clone()))? {
+                    (Some(actual == expected), Some(expected.clone()), Some(actual))
                 } else {
                     (None, Some(expected), None)
                 }
@@ -293,13 +270,9 @@ impl AocRunner {
         })
     }
 
-    fn compile_and_execute_stmts(
-        &self,
-        vm: &mut VM,
-        stmts: &[SpannedStmt],
-    ) -> Result<Value, RuntimeError> {
-        let compiled = Compiler::compile_statements(stmts)
-            .map_err(|e| RuntimeError::new(e.message, e.span.start as u32))?;
+    fn compile_and_execute_stmts(&self, vm: &mut VM, stmts: &[SpannedStmt]) -> Result<Value, RuntimeError> {
+        let compiled =
+            Compiler::compile_statements(stmts).map_err(|e| RuntimeError::new(e.message, e.span.start as u32))?;
         vm.run(Rc::new(compiled))
     }
 
@@ -315,11 +288,7 @@ impl AocRunner {
         vm.run(Rc::new(compiled))
     }
 
-    fn compile_and_execute_expr(
-        &self,
-        vm: &mut VM,
-        expr: &SpannedExpr,
-    ) -> Result<Value, RuntimeError> {
+    fn compile_and_execute_expr(&self, vm: &mut VM, expr: &SpannedExpr) -> Result<Value, RuntimeError> {
         // Use global names from statement compilation to ensure proper builtin shadowing
         let compiled = Compiler::compile_expression_with_globals(expr, &self.global_names)
             .map_err(|e| RuntimeError::new(e.message, e.span.start as u32))?;

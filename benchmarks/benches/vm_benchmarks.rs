@@ -14,16 +14,12 @@ fn benchmark_lexer(c: &mut Criterion) {
 
     // Simple expression
     let simple = "1 + 2 * 3";
-    group.bench_with_input(
-        BenchmarkId::new("simple_expr", "1+2*3"),
-        &simple,
-        |b, src| {
-            b.iter(|| {
-                let mut lexer = Lexer::new(black_box(src));
-                lexer.tokenize().unwrap()
-            });
-        },
-    );
+    group.bench_with_input(BenchmarkId::new("simple_expr", "1+2*3"), &simple, |b, src| {
+        b.iter(|| {
+            let mut lexer = Lexer::new(black_box(src));
+            lexer.tokenize().unwrap()
+        });
+    });
 
     // Medium complexity - function with control flow
     let medium = r#"
@@ -33,16 +29,12 @@ fn benchmark_lexer(c: &mut Criterion) {
         };
         factorial(10)
     "#;
-    group.bench_with_input(
-        BenchmarkId::new("function_def", "factorial"),
-        &medium,
-        |b, src| {
-            b.iter(|| {
-                let mut lexer = Lexer::new(black_box(src));
-                lexer.tokenize().unwrap()
-            });
-        },
-    );
+    group.bench_with_input(BenchmarkId::new("function_def", "factorial"), &medium, |b, src| {
+        b.iter(|| {
+            let mut lexer = Lexer::new(black_box(src));
+            lexer.tokenize().unwrap()
+        });
+    });
 
     // Complex - AOC-style solution
     let complex = r#"
@@ -58,29 +50,21 @@ fn benchmark_lexer(c: &mut Criterion) {
         part_one: parse(input) |> solve
         part_two: parse(input) |> map(|n| n + 1) |> solve
     "#;
-    group.bench_with_input(
-        BenchmarkId::new("aoc_solution", "complex"),
-        &complex,
-        |b, src| {
-            b.iter(|| {
-                let mut lexer = Lexer::new(black_box(src));
-                lexer.tokenize().unwrap()
-            });
-        },
-    );
+    group.bench_with_input(BenchmarkId::new("aoc_solution", "complex"), &complex, |b, src| {
+        b.iter(|| {
+            let mut lexer = Lexer::new(black_box(src));
+            lexer.tokenize().unwrap()
+        });
+    });
 
     // Large input - many tokens
     let large: String = (0..1000).map(|i| format!("let x{i} = {i};\n")).collect();
-    group.bench_with_input(
-        BenchmarkId::new("large_input", "1000_vars"),
-        &large,
-        |b, src| {
-            b.iter(|| {
-                let mut lexer = Lexer::new(black_box(src));
-                lexer.tokenize().unwrap()
-            });
-        },
-    );
+    group.bench_with_input(BenchmarkId::new("large_input", "1000_vars"), &large, |b, src| {
+        b.iter(|| {
+            let mut lexer = Lexer::new(black_box(src));
+            lexer.tokenize().unwrap()
+        });
+    });
 
     group.finish();
 }

@@ -1,7 +1,9 @@
 [package]
-name = "santa-cli"
-version = "0.1.0"
-edition = "2021"
+name = "cli"
+version.workspace = true
+authors.workspace = true
+documentation.workspace = true
+edition = "2024"
 
 [features]
 default = []

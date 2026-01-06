@@ -23,14 +23,8 @@ mod value_tests {
 
     #[test]
     fn decimal_equality() {
-        assert_eq!(
-            Value::Decimal(OrderedFloat(3.15)),
-            Value::Decimal(OrderedFloat(3.15))
-        );
-        assert_ne!(
-            Value::Decimal(OrderedFloat(3.15)),
-            Value::Decimal(OrderedFloat(2.71))
-        );
+        assert_eq!(Value::Decimal(OrderedFloat(3.15)), Value::Decimal(OrderedFloat(3.15)));
+        assert_ne!(Value::Decimal(OrderedFloat(3.15)), Value::Decimal(OrderedFloat(2.71)));
     }
 
     #[test]
@@ -299,10 +293,7 @@ mod value_tests {
 
     #[test]
     fn display_string() {
-        assert_eq!(
-            format!("{}", Value::String(Rc::new("hello".to_string()))),
-            "\"hello\""
-        );
+        assert_eq!(format!("{}", Value::String(Rc::new("hello".to_string()))), "\"hello\"");
     }
 
     #[test]
@@ -1685,10 +1676,7 @@ mod runtime_tests {
 
     #[test]
     fn eval_string_literal() {
-        assert_eq!(
-            eval(r#""hello""#),
-            Ok(Value::String(Rc::new("hello".to_string())))
-        );
+        assert_eq!(eval(r#""hello""#), Ok(Value::String(Rc::new("hello".to_string()))));
         assert_eq!(
             eval(r#""hello world""#),
             Ok(Value::String(Rc::new("hello world".to_string())))
@@ -2152,34 +2140,19 @@ mod runtime_tests {
 
     #[test]
     fn eval_string_repetition() {
-        assert_eq!(
-            eval(r#""ab" * 3"#),
-            Ok(Value::String(Rc::new("ababab".to_string())))
-        );
+        assert_eq!(eval(r#""ab" * 3"#), Ok(Value::String(Rc::new("ababab".to_string()))));
     }
 
     #[test]
     fn eval_string_index() {
-        assert_eq!(
-            eval(r#""hello"[0]"#),
-            Ok(Value::String(Rc::new("h".to_string())))
-        );
-        assert_eq!(
-            eval(r#""hello"[4]"#),
-            Ok(Value::String(Rc::new("o".to_string())))
-        );
+        assert_eq!(eval(r#""hello"[0]"#), Ok(Value::String(Rc::new("h".to_string()))));
+        assert_eq!(eval(r#""hello"[4]"#), Ok(Value::String(Rc::new("o".to_string()))));
     }
 
     #[test]
     fn eval_string_negative_index() {
-        assert_eq!(
-            eval(r#""hello"[-1]"#),
-            Ok(Value::String(Rc::new("o".to_string())))
-        );
-        assert_eq!(
-            eval(r#""hello"[-5]"#),
-            Ok(Value::String(Rc::new("h".to_string())))
-        );
+        assert_eq!(eval(r#""hello"[-1]"#), Ok(Value::String(Rc::new("o".to_string()))));
+        assert_eq!(eval(r#""hello"[-5]"#), Ok(Value::String(Rc::new("h".to_string()))));
     }
 
     // ============================================================
@@ -2246,10 +2219,7 @@ mod runtime_tests {
     fn eval_if_truthy_conditions() {
         assert_eq!(eval("if 1 { 42 } else { 0 }"), Ok(Value::Integer(42)));
         assert_eq!(eval("if 0 { 42 } else { 0 }"), Ok(Value::Integer(0)));
-        assert_eq!(
-            eval(r#"if "hello" { 42 } else { 0 }"#),
-            Ok(Value::Integer(42))
-        );
+        assert_eq!(eval(r#"if "hello" { 42 } else { 0 }"#), Ok(Value::Integer(42)));
         assert_eq!(eval(r#"if "" { 42 } else { 0 }"#), Ok(Value::Integer(0)));
     }
 
@@ -2340,10 +2310,7 @@ mod runtime_tests {
     #[test]
     fn eval_pipeline_chain() {
         // 5 |> (|x| x + 1) |> (|x| x * 2) === (|x| x * 2)((|x| x + 1)(5))
-        assert_eq!(
-            eval("5 |> (|x| x + 1) |> (|x| x * 2)"),
-            Ok(Value::Integer(12))
-        );
+        assert_eq!(eval("5 |> (|x| x + 1) |> (|x| x * 2)"), Ok(Value::Integer(12)));
     }
 
     #[test]
@@ -2373,10 +2340,7 @@ mod runtime_tests {
 
     #[test]
     fn eval_let_multiple() {
-        assert_eq!(
-            eval("{ let x = 10; let y = 20; x + y }"),
-            Ok(Value::Integer(30))
-        );
+        assert_eq!(eval("{ let x = 10; let y = 20; x + y }"), Ok(Value::Integer(30)));
     }
 
     #[test]
@@ -2386,10 +2350,7 @@ mod runtime_tests {
 
     #[test]
     fn eval_let_nested_scope() {
-        assert_eq!(
-            eval("{ let x = 1; { let x = 2; x }; x }"),
-            Ok(Value::Integer(1))
-        );
+        assert_eq!(eval("{ let x = 1; { let x = 2; x }; x }"), Ok(Value::Integer(1)));
     }
 
     #[test]
@@ -2403,10 +2364,7 @@ mod runtime_tests {
 
     #[test]
     fn eval_destructuring_list() {
-        assert_eq!(
-            eval("{ let [a, b] = [1, 2]; a + b }"),
-            Ok(Value::Integer(3))
-        );
+        assert_eq!(eval("{ let [a, b] = [1, 2]; a + b }"), Ok(Value::Integer(3)));
     }
 
     #[test]
@@ -2440,14 +2398,8 @@ mod runtime_tests {
 
     #[test]
     fn eval_match_with_guard() {
-        assert_eq!(
-            eval("match 5 { x if x > 3 { x * 2 } _ { 0 } }"),
-            Ok(Value::Integer(10))
-        );
-        assert_eq!(
-            eval("match 2 { x if x > 3 { x * 2 } _ { 0 } }"),
-            Ok(Value::Integer(0))
-        );
+        assert_eq!(eval("match 5 { x if x > 3 { x * 2 } _ { 0 } }"), Ok(Value::Integer(10)));
+        assert_eq!(eval("match 2 { x if x > 3 { x * 2 } _ { 0 } }"), Ok(Value::Integer(0)));
     }
 
     #[test]
@@ -2465,10 +2417,7 @@ mod runtime_tests {
         // Guard fails - falls through to wildcard
         assert_eq!(
             eval("match [10, 20] { [start, end] if start > 100 { start } x { x } }"),
-            Ok(Value::List(Vector::from(vec![
-                Value::Integer(10),
-                Value::Integer(20)
-            ])))
+            Ok(Value::List(Vector::from(vec![Value::Integer(10), Value::Integer(20)])))
         );
     }
 
@@ -2489,10 +2438,7 @@ mod runtime_tests {
     #[test]
     fn eval_match_list_pattern() {
         // Simple list pattern with two elements
-        assert_eq!(
-            eval("match [1, 2] { [a, b] { a + b } _ { 0 } }"),
-            Ok(Value::Integer(3))
-        );
+        assert_eq!(eval("match [1, 2] { [a, b] { a + b } _ { 0 } }"), Ok(Value::Integer(3)));
     }
 
     #[test]
@@ -2511,9 +2457,7 @@ mod runtime_tests {
     #[test]
     fn eval_match_list_pattern_no_fallback() {
         // Test without wildcard fallback
-        let tokens = Lexer::new("match [1, 2] { [a, b] { a + b } }")
-            .tokenize()
-            .unwrap();
+        let tokens = Lexer::new("match [1, 2] { [a, b] { a + b } }").tokenize().unwrap();
         let program = Parser::new(tokens).parse_program().unwrap();
         let compiled = Compiler::compile_statements(&program.statements).unwrap();
         let mut vm = VM::new();
@@ -2524,10 +2468,7 @@ mod runtime_tests {
     #[test]
     fn eval_match_list_pattern_literal_and_identifier() {
         // Test list pattern with literal followed by identifier binding
-        assert_eq!(
-            eval(r#"match ["+", 42] { ["+", v] { v } }"#),
-            Ok(Value::Integer(42))
-        );
+        assert_eq!(eval(r#"match ["+", 42] { ["+", v] { v } }"#), Ok(Value::Integer(42)));
     }
 
     #[test]
@@ -2562,14 +2503,8 @@ mod runtime_tests {
     fn eval_string_coercion() {
         // String coercion: only String + any produces String (not any + String)
         // This matches the Rust and TypeScript implementations
-        assert_eq!(
-            eval(r#""hello" + 1"#),
-            Ok(Value::String(Rc::new("hello1".to_string())))
-        );
-        assert_eq!(
-            eval(r#""" + 42"#),
-            Ok(Value::String(Rc::new("42".to_string())))
-        );
+        assert_eq!(eval(r#""hello" + 1"#), Ok(Value::String(Rc::new("hello1".to_string()))));
+        assert_eq!(eval(r#""" + 42"#), Ok(Value::String(Rc::new("42".to_string()))));
         assert_eq!(
             eval(r#""hello" + 1.5"#),
             Ok(Value::String(Rc::new("hello1.5".to_string())))
@@ -2623,19 +2558,13 @@ mod runtime_tests {
     #[test]
     fn eval_closure_nested() {
         // Nested closures with multiple captures
-        assert_eq!(
-            eval("((|a| (|b| (|c| a + b + c)(3))(2))(1))"),
-            Ok(Value::Integer(6))
-        );
+        assert_eq!(eval("((|a| (|b| (|c| a + b + c)(3))(2))(1))"), Ok(Value::Integer(6)));
     }
 
     #[test]
     fn eval_closure_capture_upvalue() {
         // Capture from grandparent scope
-        assert_eq!(
-            eval("((|x| |y| |z| x + y + z)(1))(2)(3)"),
-            Ok(Value::Integer(6))
-        );
+        assert_eq!(eval("((|x| |y| |z| x + y + z)(1))(2)(3)"), Ok(Value::Integer(6)));
     }
 
     #[test]
@@ -2817,10 +2746,7 @@ mod runtime_tests {
             _ => panic!("Expected list"),
         }
 
-        assert_eq!(
-            eval(r#"ints("no numbers")"#),
-            Ok(Value::List(Vector::new()))
-        );
+        assert_eq!(eval(r#"ints("no numbers")"#), Ok(Value::List(Vector::new())));
     }
 
     #[test]
@@ -2928,19 +2854,13 @@ mod runtime_tests {
 
     #[test]
     fn eval_builtin_get_dict() {
-        assert_eq!(
-            eval(r#"get("a", #{"a": 1, "b": 2})"#),
-            Ok(Value::Integer(1))
-        );
+        assert_eq!(eval(r#"get("a", #{"a": 1, "b": 2})"#), Ok(Value::Integer(1)));
         assert_eq!(eval(r#"get("c", #{"a": 1})"#), Ok(Value::Nil));
     }
 
     #[test]
     fn eval_builtin_get_string() {
-        assert_eq!(
-            eval(r#"get(1, "ab")"#),
-            Ok(Value::String(Rc::new("b".to_string())))
-        );
+        assert_eq!(eval(r#"get(1, "ab")"#), Ok(Value::String(Rc::new("b".to_string()))));
     }
 
     #[test]
@@ -2995,10 +2915,7 @@ mod runtime_tests {
     fn eval_builtin_first() {
         assert_eq!(eval("first([1, 2, 3])"), Ok(Value::Integer(1)));
         assert_eq!(eval("first([])"), Ok(Value::Nil));
-        assert_eq!(
-            eval(r#"first("hello")"#),
-            Ok(Value::String(Rc::new("h".to_string())))
-        );
+        assert_eq!(eval(r#"first("hello")"#), Ok(Value::String(Rc::new("h".to_string()))));
         assert_eq!(eval("first(1..5)"), Ok(Value::Integer(1)));
     }
 
@@ -3006,10 +2923,7 @@ mod runtime_tests {
     fn eval_builtin_second() {
         assert_eq!(eval("second([1, 2, 3])"), Ok(Value::Integer(2)));
         assert_eq!(eval("second([1])"), Ok(Value::Nil));
-        assert_eq!(
-            eval(r#"second("hello")"#),
-            Ok(Value::String(Rc::new("e".to_string())))
-        );
+        assert_eq!(eval(r#"second("hello")"#), Ok(Value::String(Rc::new("e".to_string()))));
         assert_eq!(eval("second(1..5)"), Ok(Value::Integer(2)));
     }
 
@@ -3017,10 +2931,7 @@ mod runtime_tests {
     fn eval_builtin_last() {
         assert_eq!(eval("last([1, 2, 3])"), Ok(Value::Integer(3)));
         assert_eq!(eval("last([])"), Ok(Value::Nil));
-        assert_eq!(
-            eval(r#"last("hello")"#),
-            Ok(Value::String(Rc::new("o".to_string())))
-        );
+        assert_eq!(eval(r#"last("hello")"#), Ok(Value::String(Rc::new("o".to_string()))));
         assert_eq!(eval("last(1..5)"), Ok(Value::Integer(4)));
         assert_eq!(eval("last(1..=5)"), Ok(Value::Integer(5)));
         assert_eq!(eval("last(5..1)"), Ok(Value::Integer(2)));
@@ -3054,10 +2965,7 @@ mod runtime_tests {
 
     #[test]
     fn eval_builtin_rest_string() {
-        assert_eq!(
-            eval(r#"rest("hello")"#),
-            Ok(Value::String(Rc::new("ello".to_string())))
-        );
+        assert_eq!(eval(r#"rest("hello")"#), Ok(Value::String(Rc::new("ello".to_string()))));
     }
 
     #[test]
@@ -3244,10 +3152,7 @@ mod runtime_tests {
             _ => panic!("Expected LazySequence"),
         }
         // Force evaluation - should be empty
-        assert_eq!(
-            eval("map(_ + 1, 3..3) |> list"),
-            Ok(Value::List(Vector::new()))
-        );
+        assert_eq!(eval("map(_ + 1, 3..3) |> list"), Ok(Value::List(Vector::new())));
     }
 
     #[test]
@@ -3255,10 +3160,7 @@ mod runtime_tests {
         // Descending non-inclusive range: 5..3 yields [5, 4] when forced
         assert_eq!(
             eval("map(|x| x, 5..3) |> list"),
-            Ok(Value::List(Vector::from(vec![
-                Value::Integer(5),
-                Value::Integer(4)
-            ])))
+            Ok(Value::List(Vector::from(vec![Value::Integer(5), Value::Integer(4)])))
         );
         // Descending inclusive range: 5..=3 yields [5, 4, 3] when forced
         assert_eq!(
@@ -3277,10 +3179,7 @@ mod runtime_tests {
         // Ascending non-inclusive: 1..3 yields [1, 2]
         assert_eq!(
             eval("map(|x| x, 1..3) |> list"),
-            Ok(Value::List(Vector::from(vec![
-                Value::Integer(1),
-                Value::Integer(2)
-            ])))
+            Ok(Value::List(Vector::from(vec![Value::Integer(1), Value::Integer(2)])))
         );
         // Ascending inclusive: 1..=3 yields [1, 2, 3]
         assert_eq!(
@@ -3294,10 +3193,7 @@ mod runtime_tests {
         // Descending non-inclusive: 3..1 yields [3, 2]
         assert_eq!(
             eval("map(|x| x, 3..1) |> list"),
-            Ok(Value::List(Vector::from(vec![
-                Value::Integer(3),
-                Value::Integer(2)
-            ])))
+            Ok(Value::List(Vector::from(vec![Value::Integer(3), Value::Integer(2)])))
         );
         // Descending inclusive: 3..=1 yields [3, 2, 1]
         assert_eq!(
@@ -3311,10 +3207,7 @@ mod runtime_tests {
         // Crossing zero non-inclusive: 1..-1 yields [1, 0]
         assert_eq!(
             eval("map(|x| x, 1..-1) |> list"),
-            Ok(Value::List(Vector::from(vec![
-                Value::Integer(1),
-                Value::Integer(0)
-            ])))
+            Ok(Value::List(Vector::from(vec![Value::Integer(1), Value::Integer(0)])))
         );
         // Crossing zero inclusive: 1..=-1 yields [1, 0, -1]
         assert_eq!(
@@ -3328,10 +3221,7 @@ mod runtime_tests {
         // Negative ascending non-inclusive: -1..1 yields [-1, 0]
         assert_eq!(
             eval("map(|x| x, -1..1) |> list"),
-            Ok(Value::List(Vector::from(vec![
-                Value::Integer(-1),
-                Value::Integer(0)
-            ])))
+            Ok(Value::List(Vector::from(vec![Value::Integer(-1), Value::Integer(0)])))
         );
         // Negative ascending inclusive: -1..=1 yields [-1, 0, 1]
         assert_eq!(
@@ -3511,8 +3401,7 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_flat_map_with_pairs() {
         // flat_map should work with zip pairs without unwrapping them
-        let result =
-            eval("zip(0..3, [\"a\", \"b\", \"c\"]) |> flat_map(|[i, v]| [[i, v]])").unwrap();
+        let result = eval("zip(0..3, [\"a\", \"b\", \"c\"]) |> flat_map(|[i, v]| [[i, v]])").unwrap();
         match result {
             Value::List(v) => {
                 assert_eq!(v.len(), 3);
@@ -3569,10 +3458,7 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_find_map_not_found() {
         // [2, 4] |> find_map(|v| if v % 2 { v }) => nil
-        assert_eq!(
-            eval("[2, 4] |> find_map(|v| if v % 2 { v })"),
-            Ok(Value::Nil)
-        );
+        assert_eq!(eval("[2, 4] |> find_map(|v| if v % 2 { v })"), Ok(Value::Nil));
     }
 
     // ============================================================
@@ -3582,19 +3468,13 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_reduce_list() {
         // reduce(|a, b| a + b, [1, 2, 3]) => 6
-        assert_eq!(
-            eval("reduce(|a, b| a + b, [1, 2, 3])"),
-            Ok(Value::Integer(6))
-        );
+        assert_eq!(eval("reduce(|a, b| a + b, [1, 2, 3])"), Ok(Value::Integer(6)));
     }
 
     #[test]
     fn eval_builtin_reduce_list_custom_fn() {
         // reduce(|a, b| a * b, [1, 2, 3, 4]) => 24
-        assert_eq!(
-            eval("reduce(|a, b| a * b, [1, 2, 3, 4])"),
-            Ok(Value::Integer(24))
-        );
+        assert_eq!(eval("reduce(|a, b| a * b, [1, 2, 3, 4])"), Ok(Value::Integer(24)));
     }
 
     #[test]
@@ -3677,10 +3557,7 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_fold_list() {
         // fold(0, |a, b| a + b, [1, 2, 3]) => 6
-        assert_eq!(
-            eval("fold(0, |a, b| a + b, [1, 2, 3])"),
-            Ok(Value::Integer(6))
-        );
+        assert_eq!(eval("fold(0, |a, b| a + b, [1, 2, 3])"), Ok(Value::Integer(6)));
     }
 
     #[test]
@@ -3692,10 +3569,7 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_fold_custom_fn() {
         // fold(1, |acc, v| acc * v, [1, 2, 3, 4]) => 24
-        assert_eq!(
-            eval("fold(1, |acc, v| acc * v, [1, 2, 3, 4])"),
-            Ok(Value::Integer(24))
-        );
+        assert_eq!(eval("fold(1, |acc, v| acc * v, [1, 2, 3, 4])"), Ok(Value::Integer(24)));
     }
 
     #[test]
@@ -3709,10 +3583,7 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_fold_string() {
         // fold(0, |acc, _| acc + 1, "ab") => 2
-        assert_eq!(
-            eval(r#"fold(0, |acc, _| acc + 1, "ab")"#),
-            Ok(Value::Integer(2))
-        );
+        assert_eq!(eval(r#"fold(0, |acc, _| acc + 1, "ab")"#), Ok(Value::Integer(2)));
     }
 
     #[test]
@@ -3847,10 +3718,7 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_count_list() {
         // count(|x| x > 2, [1, 2, 3, 4, 5]) => 3
-        assert_eq!(
-            eval("count(|x| x > 2, [1, 2, 3, 4, 5])"),
-            Ok(Value::Integer(3))
-        );
+        assert_eq!(eval("count(|x| x > 2, [1, 2, 3, 4, 5])"), Ok(Value::Integer(3)));
     }
 
     #[test]
@@ -3884,10 +3752,7 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_sum_mixed_decimal() {
         // sum([1, 2.5, 3]) => 6.5
-        assert_eq!(
-            eval("sum([1, 2.5, 3])"),
-            Ok(Value::Decimal(OrderedFloat(6.5)))
-        );
+        assert_eq!(eval("sum([1, 2.5, 3])"), Ok(Value::Decimal(OrderedFloat(6.5))));
     }
 
     #[test]
@@ -4072,16 +3937,8 @@ mod runtime_tests {
         // chunk(2, [1, 2, 3, 4, 5]) => [[1, 2], [3, 4], [5]]
         let expected = Value::List(
             vec![
-                Value::List(
-                    vec![Value::Integer(1), Value::Integer(2)]
-                        .into_iter()
-                        .collect(),
-                ),
-                Value::List(
-                    vec![Value::Integer(3), Value::Integer(4)]
-                        .into_iter()
-                        .collect(),
-                ),
+                Value::List(vec![Value::Integer(1), Value::Integer(2)].into_iter().collect()),
+                Value::List(vec![Value::Integer(3), Value::Integer(4)].into_iter().collect()),
                 Value::List(vec![Value::Integer(5)].into_iter().collect()),
             ]
             .into_iter()
@@ -4142,10 +3999,7 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_includes_string() {
         // includes?("hello", "ell") => true
-        assert_eq!(
-            eval("includes?(\"hello\", \"ell\")"),
-            Ok(Value::Boolean(true))
-        );
+        assert_eq!(eval("includes?(\"hello\", \"ell\")"), Ok(Value::Boolean(true)));
     }
 
     #[test]
@@ -4157,22 +4011,10 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_includes_dict_checks_keys() {
         // includes? on Dictionary checks keys, not values
-        assert_eq!(
-            eval("includes?(#{1: 2, 3: 4}, 1)"),
-            Ok(Value::Boolean(true))
-        );
-        assert_eq!(
-            eval("includes?(#{1: 2, 3: 4}, 2)"),
-            Ok(Value::Boolean(false))
-        );
-        assert_eq!(
-            eval("includes?(#{1: 2, 3: 4}, 3)"),
-            Ok(Value::Boolean(true))
-        );
-        assert_eq!(
-            eval("includes?(#{1: 2, 3: 4}, 4)"),
-            Ok(Value::Boolean(false))
-        );
+        assert_eq!(eval("includes?(#{1: 2, 3: 4}, 1)"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("includes?(#{1: 2, 3: 4}, 2)"), Ok(Value::Boolean(false)));
+        assert_eq!(eval("includes?(#{1: 2, 3: 4}, 3)"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("includes?(#{1: 2, 3: 4}, 4)"), Ok(Value::Boolean(false)));
     }
 
     #[test]
@@ -4184,36 +4026,18 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_excludes_dict_checks_keys() {
         // excludes? on Dictionary checks keys, not values
-        assert_eq!(
-            eval("excludes?(#{1: 2, 3: 4}, 1)"),
-            Ok(Value::Boolean(false))
-        );
-        assert_eq!(
-            eval("excludes?(#{1: 2, 3: 4}, 2)"),
-            Ok(Value::Boolean(true))
-        );
-        assert_eq!(
-            eval("excludes?(#{1: 2, 3: 4}, 3)"),
-            Ok(Value::Boolean(false))
-        );
-        assert_eq!(
-            eval("excludes?(#{1: 2, 3: 4}, 4)"),
-            Ok(Value::Boolean(true))
-        );
+        assert_eq!(eval("excludes?(#{1: 2, 3: 4}, 1)"), Ok(Value::Boolean(false)));
+        assert_eq!(eval("excludes?(#{1: 2, 3: 4}, 2)"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("excludes?(#{1: 2, 3: 4}, 3)"), Ok(Value::Boolean(false)));
+        assert_eq!(eval("excludes?(#{1: 2, 3: 4}, 4)"), Ok(Value::Boolean(true)));
     }
 
     #[test]
     fn eval_builtin_includes_lazy_sequence() {
         // Per §11.11: includes? supports LazySequence
         // Test with finite lazy sequence (take) - note: take materializes to List
-        assert_eq!(
-            eval("includes?(1.. |> take(5), 3)"),
-            Ok(Value::Boolean(true))
-        );
-        assert_eq!(
-            eval("includes?(1.. |> take(5), 10)"),
-            Ok(Value::Boolean(false))
-        );
+        assert_eq!(eval("includes?(1.. |> take(5), 3)"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("includes?(1.. |> take(5), 10)"), Ok(Value::Boolean(false)));
 
         // Test with mapped lazy sequence (take materializes to List)
         assert_eq!(
@@ -4227,42 +4051,27 @@ mod runtime_tests {
 
         // Test with actual LazySequence - must search for value that exists (or it loops forever)
         // Search for 6 in infinite map sequence (will find it at position 3)
-        assert_eq!(
-            eval("includes?(1.. |> map(_ * 2), 6)"),
-            Ok(Value::Boolean(true))
-        );
+        assert_eq!(eval("includes?(1.. |> map(_ * 2), 6)"), Ok(Value::Boolean(true)));
     }
 
     #[test]
     fn eval_builtin_excludes_lazy_sequence() {
         // Per §11.11: excludes? supports LazySequence
         // These use take which materializes to List
-        assert_eq!(
-            eval("excludes?(1.. |> take(5), 10)"),
-            Ok(Value::Boolean(true))
-        );
-        assert_eq!(
-            eval("excludes?(1.. |> take(5), 3)"),
-            Ok(Value::Boolean(false))
-        );
+        assert_eq!(eval("excludes?(1.. |> take(5), 10)"), Ok(Value::Boolean(true)));
+        assert_eq!(eval("excludes?(1.. |> take(5), 3)"), Ok(Value::Boolean(false)));
     }
 
     #[test]
     fn eval_builtin_any_list() {
         // any?(|x| x > 3, [1, 2, 3, 4]) => true
-        assert_eq!(
-            eval("any?(|x| x > 3, [1, 2, 3, 4])"),
-            Ok(Value::Boolean(true))
-        );
+        assert_eq!(eval("any?(|x| x > 3, [1, 2, 3, 4])"), Ok(Value::Boolean(true)));
     }
 
     #[test]
     fn eval_builtin_any_list_false() {
         // any?(|x| x > 10, [1, 2, 3]) => false
-        assert_eq!(
-            eval("any?(|x| x > 10, [1, 2, 3])"),
-            Ok(Value::Boolean(false))
-        );
+        assert_eq!(eval("any?(|x| x > 10, [1, 2, 3])"), Ok(Value::Boolean(false)));
     }
 
     #[test]
@@ -4274,10 +4083,7 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_all_list_false() {
         // all?(|x| x > 2, [1, 2, 3]) => false
-        assert_eq!(
-            eval("all?(|x| x > 2, [1, 2, 3])"),
-            Ok(Value::Boolean(false))
-        );
+        assert_eq!(eval("all?(|x| x > 2, [1, 2, 3])"), Ok(Value::Boolean(false)));
     }
 
     #[test]
@@ -4467,9 +4273,7 @@ mod runtime_tests {
     fn eval_fold_dict_break() {
         // fold with break on dict - dict iteration order is undefined so we test the break mechanism
         assert_eq!(
-            eval(
-                r#"fold(0, |acc, v| if v > 2 { break 99 } else { acc + v }, #{"a": 1, "b": 2, "c": 3})"#
-            ),
+            eval(r#"fold(0, |acc, v| if v > 2 { break 99 } else { acc + v }, #{"a": 1, "b": 2, "c": 3})"#),
             Ok(Value::Integer(99)) // break returns 99 when we hit v=3
         );
     }
@@ -4499,10 +4303,7 @@ mod runtime_tests {
     fn eval_reduce_lazy_sequence() {
         // reduce(|a, b| a + b, take(5, repeat(1))) => 5
         // First converts lazy to list with take, then reduces
-        assert_eq!(
-            eval("reduce(|a, b| a + b, take(5, repeat(1)))"),
-            Ok(Value::Integer(5))
-        );
+        assert_eq!(eval("reduce(|a, b| a + b, take(5, repeat(1)))"), Ok(Value::Integer(5)));
     }
 
     #[test]
@@ -4517,10 +4318,7 @@ mod runtime_tests {
     #[test]
     fn eval_find_lazy_sequence() {
         // find(|x| x > 5, iterate(|x| x + 1, 1)) => 6
-        assert_eq!(
-            eval("find(|x| x > 5, iterate(|x| x + 1, 1))"),
-            Ok(Value::Integer(6))
-        );
+        assert_eq!(eval("find(|x| x > 5, iterate(|x| x + 1, 1))"), Ok(Value::Integer(6)));
     }
 
     // Lazy composition tests - map/filter/skip should work on LazySequence
@@ -4716,9 +4514,7 @@ mod runtime_tests {
         assert_eq!(
             eval("regex_match(\"(\\\\d+)\", \"abc123\")"),
             Ok(Value::List(
-                vec![Value::String(Rc::new("123".to_string()))]
-                    .into_iter()
-                    .collect()
+                vec![Value::String(Rc::new("123".to_string()))].into_iter().collect()
             ))
         );
     }
@@ -4766,9 +4562,7 @@ mod runtime_tests {
     fn eval_builtin_md5_empty() {
         assert_eq!(
             eval("md5(\"\")"),
-            Ok(Value::String(Rc::new(
-                "d41d8cd98f00b204e9800998ecf8427e".to_string()
-            )))
+            Ok(Value::String(Rc::new("d41d8cd98f00b204e9800998ecf8427e".to_string())))
         );
     }
 
@@ -4776,9 +4570,7 @@ mod runtime_tests {
     fn eval_builtin_md5_hello() {
         assert_eq!(
             eval("md5(\"hello\")"),
-            Ok(Value::String(Rc::new(
-                "5d41402abc4b2a76b9719d911017c592".to_string()
-            )))
+            Ok(Value::String(Rc::new("5d41402abc4b2a76b9719d911017c592".to_string())))
         );
     }
 
@@ -4786,9 +4578,7 @@ mod runtime_tests {
     fn eval_builtin_md5_hello_world() {
         assert_eq!(
             eval("md5(\"Hello, World!\")"),
-            Ok(Value::String(Rc::new(
-                "65a8e27d8879283831b664bd8b7f0ad4".to_string()
-            )))
+            Ok(Value::String(Rc::new("65a8e27d8879283831b664bd8b7f0ad4".to_string())))
         );
     }
 
@@ -4828,9 +4618,7 @@ mod runtime_tests {
         assert_eq!(
             eval("vec_add([1, 2], [3, 4])"),
             Ok(Value::List(
-                vec![Value::Integer(4), Value::Integer(6)]
-                    .into_iter()
-                    .collect()
+                vec![Value::Integer(4), Value::Integer(6)].into_iter().collect()
             ))
         );
     }
@@ -4840,9 +4628,7 @@ mod runtime_tests {
         assert_eq!(
             eval("vec_add([1, 2, 3], [10, 20])"),
             Ok(Value::List(
-                vec![Value::Integer(11), Value::Integer(22)]
-                    .into_iter()
-                    .collect()
+                vec![Value::Integer(11), Value::Integer(22)].into_iter().collect()
             ))
         );
     }
@@ -4888,42 +4674,21 @@ mod runtime_tests {
     #[test]
     fn eval_builtin_id() {
         assert_eq!(eval("id(42)"), Ok(Value::Integer(42)));
-        assert_eq!(
-            eval("id(\"hello\")"),
-            Ok(Value::String(Rc::new("hello".to_string())))
-        );
+        assert_eq!(eval("id(\"hello\")"), Ok(Value::String(Rc::new("hello".to_string()))));
     }
 
     #[test]
     fn eval_builtin_type() {
-        assert_eq!(
-            eval("type(nil)"),
-            Ok(Value::String(Rc::new("Nil".to_string())))
-        );
-        assert_eq!(
-            eval("type(42)"),
-            Ok(Value::String(Rc::new("Integer".to_string())))
-        );
-        assert_eq!(
-            eval("type(3.15)"),
-            Ok(Value::String(Rc::new("Decimal".to_string())))
-        );
-        assert_eq!(
-            eval("type(true)"),
-            Ok(Value::String(Rc::new("Boolean".to_string())))
-        );
+        assert_eq!(eval("type(nil)"), Ok(Value::String(Rc::new("Nil".to_string()))));
+        assert_eq!(eval("type(42)"), Ok(Value::String(Rc::new("Integer".to_string()))));
+        assert_eq!(eval("type(3.15)"), Ok(Value::String(Rc::new("Decimal".to_string()))));
+        assert_eq!(eval("type(true)"), Ok(Value::String(Rc::new("Boolean".to_string()))));
         assert_eq!(
             eval("type(\"hello\")"),
             Ok(Value::String(Rc::new("String".to_string())))
         );
-        assert_eq!(
-            eval("type([1, 2])"),
-            Ok(Value::String(Rc::new("List".to_string())))
-        );
-        assert_eq!(
-            eval("type({1, 2})"),
-            Ok(Value::String(Rc::new("Set".to_string())))
-        );
+        assert_eq!(eval("type([1, 2])"), Ok(Value::String(Rc::new("List".to_string()))));
+        assert_eq!(eval("type({1, 2})"), Ok(Value::String(Rc::new("Set".to_string()))));
         assert_eq!(
             eval("type(#{\"a\": 1})"),
             Ok(Value::String(Rc::new("Dictionary".to_string())))
@@ -5202,9 +4967,7 @@ mod runtime_tests {
     fn partial_application_composition_with_placeholder() {
         // Composition with placeholder fills piped value into placeholder position
         assert_eq!(
-            eval(
-                r#"{ let d = #{"a": 1}; let f = |x| x; let composed = f >> get(_, d); composed("a") }"#
-            ),
+            eval(r#"{ let d = #{"a": 1}; let f = |x| x; let composed = f >> get(_, d); composed("a") }"#),
             Ok(Value::Integer(1))
         );
     }
@@ -5225,10 +4988,7 @@ mod runtime_tests {
             eval(r#"{ let f = ints; f("abc123") }"#),
             Ok(Value::List(vec![Value::Integer(123)].into_iter().collect()))
         );
-        assert_eq!(
-            eval(r#"{ let f = size; f([1, 2, 3]) }"#),
-            Ok(Value::Integer(3))
-        );
+        assert_eq!(eval(r#"{ let f = size; f([1, 2, 3]) }"#), Ok(Value::Integer(3)));
     }
 
     #[test]
@@ -5297,10 +5057,7 @@ mod runtime_tests {
     #[test]
     fn partial_placeholder_not_in_lambda_body() {
         // Placeholder in lambda body doesn't affect outer call
-        assert_eq!(
-            eval(r#"[1, 2, 3] |> fold(0, |acc, x| acc + x)"#),
-            Ok(Value::Integer(6))
-        );
+        assert_eq!(eval(r#"[1, 2, 3] |> fold(0, |acc, x| acc + x)"#), Ok(Value::Integer(6)));
     }
 
     // ===== Range Indexing Tests =====
@@ -5311,9 +5068,7 @@ mod runtime_tests {
         assert_eq!(
             eval("[1, 2, 3, 4, 5][1..3]"),
             Ok(Value::List(
-                vec![Value::Integer(2), Value::Integer(3)]
-                    .into_iter()
-                    .collect()
+                vec![Value::Integer(2), Value::Integer(3)].into_iter().collect()
             ))
         );
     }
@@ -5347,38 +5102,26 @@ mod runtime_tests {
     #[test]
     fn string_range_indexing_exclusive() {
         // String[start..end] returns substring (exclusive end)
-        assert_eq!(
-            eval(r#""hello"[1..3]"#),
-            Ok(Value::String(Rc::new("el".to_string())))
-        );
+        assert_eq!(eval(r#""hello"[1..3]"#), Ok(Value::String(Rc::new("el".to_string()))));
     }
 
     #[test]
     fn string_range_indexing_inclusive() {
         // String[start..=end] returns substring (inclusive end)
-        assert_eq!(
-            eval(r#""hello"[1..=3]"#),
-            Ok(Value::String(Rc::new("ell".to_string())))
-        );
+        assert_eq!(eval(r#""hello"[1..=3]"#), Ok(Value::String(Rc::new("ell".to_string()))));
     }
 
     #[test]
     fn string_range_indexing_open_end() {
         // String[start..] returns from start to end
-        assert_eq!(
-            eval(r#""hello"[2..]"#),
-            Ok(Value::String(Rc::new("llo".to_string())))
-        );
+        assert_eq!(eval(r#""hello"[2..]"#), Ok(Value::String(Rc::new("llo".to_string()))));
     }
 
     #[test]
     fn range_indexing_empty_result() {
         // Empty range returns empty list/string
         assert_eq!(eval("[1, 2, 3][2..2]"), Ok(Value::List(Vector::new())));
-        assert_eq!(
-            eval(r#""hello"[3..3]"#),
-            Ok(Value::String(Rc::new(String::new())))
-        );
+        assert_eq!(eval(r#""hello"[3..3]"#), Ok(Value::String(Rc::new(String::new()))));
     }
 
     // ===== Nested Pattern Destructuring Tests =====
@@ -5396,13 +5139,9 @@ mod runtime_tests {
     fn nested_pattern_in_map() {
         // Nested patterns with map
         assert_eq!(
-            eval(
-                r#"[[[1, 2], [3, 4]], [[5, 6], [7, 8]]] |> map(|[[a, b], [c, d]]| a + b + c + d)"#
-            ),
+            eval(r#"[[[1, 2], [3, 4]], [[5, 6], [7, 8]]] |> map(|[[a, b], [c, d]]| a + b + c + d)"#),
             Ok(Value::List(
-                vec![Value::Integer(10), Value::Integer(26)]
-                    .into_iter()
-                    .collect()
+                vec![Value::Integer(10), Value::Integer(26)].into_iter().collect()
             ))
         );
     }
@@ -5410,10 +5149,7 @@ mod runtime_tests {
     #[test]
     fn nested_pattern_three_levels() {
         // Three levels of nesting
-        assert_eq!(
-            eval(r#"{ let f = |[[[a]]]| a; f([[[42]]]) }"#),
-            Ok(Value::Integer(42))
-        );
+        assert_eq!(eval(r#"{ let f = |[[[a]]]| a; f([[[42]]]) }"#), Ok(Value::Integer(42)));
     }
 
     #[test]
@@ -5474,9 +5210,7 @@ mod runtime_tests {
     fn user_function_chained_curry() {
         // Multiple levels of currying
         assert_eq!(
-            eval(
-                r#"{ let add3 = |a, b, c| a + b + c; let add2 = add3(1); let add1 = add2(2); add1(3) }"#
-            ),
+            eval(r#"{ let add3 = |a, b, c| a + b + c; let add2 = add3(1); let add1 = add2(2); add1(3) }"#),
             Ok(Value::Integer(6))
         );
     }

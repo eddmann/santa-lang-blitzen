@@ -63,11 +63,7 @@ fn format_expr_node(expr: &Expr) -> String {
                 .collect();
             format!("#{{{}}}", pairs.join(", "))
         }
-        Expr::Range {
-            start,
-            end,
-            inclusive,
-        } => {
+        Expr::Range { start, end, inclusive } => {
             let op = if *inclusive { "..=" } else { ".." };
             match end {
                 Some(e) => format!("({}{op}{})", format_expr(start), format_expr(e)),
@@ -90,16 +86,8 @@ fn format_expr_node(expr: &Expr) -> String {
             let arg_strs: Vec<_> = args.iter().map(format_expr).collect();
             format!("({}({}))", format_expr(function), arg_strs.join(", "))
         }
-        Expr::InfixCall {
-            function,
-            left,
-            right,
-        } => {
-            format!(
-                "({} `{function}` {})",
-                format_expr(left),
-                format_expr(right)
-            )
+        Expr::InfixCall { function, left, right } => {
+            format!("({} `{function}` {})", format_expr(left), format_expr(right))
         }
         Expr::If {
             condition,
@@ -151,11 +139,7 @@ fn format_expr_node(expr: &Expr) -> String {
                     )
                 })
                 .collect();
-            format!(
-                "(match {} {{ {} }})",
-                format_expr(subject),
-                arm_strs.join(", ")
-            )
+            format!("(match {} {{ {} }})", format_expr(subject), arm_strs.join(", "))
         }
         Expr::Block(stmts) => {
             let stmt_strs: Vec<_> = stmts.iter().map(format_stmt).collect();
@@ -186,11 +170,7 @@ fn format_pattern(pattern: &Pattern) -> String {
             let ps: Vec<_> = patterns.iter().map(format_pattern).collect();
             format!("[{}]", ps.join(", "))
         }
-        Pattern::Range {
-            start,
-            end,
-            inclusive,
-        } => {
+        Pattern::Range { start, end, inclusive } => {
             let op = if *inclusive { "..=" } else { ".." };
             match end {
                 Some(e) => format!("{start}{op}{e}"),
@@ -208,11 +188,7 @@ fn format_stmt(stmt: &SpannedStmt) -> String {
             value,
         } => {
             let mut_str = if *mutable { "mut " } else { "" };
-            format!(
-                "let {mut_str}{} = {}",
-                format_pattern(pattern),
-                format_expr(value)
-            )
+            format!("let {mut_str}{} = {}", format_pattern(pattern), format_expr(value))
         }
         Stmt::Return(expr) => format!("return {}", format_expr(expr)),
         Stmt::Break(expr) => format!("break {}", format_expr(expr)),
@@ -666,10 +642,7 @@ fn parse_trailing_lambda() {
 #[test]
 fn parse_trailing_lambda_fold() {
     // fold(0) |acc, x| ... => fold(0, |acc, x| ...)
-    check(
-        "fold(0) |acc, x| acc + x",
-        expect!["(fold(0, |acc, x| (acc + x)))"],
-    );
+    check("fold(0) |acc, x| acc + x", expect!["(fold(0, |acc, x| (acc + x)))"]);
 }
 
 #[test]

@@ -54,10 +54,7 @@ pub enum Value {
 
     /// Partially applied function - stores original closure and captured arguments
     /// Used for auto-currying when a function is called with fewer args than its arity
-    PartialApplication {
-        closure: Rc<Closure>,
-        args: Vec<Value>,
-    },
+    PartialApplication { closure: Rc<Closure>, args: Vec<Value> },
 
     /// Memoized function - wraps a function with a cache for memoization
     /// Per LANG.txt §11.16, memoize returns a cached version of a function
@@ -310,14 +307,8 @@ impl PartialEq for Value {
             (Value::ExternalFunction(a), Value::ExternalFunction(b)) => a == b,
             // Partial applications compare by closure identity and args equality
             (
-                Value::PartialApplication {
-                    closure: c1,
-                    args: a1,
-                },
-                Value::PartialApplication {
-                    closure: c2,
-                    args: a2,
-                },
+                Value::PartialApplication { closure: c1, args: a1 },
+                Value::PartialApplication { closure: c2, args: a2 },
             ) => Rc::ptr_eq(c1, c2) && a1 == a2,
             // Memoized functions compare by identity
             (Value::MemoizedFunction(a), Value::MemoizedFunction(b)) => Rc::ptr_eq(a, b),
@@ -358,11 +349,7 @@ impl Hash for Value {
                     elem.hash(state);
                 }
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 start.hash(state);
                 end.hash(state);
                 inclusive.hash(state);
@@ -447,11 +434,7 @@ impl fmt::Display for Value {
             Value::ExternalFunction(name) => write!(f, "<external-function:{}>", name),
             Value::PartialApplication { .. } => write!(f, "<function>"),
             Value::MemoizedFunction(_) => write!(f, "<function>"),
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => match (end, inclusive) {
+            Value::Range { start, end, inclusive } => match (end, inclusive) {
                 (Some(e), false) => write!(f, "{start}..{e}"),
                 (Some(e), true) => write!(f, "{start}..={e}"),
                 (None, _) => write!(f, "{start}.."),

@@ -137,10 +137,7 @@ pub fn format_error_json(error: &SantaError) -> JsonErrorOutput {
                 .stack_trace
                 .iter()
                 .map(|frame| StackFrame {
-                    function: frame
-                        .function_name
-                        .clone()
-                        .unwrap_or_else(|| "<lambda>".to_string()),
+                    function: frame.function_name.clone().unwrap_or_else(|| "<lambda>".to_string()),
                     line: frame.line,
                     column: 1, // RuntimeError doesn't track column
                 })
@@ -162,22 +159,16 @@ pub fn format_solution_json(result: &SolutionResult, console: Vec<ConsoleEntry>)
     let output = JsonSolutionOutput {
         output_type: "solution",
         status: "complete",
-        part_one: result
-            .part_one
-            .as_ref()
-            .map(|(value, duration)| JsonPartResult {
-                status: "complete",
-                value: value.to_string(),
-                duration_ms: *duration as u64,
-            }),
-        part_two: result
-            .part_two
-            .as_ref()
-            .map(|(value, duration)| JsonPartResult {
-                status: "complete",
-                value: value.to_string(),
-                duration_ms: *duration as u64,
-            }),
+        part_one: result.part_one.as_ref().map(|(value, duration)| JsonPartResult {
+            status: "complete",
+            value: value.to_string(),
+            duration_ms: *duration as u64,
+        }),
+        part_two: result.part_two.as_ref().map(|(value, duration)| JsonPartResult {
+            status: "complete",
+            value: value.to_string(),
+            duration_ms: *duration as u64,
+        }),
         console,
     };
     serde_json::to_string(&output).unwrap()
@@ -437,10 +428,7 @@ mod tests {
     fn test_is_solution_source() {
         assert_eq!(is_solution_source("part_one: { 42 }"), (true, false));
         assert_eq!(is_solution_source("part_two: { 42 }"), (false, true));
-        assert_eq!(
-            is_solution_source("part_one: { 1 }\npart_two: { 2 }"),
-            (true, true)
-        );
+        assert_eq!(is_solution_source("part_one: { 1 }\npart_two: { 2 }"), (true, true));
         assert_eq!(is_solution_source("1 + 2"), (false, false));
     }
 }

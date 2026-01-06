@@ -1,6 +1,8 @@
 [package]
 name = "benchmarks"
-version = "0.0.1"
+version.workspace = true
+authors.workspace = true
+documentation.workspace = true
 edition = "2024"
 
 [dependencies]

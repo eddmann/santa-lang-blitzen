@@ -2,8 +2,7 @@ use std::rc::Rc;
 
 use crate::lexer::Span;
 use crate::parser::ast::{
-    Expr, InfixOp, LiteralPattern, MatchArm, Param, ParamKind, Pattern, PrefixOp, SpannedExpr,
-    SpannedStmt, Stmt,
+    Expr, InfixOp, LiteralPattern, MatchArm, Param, ParamKind, Pattern, PrefixOp, SpannedExpr, SpannedStmt, Stmt,
 };
 
 use super::builtins::BuiltinId;
@@ -87,12 +86,7 @@ impl Compiler {
         Self::new_function_with_variadic(name, arity, false, enclosing)
     }
 
-    fn new_function_with_variadic(
-        name: Option<String>,
-        arity: u8,
-        is_variadic: bool,
-        enclosing: Compiler,
-    ) -> Self {
+    fn new_function_with_variadic(name: Option<String>, arity: u8, is_variadic: bool, enclosing: Compiler) -> Self {
         let current_line = enclosing.current_line;
         // Inherit global_names from enclosing - nested functions should see same globals
         let global_names = enclosing.global_names.clone();
@@ -292,9 +286,7 @@ impl Compiler {
         match &expr.node {
             // Literals
             Expr::Integer(n) => self.emit_constant(Value::Integer(*n))?,
-            Expr::Decimal(n) => {
-                self.emit_constant(Value::Decimal(ordered_float::OrderedFloat(*n)))?
-            }
+            Expr::Decimal(n) => self.emit_constant(Value::Decimal(ordered_float::OrderedFloat(*n)))?,
             Expr::String(s) => self.emit_constant(Value::String(Rc::new(s.clone())))?,
             Expr::Boolean(true) => self.emit(OpCode::True),
             Expr::Boolean(false) => self.emit(OpCode::False),
@@ -351,10 +343,7 @@ impl Compiler {
                 }
                 self.in_tail_position = saved_tail;
                 if elements.len() > 255 {
-                    return Err(CompileError::new(
-                        "Set literal too large (max 255 elements)",
-                        expr.span,
-                    ));
+                    return Err(CompileError::new("Set literal too large (max 255 elements)", expr.span));
                 }
                 self.emit_with_operand(OpCode::MakeSet, elements.len() as u8);
             }
@@ -369,20 +358,13 @@ impl Compiler {
                 }
                 self.in_tail_position = saved_tail;
                 if entries.len() > 255 {
-                    return Err(CompileError::new(
-                        "Dict literal too large (max 255 entries)",
-                        expr.span,
-                    ));
+                    return Err(CompileError::new("Dict literal too large (max 255 entries)", expr.span));
                 }
                 self.emit_with_operand(OpCode::MakeDict, entries.len() as u8);
             }
 
             // Range expressions
-            Expr::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Expr::Range { start, end, inclusive } => {
                 self.expression(start)?;
                 if let Some(end_expr) = end {
                     self.expression(end_expr)?;
@@ -431,11 +413,7 @@ impl Compiler {
             }
 
             // Infix function call (using backticks)
-            Expr::InfixCall {
-                function,
-                left,
-                right,
-            } => {
+            Expr::InfixCall { function, left, right } => {
                 // Check for placeholders - if any, generate partial application
                 if Self::contains_placeholder(left) || Self::contains_placeholder(right) {
                     self.compile_partial_infix_call(function, left, right, expr.span)?;
@@ -452,10 +430,7 @@ impl Compiler {
                         let (min_arity, _max_arity) = builtin_id.arity();
                         if min_arity > 2 {
                             return Err(CompileError::new(
-                                format!(
-                                    "Builtin '{}' requires at least {} arguments",
-                                    function, min_arity
-                                ),
+                                format!("Builtin '{}' requires at least {} arguments", function, min_arity),
                                 expr.span,
                             ));
                         }
@@ -650,12 +625,7 @@ impl Compiler {
     }
 
     /// Compile a pipeline expression: value |> func or value |> func(args)
-    fn compile_pipeline(
-        &mut self,
-        left: &SpannedExpr,
-        right: &SpannedExpr,
-        span: Span,
-    ) -> Result<(), CompileError> {
+    fn compile_pipeline(&mut self, left: &SpannedExpr, right: &SpannedExpr, span: Span) -> Result<(), CompileError> {
         // Pipeline: left |> right
         // If right is a call with placeholder: func(_, args...) => func(left, args...)
         // If right is a call: func(args...) => func(args..., left)
@@ -945,12 +915,7 @@ impl Compiler {
 
     /// Compile function composition: f >> g creates |x| g(f(x))
     /// Special case: f >> g(a, b) creates |x| g(a, b, f(x))
-    fn compile_composition(
-        &mut self,
-        left: &SpannedExpr,
-        right: &SpannedExpr,
-        span: Span,
-    ) -> Result<(), CompileError> {
+    fn compile_composition(&mut self, left: &SpannedExpr, right: &SpannedExpr, span: Span) -> Result<(), CompileError> {
         // Function composition creates a new function that applies f then g
         // We compile this as a closure that captures both functions
 
@@ -983,8 +948,7 @@ impl Compiler {
                 // Check if any args are DIRECT placeholders (not nested inside expressions)
                 // In composition context: f >> g(_, b) means put left(x) in place of _
                 // But f >> g(_ + 1) means g creates a partial, and we call that with left(x)
-                let has_direct_placeholders =
-                    args.iter().any(|arg| matches!(arg.node, Expr::Placeholder));
+                let has_direct_placeholders = args.iter().any(|arg| matches!(arg.node, Expr::Placeholder));
 
                 if has_direct_placeholders {
                     // f >> g(_, b) creates |x| g(f(x), b)
@@ -1091,8 +1055,7 @@ impl Compiler {
                     self.emit(OpCode::Return);
 
                     // Restore enclosing compiler
-                    let compiled_fn =
-                        std::mem::replace(&mut self.function, CompiledFunction::new(0, None));
+                    let compiled_fn = std::mem::replace(&mut self.function, CompiledFunction::new(0, None));
                     let enclosing = self.enclosing.take().expect("should have enclosing");
                     *self = *enclosing;
 
@@ -1146,10 +1109,7 @@ impl Compiler {
 
                         let left_total_args = left_args.len() + 1;
                         if left_total_args > 255 {
-                            return Err(CompileError::new(
-                                "Too many arguments in composition",
-                                span,
-                            ));
+                            return Err(CompileError::new("Too many arguments in composition", span));
                         }
 
                         // Emit call (builtin or regular)
@@ -1255,10 +1215,7 @@ impl Compiler {
 
                         let left_total_args = left_args.len() + 1;
                         if left_total_args > 255 {
-                            return Err(CompileError::new(
-                                "Too many arguments in composition",
-                                span,
-                            ));
+                            return Err(CompileError::new("Too many arguments in composition", span));
                         }
 
                         if is_left_builtin {
@@ -1331,11 +1288,7 @@ impl Compiler {
     }
 
     /// Helper for composition - load expression or as upvalue
-    fn emit_upvalue_load_or_expression(
-        &mut self,
-        expr: &SpannedExpr,
-        _span: Span,
-    ) -> Result<(), CompileError> {
+    fn emit_upvalue_load_or_expression(&mut self, expr: &SpannedExpr, _span: Span) -> Result<(), CompileError> {
         // For composition, we need to evaluate both operands when the composition
         // is created, then capture them. For now, inline the expressions.
         self.expression(expr)
@@ -1369,8 +1322,7 @@ impl Compiler {
                 // Only check if function itself is a placeholder, or if args are DIRECTLY placeholders.
                 // Don't recurse into args - placeholders inside arg expressions create partials
                 // for those args only, which are consumed by the call.
-                Self::contains_placeholder(function)
-                    || args.iter().any(|arg| matches!(arg.node, Expr::Placeholder))
+                Self::contains_placeholder(function) || args.iter().any(|arg| matches!(arg.node, Expr::Placeholder))
             }
             Expr::Index { collection, index } => {
                 Self::contains_placeholder(collection) || Self::contains_placeholder(index)
@@ -1399,12 +1351,10 @@ impl Compiler {
                 // For infix ops, check if either side is a simple placeholder expr
                 // but NOT for pipeline/compose which have special handling
                 !matches!(op, InfixOp::Pipeline | InfixOp::Compose)
-                    && (Self::is_simple_placeholder_expr(left)
-                        || Self::is_simple_placeholder_expr(right))
+                    && (Self::is_simple_placeholder_expr(left) || Self::is_simple_placeholder_expr(right))
             }
             Expr::Index { collection, index } => {
-                Self::is_simple_placeholder_expr(collection)
-                    || Self::is_simple_placeholder_expr(index)
+                Self::is_simple_placeholder_expr(collection) || Self::is_simple_placeholder_expr(index)
             }
             // Calls are NOT simple placeholder expressions - they have their own handling
             Expr::Call { .. } => false,
@@ -1418,20 +1368,13 @@ impl Compiler {
         match &expr.node {
             Expr::Placeholder => 1,
             Expr::Prefix { right, .. } => Self::count_placeholders(right),
-            Expr::Infix { left, right, .. } => {
-                Self::count_placeholders(left) + Self::count_placeholders(right)
-            }
-            Expr::InfixCall { left, right, .. } => {
-                Self::count_placeholders(left) + Self::count_placeholders(right)
-            }
+            Expr::Infix { left, right, .. } => Self::count_placeholders(left) + Self::count_placeholders(right),
+            Expr::InfixCall { left, right, .. } => Self::count_placeholders(left) + Self::count_placeholders(right),
             Expr::List(elems) => elems.iter().map(Self::count_placeholders).sum(),
             Expr::Call { function, args } => {
-                Self::count_placeholders(function)
-                    + args.iter().map(Self::count_placeholders).sum::<usize>()
+                Self::count_placeholders(function) + args.iter().map(Self::count_placeholders).sum::<usize>()
             }
-            Expr::Index { collection, index } => {
-                Self::count_placeholders(collection) + Self::count_placeholders(index)
-            }
+            Expr::Index { collection, index } => Self::count_placeholders(collection) + Self::count_placeholders(index),
             // Do NOT recurse into function bodies
             Expr::Function { .. } => 0,
             _ => 0,
@@ -1518,18 +1461,16 @@ impl Compiler {
         let mut arg_idx = 0;
 
         // Helper to compile an operand with potential placeholder substitution
-        let compile_operand = |compiler: &mut Compiler,
-                               operand: &SpannedExpr,
-                               arg_idx: &mut u8|
-         -> Result<(), CompileError> {
-            if Self::contains_placeholder(operand) {
-                compiler.emit_with_operand(OpCode::GetLocal, *arg_idx);
-                *arg_idx += 1;
-            } else {
-                compiler.expression(operand)?;
-            }
-            Ok(())
-        };
+        let compile_operand =
+            |compiler: &mut Compiler, operand: &SpannedExpr, arg_idx: &mut u8| -> Result<(), CompileError> {
+                if Self::contains_placeholder(operand) {
+                    compiler.emit_with_operand(OpCode::GetLocal, *arg_idx);
+                    *arg_idx += 1;
+                } else {
+                    compiler.expression(operand)?;
+                }
+                Ok(())
+            };
 
         // Handle short-circuit operators specially - they need interleaved compilation with jumps
         match op {
@@ -1593,11 +1534,7 @@ impl Compiler {
     }
 
     /// Compile expression with placeholders replaced by local lookups
-    fn compile_with_placeholders(
-        &mut self,
-        expr: &SpannedExpr,
-        placeholder_idx: &mut u8,
-    ) -> Result<(), CompileError> {
+    fn compile_with_placeholders(&mut self, expr: &SpannedExpr, placeholder_idx: &mut u8) -> Result<(), CompileError> {
         self.current_line = expr.span.line;
 
         match &expr.node {
@@ -1606,9 +1543,7 @@ impl Compiler {
                 *placeholder_idx += 1;
             }
             Expr::Integer(n) => self.emit_constant(Value::Integer(*n))?,
-            Expr::Decimal(n) => {
-                self.emit_constant(Value::Decimal(ordered_float::OrderedFloat(*n)))?
-            }
+            Expr::Decimal(n) => self.emit_constant(Value::Decimal(ordered_float::OrderedFloat(*n)))?,
             Expr::String(s) => self.emit_constant(Value::String(Rc::new(s.clone())))?,
             Expr::Boolean(true) => self.emit(OpCode::True),
             Expr::Boolean(false) => self.emit(OpCode::False),
@@ -1637,12 +1572,7 @@ impl Compiler {
                     }
                     InfixOp::Pipeline => {
                         // Compile pipeline with placeholders supported
-                        self.compile_pipeline_with_placeholders(
-                            left,
-                            right,
-                            expr.span,
-                            placeholder_idx,
-                        )?;
+                        self.compile_pipeline_with_placeholders(left, right, expr.span, placeholder_idx)?;
                     }
                     InfixOp::Compose => {
                         // Compose in partial application is complex - for now, just compile
@@ -1729,10 +1659,7 @@ impl Compiler {
                     self.compile_with_placeholders(elem, placeholder_idx)?;
                 }
                 if elements.len() > 255 {
-                    return Err(CompileError::new(
-                        "Set literal too large (max 255 elements)",
-                        expr.span,
-                    ));
+                    return Err(CompileError::new("Set literal too large (max 255 elements)", expr.span));
                 }
                 self.emit_with_operand(OpCode::MakeSet, elements.len() as u8);
             }
@@ -1743,18 +1670,11 @@ impl Compiler {
                     self.compile_with_placeholders(value, placeholder_idx)?;
                 }
                 if entries.len() > 255 {
-                    return Err(CompileError::new(
-                        "Dict literal too large (max 255 entries)",
-                        expr.span,
-                    ));
+                    return Err(CompileError::new("Dict literal too large (max 255 entries)", expr.span));
                 }
                 self.emit_with_operand(OpCode::MakeDict, entries.len() as u8);
             }
-            Expr::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Expr::Range { start, end, inclusive } => {
                 // Handle range literals with placeholders
                 self.compile_with_placeholders(start, placeholder_idx)?;
                 if let Some(end_expr) = end {
@@ -1770,11 +1690,7 @@ impl Compiler {
                 }
                 self.emit(OpCode::MakeRange);
             }
-            Expr::InfixCall {
-                function,
-                left,
-                right,
-            } => {
+            Expr::InfixCall { function, left, right } => {
                 // Handle infix calls (backtick syntax) with placeholders
                 self.compile_identifier(function, expr.span)?;
                 self.compile_with_placeholders(left, placeholder_idx)?;
@@ -1885,12 +1801,7 @@ impl Compiler {
     }
 
     /// Compile a function expression
-    fn compile_function(
-        &mut self,
-        params: &[Param],
-        body: &SpannedExpr,
-        span: Span,
-    ) -> Result<(), CompileError> {
+    fn compile_function(&mut self, params: &[Param], body: &SpannedExpr, span: Span) -> Result<(), CompileError> {
         if params.len() > 255 {
             return Err(CompileError::new("Too many parameters (max 255)", span));
         }
@@ -1910,12 +1821,7 @@ impl Compiler {
 
         // Create new compiler for function
         let enclosing = std::mem::take(self);
-        *self = Compiler::new_function_with_variadic(
-            None,
-            regular_param_count as u8,
-            is_variadic,
-            enclosing,
-        );
+        *self = Compiler::new_function_with_variadic(None, regular_param_count as u8, is_variadic, enclosing);
 
         // Add parameter locals and compile destructuring if needed
         // Track pattern params and their local slots for deferred destructuring
@@ -1991,12 +1897,7 @@ impl Compiler {
     }
 
     /// Compile a function call
-    fn compile_call(
-        &mut self,
-        function: &SpannedExpr,
-        args: &[SpannedExpr],
-        span: Span,
-    ) -> Result<(), CompileError> {
+    fn compile_call(&mut self, function: &SpannedExpr, args: &[SpannedExpr], span: Span) -> Result<(), CompileError> {
         if args.len() > 255 {
             return Err(CompileError::new("Too many arguments (max 255)", span));
         }
@@ -2050,11 +1951,7 @@ impl Compiler {
         }
 
         // Emit TailCall if in tail position, otherwise Call
-        let opcode = if in_tail {
-            OpCode::TailCall
-        } else {
-            OpCode::Call
-        };
+        let opcode = if in_tail { OpCode::TailCall } else { OpCode::Call };
         self.emit_with_operand(opcode, args.len() as u8);
         Ok(())
     }
@@ -2201,9 +2098,7 @@ impl Compiler {
 
         // Emit global lookup - the runtime will check globals first, allowing
         // user-defined globals to shadow builtins
-        let name_idx = self
-            .chunk()
-            .add_constant(Value::String(Rc::new(name.to_string())));
+        let name_idx = self.chunk().add_constant(Value::String(Rc::new(name.to_string())));
         if name_idx > 255 {
             return Err(CompileError::new("Too many global names", span));
         }
@@ -2213,11 +2108,7 @@ impl Compiler {
 
     /// Compile a builtin function reference as a first-class value
     /// Creates a wrapper closure that calls the builtin
-    fn compile_builtin_as_value(
-        &mut self,
-        builtin_id: BuiltinId,
-        _span: Span,
-    ) -> Result<(), CompileError> {
+    fn compile_builtin_as_value(&mut self, builtin_id: BuiltinId, _span: Span) -> Result<(), CompileError> {
         let (min_arity, max_arity) = builtin_id.arity();
 
         // For variadic builtins, use min_arity as the wrapper's arity
@@ -2353,9 +2244,7 @@ impl Compiler {
         }
 
         // Global assignment
-        let name_idx = self
-            .chunk()
-            .add_constant(Value::String(Rc::new(name.to_string())));
+        let name_idx = self.chunk().add_constant(Value::String(Rc::new(name.to_string())));
         if name_idx > 255 {
             return Err(CompileError::new("Too many global names", span));
         }
@@ -2462,8 +2351,7 @@ impl Compiler {
         }
 
         // Save pre-declaration state for compile_let to use
-        let saved_predeclare_state =
-            std::mem::replace(&mut self.did_predeclare_block, did_predeclare);
+        let saved_predeclare_state = std::mem::replace(&mut self.did_predeclare_block, did_predeclare);
 
         for (i, stmt) in stmts.iter().enumerate() {
             let is_last = i == stmts.len() - 1;
@@ -2571,9 +2459,7 @@ impl Compiler {
                 // Register the global name so it can shadow builtins
                 self.global_names.insert(name.clone());
                 self.expression(value)?;
-                let name_idx = self
-                    .chunk()
-                    .add_constant(Value::String(std::rc::Rc::new(name.clone())));
+                let name_idx = self.chunk().add_constant(Value::String(std::rc::Rc::new(name.clone())));
                 if name_idx > 255 {
                     return Err(CompileError::new("Too many global names", span));
                 }
@@ -2614,12 +2500,7 @@ impl Compiler {
     }
 
     /// Compile pattern binding for let statements
-    fn compile_pattern_binding(
-        &mut self,
-        pattern: &Pattern,
-        mutable: bool,
-        span: Span,
-    ) -> Result<(), CompileError> {
+    fn compile_pattern_binding(&mut self, pattern: &Pattern, mutable: bool, span: Span) -> Result<(), CompileError> {
         let is_global_scope = self.scope_depth == 0;
 
         match pattern {
@@ -2627,9 +2508,7 @@ impl Compiler {
                 if is_global_scope {
                     // Global binding - register and emit SetGlobal (value is on stack)
                     self.global_names.insert(name.clone());
-                    let name_idx = self
-                        .chunk()
-                        .add_constant(Value::String(std::rc::Rc::new(name.clone())));
+                    let name_idx = self.chunk().add_constant(Value::String(std::rc::Rc::new(name.clone())));
                     if name_idx > 255 {
                         return Err(CompileError::new("Too many global names", span));
                     }
@@ -2681,9 +2560,7 @@ impl Compiler {
         let list_slot = (self.locals.len() - 1) as u8;
 
         // Find the rest pattern position if any
-        let rest_pos = patterns
-            .iter()
-            .position(|p| matches!(p, Pattern::RestIdentifier(_)));
+        let rest_pos = patterns.iter().position(|p| matches!(p, Pattern::RestIdentifier(_)));
 
         // For each pattern element, get the list, extract element, and bind
         for (i, pattern) in patterns.iter().enumerate() {
@@ -2707,9 +2584,7 @@ impl Compiler {
                     if is_global_scope {
                         // Global binding - register so it's found before builtins
                         self.global_names.insert(name.clone());
-                        let name_idx = self
-                            .chunk()
-                            .add_constant(Value::String(std::rc::Rc::new(name.clone())));
+                        let name_idx = self.chunk().add_constant(Value::String(std::rc::Rc::new(name.clone())));
                         if name_idx > 255 {
                             return Err(CompileError::new("Too many global names", span));
                         }
@@ -2744,9 +2619,7 @@ impl Compiler {
                     if is_global_scope {
                         // Global binding - register so it's found before builtins
                         self.global_names.insert(name.clone());
-                        let name_idx = self
-                            .chunk()
-                            .add_constant(Value::String(std::rc::Rc::new(name.clone())));
+                        let name_idx = self.chunk().add_constant(Value::String(std::rc::Rc::new(name.clone())));
                         if name_idx > 255 {
                             return Err(CompileError::new("Too many global names", span));
                         }
@@ -2848,19 +2721,11 @@ impl Compiler {
                 }
                 Pattern::List(nested_patterns) => {
                     // Recursively handle nested list patterns
-                    self.compile_nested_pattern_destructuring(
-                        nested_patterns,
-                        param_idx,
-                        &current_path,
-                        span,
-                    )?;
+                    self.compile_nested_pattern_destructuring(nested_patterns, param_idx, &current_path, span)?;
                 }
                 _ => {
                     return Err(CompileError::new(
-                        format!(
-                            "Pattern type {:?} not supported in function parameters",
-                            elem_pattern
-                        ),
+                        format!("Pattern type {:?} not supported in function parameters", elem_pattern),
                         span,
                     ));
                 }
@@ -2870,11 +2735,7 @@ impl Compiler {
     }
 
     /// Emit code to access a nested element via a sequence of indices
-    fn emit_nested_access(
-        &mut self,
-        param_idx: u8,
-        index_path: &[usize],
-    ) -> Result<(), CompileError> {
+    fn emit_nested_access(&mut self, param_idx: u8, index_path: &[usize]) -> Result<(), CompileError> {
         // Get the parameter
         self.emit_with_operand(OpCode::GetLocal, param_idx);
         // Apply each index in the path
@@ -2886,12 +2747,7 @@ impl Compiler {
     }
 
     /// Compile a match expression
-    fn compile_match(
-        &mut self,
-        subject: &SpannedExpr,
-        arms: &[MatchArm],
-        _span: Span,
-    ) -> Result<(), CompileError> {
+    fn compile_match(&mut self, subject: &SpannedExpr, arms: &[MatchArm], _span: Span) -> Result<(), CompileError> {
         // Save and clear tail position for subject
         let in_tail = self.in_tail_position;
         self.in_tail_position = false;
@@ -3019,11 +2875,7 @@ impl Compiler {
     }
 
     /// Compile pattern test - returns jump offset for failure case
-    fn compile_pattern_test(
-        &mut self,
-        pattern: &Pattern,
-        span: Span,
-    ) -> Result<Option<usize>, CompileError> {
+    fn compile_pattern_test(&mut self, pattern: &Pattern, span: Span) -> Result<Option<usize>, CompileError> {
         match pattern {
             Pattern::Wildcard => {
                 // Always matches, no test needed
@@ -3050,9 +2902,7 @@ impl Compiler {
                     LiteralPattern::Decimal(n) => {
                         self.emit_constant(Value::Decimal(ordered_float::OrderedFloat(*n)))?
                     }
-                    LiteralPattern::String(s) => {
-                        self.emit_constant(Value::String(Rc::new(s.clone())))?
-                    }
+                    LiteralPattern::String(s) => self.emit_constant(Value::String(Rc::new(s.clone())))?,
                     LiteralPattern::Boolean(b) => {
                         if *b {
                             self.emit(OpCode::True)
@@ -3068,11 +2918,7 @@ impl Compiler {
                 self.emit(OpCode::Pop);
                 Ok(Some(fail_jump))
             }
-            Pattern::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Pattern::Range { start, end, inclusive } => {
                 // Dup subject, emit RangeCheck instruction
                 self.emit(OpCode::Dup);
                 self.emit(OpCode::RangeCheck);
@@ -3100,11 +2946,7 @@ impl Compiler {
 
     /// Compile list pattern test
     #[allow(clippy::only_used_in_recursion)]
-    fn compile_list_pattern_test(
-        &mut self,
-        patterns: &[Pattern],
-        span: Span,
-    ) -> Result<Option<usize>, CompileError> {
+    fn compile_list_pattern_test(&mut self, patterns: &[Pattern], span: Span) -> Result<Option<usize>, CompileError> {
         // The subject (list) is on top of stack. We need to register it as a temporary
         // local so we can access it by index while binding other elements.
         let subject_local_idx = self.locals.len() as u8;
@@ -3120,14 +2962,8 @@ impl Compiler {
         let mut bound_values: usize = 0;
 
         // Check size first (unless there's a rest pattern)
-        let has_rest = patterns
-            .iter()
-            .any(|p| matches!(p, Pattern::RestIdentifier(_)));
-        let required_len = if has_rest {
-            patterns.len() - 1
-        } else {
-            patterns.len()
-        };
+        let has_rest = patterns.iter().any(|p| matches!(p, Pattern::RestIdentifier(_)));
+        let required_len = if has_rest { patterns.len() - 1 } else { patterns.len() };
 
         // Get subject and check size
         self.emit_with_operand(OpCode::GetLocal, subject_local_idx);
@@ -3143,9 +2979,7 @@ impl Compiler {
         self.emit(OpCode::Pop);
 
         // Extract and bind each element
-        let rest_pos = patterns
-            .iter()
-            .position(|p| matches!(p, Pattern::RestIdentifier(_)));
+        let rest_pos = patterns.iter().position(|p| matches!(p, Pattern::RestIdentifier(_)));
 
         for (i, pattern) in patterns.iter().enumerate() {
             match pattern {
@@ -3184,9 +3018,7 @@ impl Compiler {
                         LiteralPattern::Decimal(n) => {
                             self.emit_constant(Value::Decimal(ordered_float::OrderedFloat(*n)))?
                         }
-                        LiteralPattern::String(s) => {
-                            self.emit_constant(Value::String(Rc::new(s.clone())))?
-                        }
+                        LiteralPattern::String(s) => self.emit_constant(Value::String(Rc::new(s.clone())))?,
                         LiteralPattern::Boolean(b) => {
                             if *b {
                                 self.emit(OpCode::True)
@@ -3198,8 +3030,7 @@ impl Compiler {
                     }
                     self.emit(OpCode::Eq);
                     // If not equal, fail - collect jump with bound count for cleanup
-                    conditional_fail_jumps
-                        .push((self.emit_jump(OpCode::JumpIfFalse), bound_values));
+                    conditional_fail_jumps.push((self.emit_jump(OpCode::JumpIfFalse), bound_values));
                     self.emit(OpCode::Pop);
                     // Continue processing remaining patterns (don't return early!)
                 }
@@ -3226,11 +3057,7 @@ impl Compiler {
                         self.patch_jump(success_jump);
                     }
                 }
-                Pattern::Range {
-                    start,
-                    end,
-                    inclusive,
-                } => {
+                Pattern::Range { start, end, inclusive } => {
                     // Extract element and do range check
                     self.emit_with_operand(OpCode::GetLocal, subject_local_idx);
                     let idx = self.calc_pattern_index(i, rest_pos, patterns.len());
@@ -3248,8 +3075,7 @@ impl Compiler {
                     // Write inclusive flag
                     self.chunk().write_operand(if *inclusive { 1 } else { 0 });
                     // If not in range, fail - collect jump with bound count for cleanup
-                    conditional_fail_jumps
-                        .push((self.emit_jump(OpCode::JumpIfFalse), bound_values));
+                    conditional_fail_jumps.push((self.emit_jump(OpCode::JumpIfFalse), bound_values));
                     self.emit(OpCode::Pop);
                 }
             }
@@ -3263,10 +3089,7 @@ impl Compiler {
 
         if total_fails == 0 {
             Ok(None)
-        } else if total_fails == 1
-            && unconditional_fail_jumps.is_empty()
-            && conditional_fail_jumps[0].1 == 0
-        {
+        } else if total_fails == 1 && unconditional_fail_jumps.is_empty() && conditional_fail_jumps[0].1 == 0 {
             // Single conditional failure with no bound values - let caller handle the pop
             Ok(Some(conditional_fail_jumps[0].0))
         } else {
@@ -3405,9 +3228,7 @@ impl Compiler {
     fn end_scope(&mut self) {
         // Count how many locals to pop
         let mut count = 0;
-        while !self.locals.is_empty()
-            && self.locals.last().map(|l| l.depth).unwrap_or(0) > self.scope_depth - 1
-        {
+        while !self.locals.is_empty() && self.locals.last().map(|l| l.depth).unwrap_or(0) > self.scope_depth - 1 {
             self.locals.pop();
             count += 1;
         }
@@ -3428,8 +3249,7 @@ impl Compiler {
         match expr {
             Expr::Function { .. } => true,
             Expr::Call { function, args } => {
-                Self::contains_function(&function.node)
-                    || args.iter().any(|arg| Self::contains_function(&arg.node))
+                Self::contains_function(&function.node) || args.iter().any(|arg| Self::contains_function(&arg.node))
             }
             Expr::InfixCall { left, right, .. } => {
                 Self::contains_function(&left.node) || Self::contains_function(&right.node)
@@ -3450,9 +3270,7 @@ impl Compiler {
                         .map(|e| Self::contains_function(&e.node))
                         .unwrap_or(false)
             }
-            Expr::List(items) | Expr::Set(items) => {
-                items.iter().any(|item| Self::contains_function(&item.node))
-            }
+            Expr::List(items) | Expr::Set(items) => items.iter().any(|item| Self::contains_function(&item.node)),
             Expr::Dict(pairs) => pairs
                 .iter()
                 .any(|(k, v)| Self::contains_function(&k.node) || Self::contains_function(&v.node)),

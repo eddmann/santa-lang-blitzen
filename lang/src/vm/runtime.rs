@@ -57,10 +57,7 @@ impl RuntimeError {
 
     /// Add a stack frame to the trace
     pub fn add_frame(&mut self, function_name: Option<String>, line: u32) {
-        self.stack_trace.push(StackFrame {
-            function_name,
-            line,
-        });
+        self.stack_trace.push(StackFrame { function_name, line });
     }
 }
 
@@ -151,8 +148,7 @@ impl VM {
     where
         F: Fn(&[Value], &VM) -> Result<Value, RuntimeError> + 'static,
     {
-        self.externals
-            .insert(name.to_string(), Rc::new(Box::new(func)));
+        self.externals.insert(name.to_string(), Rc::new(Box::new(func)));
     }
 
     /// Get a reference to the globals map (for external functions like env())
@@ -197,30 +193,19 @@ impl VM {
 
         // Register all binary operators as global function values
         // Arithmetic operators
-        self.globals
-            .insert("+".to_string(), create_binop(OpCode::Add, "+"));
-        self.globals
-            .insert("-".to_string(), create_binop(OpCode::Sub, "-"));
-        self.globals
-            .insert("*".to_string(), create_binop(OpCode::Mul, "*"));
-        self.globals
-            .insert("/".to_string(), create_binop(OpCode::Div, "/"));
-        self.globals
-            .insert("%".to_string(), create_binop(OpCode::Mod, "%"));
+        self.globals.insert("+".to_string(), create_binop(OpCode::Add, "+"));
+        self.globals.insert("-".to_string(), create_binop(OpCode::Sub, "-"));
+        self.globals.insert("*".to_string(), create_binop(OpCode::Mul, "*"));
+        self.globals.insert("/".to_string(), create_binop(OpCode::Div, "/"));
+        self.globals.insert("%".to_string(), create_binop(OpCode::Mod, "%"));
 
         // Comparison operators
-        self.globals
-            .insert("<".to_string(), create_binop(OpCode::Lt, "<"));
-        self.globals
-            .insert(">".to_string(), create_binop(OpCode::Gt, ">"));
-        self.globals
-            .insert("<=".to_string(), create_binop(OpCode::Le, "<="));
-        self.globals
-            .insert(">=".to_string(), create_binop(OpCode::Ge, ">="));
-        self.globals
-            .insert("==".to_string(), create_binop(OpCode::Eq, "=="));
-        self.globals
-            .insert("!=".to_string(), create_binop(OpCode::Ne, "!="));
+        self.globals.insert("<".to_string(), create_binop(OpCode::Lt, "<"));
+        self.globals.insert(">".to_string(), create_binop(OpCode::Gt, ">"));
+        self.globals.insert("<=".to_string(), create_binop(OpCode::Le, "<="));
+        self.globals.insert(">=".to_string(), create_binop(OpCode::Ge, ">="));
+        self.globals.insert("==".to_string(), create_binop(OpCode::Eq, "=="));
+        self.globals.insert("!=".to_string(), create_binop(OpCode::Ne, "!="));
     }
 
     /// Run a compiled function
@@ -390,8 +375,7 @@ impl VM {
                                     Value::String(s) => {
                                         use unicode_segmentation::UnicodeSegmentation;
                                         for g in s.graphemes(true) {
-                                            elements
-                                                .push_back(Value::String(Rc::new(g.to_string())));
+                                            elements.push_back(Value::String(Rc::new(g.to_string())));
                                         }
                                     }
                                     Value::Set(set) => {
@@ -399,27 +383,20 @@ impl VM {
                                             elements.push_back(item.clone());
                                         }
                                     }
-                                    Value::Range {
-                                        start,
-                                        end,
-                                        inclusive,
-                                    } => {
+                                    Value::Range { start, end, inclusive } => {
                                         if let Some(end_val) = end {
-                                            let actual_end =
-                                                if inclusive { end_val + 1 } else { end_val };
+                                            let actual_end = if inclusive { end_val + 1 } else { end_val };
                                             for n in start..actual_end {
                                                 elements.push_back(Value::Integer(n));
                                             }
                                         } else {
-                                            return Err(self
-                                                .error("Cannot spread unbounded range into list"));
+                                            return Err(self.error("Cannot spread unbounded range into list"));
                                         }
                                     }
                                     other => {
-                                        return Err(self.error(format!(
-                                            "Cannot spread {} into list",
-                                            other.type_name()
-                                        )));
+                                        return Err(
+                                            self.error(format!("Cannot spread {} into list", other.type_name()))
+                                        );
                                     }
                                 }
                             }
@@ -462,27 +439,18 @@ impl VM {
                                             elements.insert(Value::String(Rc::new(g.to_string())));
                                         }
                                     }
-                                    Value::Range {
-                                        start,
-                                        end,
-                                        inclusive,
-                                    } => {
+                                    Value::Range { start, end, inclusive } => {
                                         if let Some(end_val) = end {
-                                            let actual_end =
-                                                if inclusive { end_val + 1 } else { end_val };
+                                            let actual_end = if inclusive { end_val + 1 } else { end_val };
                                             for n in start..actual_end {
                                                 elements.insert(Value::Integer(n));
                                             }
                                         } else {
-                                            return Err(self
-                                                .error("Cannot spread unbounded range into set"));
+                                            return Err(self.error("Cannot spread unbounded range into set"));
                                         }
                                     }
                                     other => {
-                                        return Err(self.error(format!(
-                                            "Cannot spread {} into set",
-                                            other.type_name()
-                                        )));
+                                        return Err(self.error(format!("Cannot spread {} into set", other.type_name())));
                                     }
                                 }
                             }
@@ -545,11 +513,7 @@ impl VM {
                         _ => return Err(self.error("Range inclusive flag must be a boolean")),
                     };
 
-                    self.push(Value::Range {
-                        start,
-                        end,
-                        inclusive,
-                    });
+                    self.push(Value::Range { start, end, inclusive });
                 }
                 Ok(OpCode::Index) => self.index_op()?,
                 Ok(OpCode::Slice) => self.slice_op()?,
@@ -564,9 +528,7 @@ impl VM {
                         Value::Set(s) => s.len() as i64,
                         Value::Dict(d) => d.len() as i64,
                         _ => {
-                            return Err(
-                                self.error(format!("Cannot get size of {}", value.type_name()))
-                            );
+                            return Err(self.error(format!("Cannot get size of {}", value.type_name())));
                         }
                     };
                     self.push(Value::Integer(size));
@@ -600,14 +562,11 @@ impl VM {
                     for upvalue_desc in &function.upvalues {
                         if upvalue_desc.is_local {
                             // Capture from current frame's locals
-                            let slot =
-                                self.current_frame().stack_base + upvalue_desc.index as usize;
+                            let slot = self.current_frame().stack_base + upvalue_desc.index as usize;
                             upvalues.push(self.capture_upvalue(slot));
                         } else {
                             // Capture from enclosing closure's upvalues
-                            let upvalue = self.current_frame().closure.upvalues
-                                [upvalue_desc.index as usize]
-                                .clone();
+                            let upvalue = self.current_frame().closure.upvalues[upvalue_desc.index as usize].clone();
                             upvalues.push(upvalue);
                         }
                     }
@@ -756,28 +715,19 @@ impl VM {
                                             args.push(item.clone());
                                         }
                                     }
-                                    Value::Range {
-                                        start,
-                                        end,
-                                        inclusive,
-                                    } => {
+                                    Value::Range { start, end, inclusive } => {
                                         if let Some(end_val) = end {
-                                            let actual_end =
-                                                if inclusive { end_val + 1 } else { end_val };
+                                            let actual_end = if inclusive { end_val + 1 } else { end_val };
                                             for n in start..actual_end {
                                                 args.push(Value::Integer(n));
                                             }
                                         } else {
-                                            return Err(self.error(
-                                                "Cannot spread unbounded range into builtin call",
-                                            ));
+                                            return Err(self.error("Cannot spread unbounded range into builtin call"));
                                         }
                                     }
                                     other => {
-                                        return Err(self.error(format!(
-                                            "Cannot spread {} into builtin call",
-                                            other.type_name()
-                                        )));
+                                        return Err(self
+                                            .error(format!("Cannot spread {} into builtin call", other.type_name())));
                                     }
                                 }
                             }
@@ -911,27 +861,18 @@ impl VM {
                                 expanded_args.push(item.clone());
                             }
                         }
-                        Value::Range {
-                            start,
-                            end,
-                            inclusive,
-                        } => {
+                        Value::Range { start, end, inclusive } => {
                             if let Some(end_val) = end {
                                 let actual_end = if inclusive { end_val + 1 } else { end_val };
                                 for n in start..actual_end {
                                     expanded_args.push(Value::Integer(n));
                                 }
                             } else {
-                                return Err(
-                                    self.error("Cannot spread unbounded range into function call")
-                                );
+                                return Err(self.error("Cannot spread unbounded range into function call"));
                             }
                         }
                         other => {
-                            return Err(self.error(format!(
-                                "Cannot spread {} into function call",
-                                other.type_name()
-                            )));
+                            return Err(self.error(format!("Cannot spread {} into function call", other.type_name())));
                         }
                     }
                 }
@@ -989,10 +930,7 @@ impl VM {
                 let mut result = x.clone();
                 for elem in y.iter() {
                     if !elem.is_hashable() {
-                        return Err(self.error(format!(
-                            "Cannot add {} to set (not hashable)",
-                            elem.type_name()
-                        )));
+                        return Err(self.error(format!("Cannot add {} to set (not hashable)", elem.type_name())));
                     }
                     result.insert(elem.clone());
                 }
@@ -1005,10 +943,7 @@ impl VM {
                 let mut seq_clone = seq.borrow().clone();
                 while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
                     if !elem.is_hashable() {
-                        return Err(self.error(format!(
-                            "Cannot add {} to set (not hashable)",
-                            elem.type_name()
-                        )));
+                        return Err(self.error(format!("Cannot add {} to set (not hashable)", elem.type_name())));
                     }
                     result.insert(elem);
                 }
@@ -1049,11 +984,7 @@ impl VM {
             }
 
             _ => {
-                return Err(self.error(format!(
-                    "Cannot add {} and {}",
-                    a.type_name(),
-                    b.type_name()
-                )));
+                return Err(self.error(format!("Cannot add {} and {}", a.type_name(), b.type_name())));
             }
         };
 
@@ -1088,11 +1019,7 @@ impl VM {
             }
 
             _ => {
-                return Err(self.error(format!(
-                    "Cannot subtract {} from {}",
-                    b.type_name(),
-                    a.type_name()
-                )));
+                return Err(self.error(format!("Cannot subtract {} from {}", b.type_name(), a.type_name())));
             }
         };
 
@@ -1137,11 +1064,7 @@ impl VM {
             }
 
             _ => {
-                return Err(self.error(format!(
-                    "Cannot multiply {} by {}",
-                    a.type_name(),
-                    b.type_name()
-                )));
+                return Err(self.error(format!("Cannot multiply {} by {}", a.type_name(), b.type_name())));
             }
         };
 
@@ -1162,11 +1085,7 @@ impl VM {
                 }
                 let d = x / y;
                 let r = x % y;
-                let result = if (r != 0) && ((r < 0) != (*y < 0)) {
-                    d - 1
-                } else {
-                    d
-                };
+                let result = if (r != 0) && ((r < 0) != (*y < 0)) { d - 1 } else { d };
                 Value::Integer(result)
             }
             // Mixed and decimal division
@@ -1190,11 +1109,7 @@ impl VM {
             }
 
             _ => {
-                return Err(self.error(format!(
-                    "Cannot divide {} by {}",
-                    a.type_name(),
-                    b.type_name()
-                )));
+                return Err(self.error(format!("Cannot divide {} by {}", a.type_name(), b.type_name())));
             }
         };
 
@@ -1273,11 +1188,7 @@ impl VM {
             (Value::Decimal(x), Value::Decimal(y)) => x.0 < y.0,
             (Value::String(x), Value::String(y)) => x.as_str() < y.as_str(),
             _ => {
-                return Err(self.error(format!(
-                    "Cannot compare {} < {}",
-                    a.type_name(),
-                    b.type_name()
-                )));
+                return Err(self.error(format!("Cannot compare {} < {}", a.type_name(), b.type_name())));
             }
         };
 
@@ -1296,11 +1207,7 @@ impl VM {
             (Value::Decimal(x), Value::Decimal(y)) => x.0 <= y.0,
             (Value::String(x), Value::String(y)) => x.as_str() <= y.as_str(),
             _ => {
-                return Err(self.error(format!(
-                    "Cannot compare {} <= {}",
-                    a.type_name(),
-                    b.type_name()
-                )));
+                return Err(self.error(format!("Cannot compare {} <= {}", a.type_name(), b.type_name())));
             }
         };
 
@@ -1319,11 +1226,7 @@ impl VM {
             (Value::Decimal(x), Value::Decimal(y)) => x.0 > y.0,
             (Value::String(x), Value::String(y)) => x.as_str() > y.as_str(),
             _ => {
-                return Err(self.error(format!(
-                    "Cannot compare {} > {}",
-                    a.type_name(),
-                    b.type_name()
-                )));
+                return Err(self.error(format!("Cannot compare {} > {}", a.type_name(), b.type_name())));
             }
         };
 
@@ -1342,11 +1245,7 @@ impl VM {
             (Value::Decimal(x), Value::Decimal(y)) => x.0 >= y.0,
             (Value::String(x), Value::String(y)) => x.as_str() >= y.as_str(),
             _ => {
-                return Err(self.error(format!(
-                    "Cannot compare {} >= {}",
-                    a.type_name(),
-                    b.type_name()
-                )));
+                return Err(self.error(format!("Cannot compare {} >= {}", a.type_name(), b.type_name())));
             }
         };
 
@@ -1384,14 +1283,7 @@ impl VM {
             }
 
             // List indexing with Range
-            (
-                Value::List(list),
-                Value::Range {
-                    start,
-                    end,
-                    inclusive,
-                },
-            ) => {
+            (Value::List(list), Value::Range { start, end, inclusive }) => {
                 let len = list.len() as i64;
                 let actual_start = if *start < 0 {
                     (len + start).max(0)
@@ -1402,11 +1294,7 @@ impl VM {
                 let actual_end = match end {
                     None => list.len(),
                     Some(e) => {
-                        let idx = if *e < 0 {
-                            (len + e).max(0)
-                        } else {
-                            (*e).min(len)
-                        };
+                        let idx = if *e < 0 { (len + e).max(0) } else { (*e).min(len) };
                         if *inclusive {
                             (idx + 1).min(len) as usize
                         } else {
@@ -1423,14 +1311,7 @@ impl VM {
             }
 
             // String indexing with Range
-            (
-                Value::String(s),
-                Value::Range {
-                    start,
-                    end,
-                    inclusive,
-                },
-            ) => {
+            (Value::String(s), Value::Range { start, end, inclusive }) => {
                 use unicode_segmentation::UnicodeSegmentation;
                 let graphemes: Vec<&str> = s.graphemes(true).collect();
                 let len = graphemes.len() as i64;
@@ -1443,11 +1324,7 @@ impl VM {
                 let actual_end = match end {
                     None => graphemes.len(),
                     Some(e) => {
-                        let idx = if *e < 0 {
-                            (len + e).max(0)
-                        } else {
-                            (*e).min(len)
-                        };
+                        let idx = if *e < 0 { (len + e).max(0) } else { (*e).min(len) };
                         if *inclusive {
                             (idx + 1).min(len) as usize
                         } else {
@@ -1477,14 +1354,7 @@ impl VM {
 
             // Range indexing with Integer
             // Note: Negative indices are not supported for ranges (return nil)
-            (
-                Value::Range {
-                    start,
-                    end,
-                    inclusive,
-                },
-                Value::Integer(idx),
-            ) => {
+            (Value::Range { start, end, inclusive }, Value::Integer(idx)) => {
                 // Negative indices not supported for ranges
                 if *idx < 0 {
                     Value::Nil
@@ -1546,11 +1416,7 @@ impl VM {
                 let actual_end = match &end {
                     Value::Nil => list.len(),
                     Value::Integer(n) => {
-                        let idx = if *n < 0 {
-                            (len + n).max(0)
-                        } else {
-                            (*n).min(len)
-                        };
+                        let idx = if *n < 0 { (len + n).max(0) } else { (*n).min(len) };
                         idx as usize
                     }
                     _ => return Err(self.error("Slice end must be an integer or nil")),
@@ -1576,11 +1442,7 @@ impl VM {
                 let actual_end = match &end {
                     Value::Nil => graphemes.len(),
                     Value::Integer(n) => {
-                        let idx = if *n < 0 {
-                            (len + n).max(0)
-                        } else {
-                            (*n).min(len)
-                        };
+                        let idx = if *n < 0 { (len + n).max(0) } else { (*n).min(len) };
                         idx as usize
                     }
                     _ => return Err(self.error("Slice end must be an integer or nil")),
@@ -1624,10 +1486,11 @@ impl VM {
                 }
 
                 // Call external function
-                let external =
-                    self.externals.get(&name).cloned().ok_or_else(|| {
-                        self.error(format!("External function '{}' not found", name))
-                    })?;
+                let external = self
+                    .externals
+                    .get(&name)
+                    .cloned()
+                    .ok_or_else(|| self.error(format!("External function '{}' not found", name)))?;
 
                 let result = external(&args, self)?;
 
@@ -1743,8 +1606,7 @@ impl VM {
         // Remove the function from stack, keep args
         self.stack.remove(stack_base);
 
-        self.frames
-            .push(CallFrame::new(closure, self.stack.len() - final_argc));
+        self.frames.push(CallFrame::new(closure, self.stack.len() - final_argc));
         Ok(())
     }
 
@@ -1778,10 +1640,7 @@ impl VM {
         }
 
         if total_args > arity && !is_variadic {
-            return Err(self.error(format!(
-                "Expected {} arguments but got {}",
-                arity, total_args
-            )));
+            return Err(self.error(format!("Expected {} arguments but got {}", arity, total_args)));
         }
 
         if self.frames.len() >= 256 {
@@ -1868,8 +1727,7 @@ impl VM {
         }
 
         // Remove closed upvalues from the list
-        self.open_upvalues
-            .retain(|u| matches!(&*u.borrow(), Upvalue::Open(_)));
+        self.open_upvalues.retain(|u| matches!(&*u.borrow(), Upvalue::Open(_)));
     }
 
     /// Define a global variable (for external use)
@@ -1894,12 +1752,7 @@ impl VM {
     // - take on LazySequence: iterates sequences that may contain closures
 
     /// Execute a callback-based builtin function
-    fn call_callback_builtin(
-        &mut self,
-        id: BuiltinId,
-        args: &[Value],
-        line: u32,
-    ) -> Result<Value, RuntimeError> {
+    fn call_callback_builtin(&mut self, id: BuiltinId, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
         match id {
             BuiltinId::Map => self.builtin_map(args, line),
             BuiltinId::Filter => self.builtin_filter(args, line),
@@ -1942,11 +1795,7 @@ impl VM {
     }
 
     /// Call a closure with arguments and return the result
-    fn call_closure_sync(
-        &mut self,
-        closure: &Rc<Closure>,
-        args: Vec<Value>,
-    ) -> Result<Value, RuntimeError> {
+    fn call_closure_sync(&mut self, closure: &Rc<Closure>, args: Vec<Value>) -> Result<Value, RuntimeError> {
         let arity = closure.function.arity as usize;
 
         // Handle arity mismatch by padding with nil or truncating
@@ -1976,8 +1825,7 @@ impl VM {
         let return_depth = self.frames.len();
 
         let stack_base = self.stack.len() - arity;
-        self.frames
-            .push(CallFrame::new(closure.clone(), stack_base));
+        self.frames.push(CallFrame::new(closure.clone(), stack_base));
 
         // Execute until we return to current depth
         match self.execute_until(return_depth) {
@@ -2002,20 +1850,14 @@ impl VM {
     fn callable_arity(&self, callable: &Value) -> usize {
         match callable {
             Value::Function(c) => c.function.arity as usize,
-            Value::PartialApplication { closure, args } => {
-                (closure.function.arity as usize).saturating_sub(args.len())
-            }
+            Value::PartialApplication { closure, args } => (closure.function.arity as usize).saturating_sub(args.len()),
             Value::MemoizedFunction(m) => m.borrow().closure.function.arity as usize,
             _ => 0,
         }
     }
 
     /// Call any callable value (Function, PartialApplication, or MemoizedFunction) with arguments
-    fn call_callable_sync(
-        &mut self,
-        callable: &Value,
-        args: Vec<Value>,
-    ) -> Result<Value, RuntimeError> {
+    fn call_callable_sync(&mut self, callable: &Value, args: Vec<Value>) -> Result<Value, RuntimeError> {
         match callable {
             Value::Function(closure) => self.call_closure_sync(closure, args),
             Value::PartialApplication {
@@ -2044,10 +1886,7 @@ impl VM {
                 let result = self.call_closure_sync(&closure, args)?;
 
                 // Store in cache
-                memoized_fn
-                    .borrow_mut()
-                    .cache
-                    .insert(args_key, result.clone());
+                memoized_fn.borrow_mut().cache.insert(args_key, result.clone());
 
                 Ok(result)
             }
@@ -2056,10 +1895,7 @@ impl VM {
     }
 
     /// Get the next element from a lazy sequence, handling callbacks
-    fn lazy_seq_next_with_callback(
-        &mut self,
-        seq: &mut LazySeq,
-    ) -> Result<Option<Value>, RuntimeError> {
+    fn lazy_seq_next_with_callback(&mut self, seq: &mut LazySeq) -> Result<Option<Value>, RuntimeError> {
         match seq {
             LazySeq::Range {
                 current,
@@ -2127,11 +1963,7 @@ impl VM {
                 *current = next;
                 Ok(Some(result))
             }
-            LazySeq::Combinations {
-                source,
-                size,
-                indices,
-            } => {
+            LazySeq::Combinations { source, size, indices } => {
                 if indices.is_empty() || source.is_empty() || *size == 0 {
                     return Ok(None);
                 }
@@ -2140,8 +1972,7 @@ impl VM {
                     return Ok(None);
                 }
 
-                let combination: Vector<Value> =
-                    indices.iter().map(|&i| source[i].clone()).collect();
+                let combination: Vector<Value> = indices.iter().map(|&i| source[i].clone()).collect();
 
                 // Advance indices
                 let n = source.len();
@@ -2162,15 +1993,13 @@ impl VM {
 
                 Ok(Some(Value::List(combination)))
             }
-            LazySeq::Map { source, mapper } => {
-                match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
-                    Some(value) => {
-                        let mapped = self.call_callable_sync(mapper, vec![value])?;
-                        Ok(Some(mapped))
-                    }
-                    None => Ok(None),
+            LazySeq::Map { source, mapper } => match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
+                Some(value) => {
+                    let mapped = self.call_callable_sync(mapper, vec![value])?;
+                    Ok(Some(mapped))
                 }
-            }
+                None => Ok(None),
+            },
             LazySeq::Filter { source, predicate } => loop {
                 match self.lazy_seq_next_with_callback(&mut source.borrow_mut())? {
                     Some(value) => {
@@ -2223,9 +2052,7 @@ impl VM {
                                 // Exhausted this list, clear and get next from source
                             }
                             FlatMapInner::LazySeq(inner_seq) => {
-                                match self
-                                    .lazy_seq_next_with_callback(&mut inner_seq.borrow_mut())?
-                                {
+                                match self.lazy_seq_next_with_callback(&mut inner_seq.borrow_mut())? {
                                     Some(value) => return Ok(Some(value)),
                                     None => {
                                         // Exhausted this lazy seq, clear and get next from source
@@ -2246,8 +2073,7 @@ impl VM {
                                     if items.is_empty() {
                                         continue; // Skip empty lists
                                     }
-                                    *current_inner =
-                                        Some(Box::new(FlatMapInner::List { items, index: 0 }));
+                                    *current_inner = Some(Box::new(FlatMapInner::List { items, index: 0 }));
                                 }
                                 Value::LazySequence(seq) => {
                                     *current_inner = Some(Box::new(FlatMapInner::LazySeq(seq)));
@@ -2309,15 +2135,9 @@ impl VM {
         let collection = &args[1];
 
         // Validate mapper is callable
-        if !matches!(
-            mapper,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(mapper, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
-                format!(
-                    "map expects Function as first argument, got {}",
-                    mapper.type_name()
-                ),
+                format!("map expects Function as first argument, got {}", mapper.type_name()),
                 line,
             ));
         }
@@ -2383,11 +2203,7 @@ impl VM {
                 }
                 Ok(Value::List(result))
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 // Both bounded and unbounded ranges stay lazy
                 // Supports both Function and PartialApplication
                 let step = match end {
@@ -2425,10 +2241,7 @@ impl VM {
         let collection = &args[1];
 
         // Validate predicate is callable
-        if !matches!(
-            predicate,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(predicate, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
                 format!(
                     "filter expects Function as first argument, got {}",
@@ -2499,38 +2312,30 @@ impl VM {
                 }
                 Ok(Value::List(result))
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 // Range filters to LazySequence
                 // Supports both Function and PartialApplication
                 let step = match end {
                     Some(e) if *e < *start => -1,
                     _ => 1,
                 };
-                Ok(Value::LazySequence(Rc::new(RefCell::new(
-                    LazySeq::Filter {
-                        source: Rc::new(RefCell::new(LazySeq::Range {
-                            current: *start,
-                            end: *end,
-                            inclusive: *inclusive,
-                            step,
-                        })),
-                        predicate: predicate.clone(),
-                    },
-                ))))
+                Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Filter {
+                    source: Rc::new(RefCell::new(LazySeq::Range {
+                        current: *start,
+                        end: *end,
+                        inclusive: *inclusive,
+                        step,
+                    })),
+                    predicate: predicate.clone(),
+                }))))
             }
             Value::LazySequence(lazy_seq) => {
                 // Wrap in LazySeq::Filter for lazy composition
                 // Supports both Function and PartialApplication
-                Ok(Value::LazySequence(Rc::new(RefCell::new(
-                    LazySeq::Filter {
-                        source: lazy_seq.clone(),
-                        predicate: predicate.clone(),
-                    },
-                ))))
+                Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Filter {
+                    source: lazy_seq.clone(),
+                    predicate: predicate.clone(),
+                }))))
             }
             _ => Err(RuntimeError::new(
                 format!("filter does not support {}", collection.type_name()),
@@ -2545,10 +2350,7 @@ impl VM {
         let mapper = &args[0];
         let collection = &args[1];
 
-        if !matches!(
-            mapper,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(mapper, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
                 format!(
                     "flat_map expects Function as first argument, got {}",
@@ -2563,10 +2365,7 @@ impl VM {
         let mut result = Vector::new();
 
         // Helper to flatten a mapped result into the result vector
-        let flatten_mapped = |result: &mut Vector<Value>,
-                              mapped: Value,
-                              vm: &mut Self|
-         -> Result<(), RuntimeError> {
+        let flatten_mapped = |result: &mut Vector<Value>, mapped: Value, vm: &mut Self| -> Result<(), RuntimeError> {
             match mapped {
                 Value::List(inner) => {
                     for item in inner.iter() {
@@ -2601,37 +2400,29 @@ impl VM {
             Value::LazySequence(seq) => {
                 // Return lazy FlatMap sequence
                 // Supports both Function and PartialApplication
-                return Ok(Value::LazySequence(Rc::new(RefCell::new(
-                    LazySeq::FlatMap {
-                        source: seq.clone(),
-                        mapper: mapper.clone(),
-                        current_inner: None,
-                    },
-                ))));
+                return Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::FlatMap {
+                    source: seq.clone(),
+                    mapper: mapper.clone(),
+                    current_inner: None,
+                }))));
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 // Convert Range to LazySeq::Range and wrap in FlatMap
                 // Supports both Function and PartialApplication
                 let step = match end {
                     Some(e) if start > e => -1,
                     _ => 1,
                 };
-                return Ok(Value::LazySequence(Rc::new(RefCell::new(
-                    LazySeq::FlatMap {
-                        source: Rc::new(RefCell::new(LazySeq::Range {
-                            current: *start,
-                            end: *end,
-                            inclusive: *inclusive,
-                            step,
-                        })),
-                        mapper: mapper.clone(),
-                        current_inner: None,
-                    },
-                ))));
+                return Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::FlatMap {
+                    source: Rc::new(RefCell::new(LazySeq::Range {
+                        current: *start,
+                        end: *end,
+                        inclusive: *inclusive,
+                        step,
+                    })),
+                    mapper: mapper.clone(),
+                    current_inner: None,
+                }))));
             }
             _ => {
                 return Err(RuntimeError::new(
@@ -2649,10 +2440,7 @@ impl VM {
         let mapper = &args[0];
         let collection = &args[1];
 
-        if !matches!(
-            mapper,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(mapper, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
                 format!(
                     "filter_map expects Function as first argument, got {}",
@@ -2728,28 +2516,22 @@ impl VM {
                 }
                 Ok(Value::List(result))
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 // Convert Range to LazySeq::Range and wrap in FilterMap
                 // Supports both Function and PartialApplication
                 let step = match end {
                     Some(e) if start > e => -1,
                     _ => 1,
                 };
-                Ok(Value::LazySequence(Rc::new(RefCell::new(
-                    LazySeq::FilterMap {
-                        source: Rc::new(RefCell::new(LazySeq::Range {
-                            current: *start,
-                            end: *end,
-                            inclusive: *inclusive,
-                            step,
-                        })),
-                        mapper: mapper.clone(),
-                    },
-                ))))
+                Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::FilterMap {
+                    source: Rc::new(RefCell::new(LazySeq::Range {
+                        current: *start,
+                        end: *end,
+                        inclusive: *inclusive,
+                        step,
+                    })),
+                    mapper: mapper.clone(),
+                }))))
             }
             Value::LazySequence(seq) => {
                 // Return a lazy FilterMap sequence instead of eagerly consuming
@@ -2772,10 +2554,7 @@ impl VM {
         let mapper = &args[0];
         let collection = &args[1];
 
-        if !matches!(
-            mapper,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(mapper, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
                 format!(
                     "find_map expects Function as first argument, got {}",
@@ -2841,11 +2620,7 @@ impl VM {
                 }
                 Ok(Value::Nil)
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 match end {
                     Some(e) => {
                         let actual_end = if *inclusive { *e } else { e - 1 };
@@ -2855,8 +2630,7 @@ impl VM {
                             Box::new((actual_end..=*start).rev())
                         };
                         for i in range_iter {
-                            let mapped =
-                                self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
+                            let mapped = self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
                             if mapped.is_truthy() {
                                 return Ok(mapped);
                             }
@@ -2867,8 +2641,7 @@ impl VM {
                         // Unbounded range - keep searching until found
                         let mut i = *start;
                         loop {
-                            let mapped =
-                                self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
+                            let mapped = self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
                             if mapped.is_truthy() {
                                 return Ok(mapped);
                             }
@@ -2907,15 +2680,9 @@ impl VM {
         let reducer = &args[0];
         let collection = &args[1];
 
-        if !matches!(
-            reducer,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(reducer, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
-                format!(
-                    "reduce expects Function as first argument, got {}",
-                    reducer.type_name()
-                ),
+                format!("reduce expects Function as first argument, got {}", reducer.type_name()),
                 line,
             ));
         }
@@ -2979,11 +2746,7 @@ impl VM {
                 }
                 Ok(acc)
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => match end {
+            Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
                     let actual_end = if *inclusive { *e } else { e - 1 };
                     if start > &actual_end {
@@ -2991,9 +2754,7 @@ impl VM {
                     }
                     let mut acc = Value::Integer(*start);
                     for i in (start + 1)..=actual_end {
-                        match self
-                            .call_callable_sync(&reducer, vec![acc.clone(), Value::Integer(i)])
-                        {
+                        match self.call_callable_sync(&reducer, vec![acc.clone(), Value::Integer(i)]) {
                             Ok(v) => acc = v,
                             Err(e) if e.is_break => {
                                 return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -3008,9 +2769,7 @@ impl VM {
                     let mut acc = Value::Integer(*start);
                     let mut i = *start + 1;
                     loop {
-                        match self
-                            .call_callable_sync(&reducer, vec![acc.clone(), Value::Integer(i)])
-                        {
+                        match self.call_callable_sync(&reducer, vec![acc.clone(), Value::Integer(i)]) {
                             Ok(v) => acc = v,
                             Err(e) if e.is_break => {
                                 return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -3033,15 +2792,13 @@ impl VM {
                 loop {
                     let next = self.lazy_seq_next_with_callback(&mut seq_clone)?;
                     match next {
-                        Some(elem) => {
-                            match self.call_callable_sync(&reducer, vec![acc.clone(), elem]) {
-                                Ok(v) => acc = v,
-                                Err(e) if e.is_break => {
-                                    return Ok(e.break_value.unwrap_or(Value::Nil));
-                                }
-                                Err(e) => return Err(e),
+                        Some(elem) => match self.call_callable_sync(&reducer, vec![acc.clone(), elem]) {
+                            Ok(v) => acc = v,
+                            Err(e) if e.is_break => {
+                                return Ok(e.break_value.unwrap_or(Value::Nil));
                             }
-                        }
+                            Err(e) => return Err(e),
+                        },
                         None => break,
                     }
                 }
@@ -3061,15 +2818,9 @@ impl VM {
         let collection = &args[2];
 
         // Validate folder is callable
-        if !matches!(
-            folder,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(folder, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
-                format!(
-                    "fold expects Function as second argument, got {}",
-                    folder.type_name()
-                ),
+                format!("fold expects Function as second argument, got {}", folder.type_name()),
                 line,
             ));
         }
@@ -3143,11 +2894,7 @@ impl VM {
                 }
                 Ok(acc)
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 match end {
                     Some(e) => {
                         // For non-inclusive ranges, if start >= end, the range is empty
@@ -3157,10 +2904,7 @@ impl VM {
                         let actual_end = if *inclusive { *e } else { e - 1 };
                         if start <= &actual_end {
                             for i in *start..=actual_end {
-                                match self.call_callable_sync(
-                                    &folder,
-                                    vec![acc.clone(), Value::Integer(i)],
-                                ) {
+                                match self.call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)]) {
                                     Ok(v) => acc = v,
                                     Err(e) if e.is_break => {
                                         return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -3172,10 +2916,7 @@ impl VM {
                             // Descending range
                             let mut i = *start;
                             while i >= actual_end {
-                                match self.call_callable_sync(
-                                    &folder,
-                                    vec![acc.clone(), Value::Integer(i)],
-                                ) {
+                                match self.call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)]) {
                                     Ok(v) => acc = v,
                                     Err(e) if e.is_break => {
                                         return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -3191,9 +2932,7 @@ impl VM {
                         // Unbounded range - must use break to terminate
                         let mut i = *start;
                         loop {
-                            match self
-                                .call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)])
-                            {
+                            match self.call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)]) {
                                 Ok(v) => acc = v,
                                 Err(e) if e.is_break => {
                                     return Ok(e.break_value.unwrap_or(Value::Nil));
@@ -3232,15 +2971,9 @@ impl VM {
         let folder = &args[1];
         let collection = &args[2];
 
-        if !matches!(
-            folder,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(folder, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
-                format!(
-                    "fold_s expects Function as second argument, got {}",
-                    folder.type_name()
-                ),
+                format!("fold_s expects Function as second argument, got {}", folder.type_name()),
                 line,
             ));
         }
@@ -3254,11 +2987,7 @@ impl VM {
                     acc = self.call_callable_sync(&folder, vec![acc, elem.clone()])?;
                 }
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => match end {
+            Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
                     let actual_end = if *inclusive { *e } else { e - 1 };
                     if start <= &actual_end {
@@ -3273,10 +3002,7 @@ impl VM {
                     }
                 }
                 None => {
-                    return Err(RuntimeError::new(
-                        "fold_s on unbounded range requires break",
-                        line,
-                    ));
+                    return Err(RuntimeError::new("fold_s on unbounded range requires break", line));
                 }
             },
             Value::LazySequence(seq) => {
@@ -3306,15 +3032,9 @@ impl VM {
         let folder = &args[1];
         let collection = &args[2];
 
-        if !matches!(
-            folder,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(folder, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
-                format!(
-                    "scan expects Function as second argument, got {}",
-                    folder.type_name()
-                ),
+                format!("scan expects Function as second argument, got {}", folder.type_name()),
                 line,
             ));
         }
@@ -3366,11 +3086,7 @@ impl VM {
                     results.push_back(acc.clone());
                 }
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 // Convert Range to LazySeq::Range and wrap in Scan
                 // Supports both Function and PartialApplication
                 let step = match end {
@@ -3421,10 +3137,7 @@ impl VM {
         let side_effect = &args[0];
         let collection = &args[1];
 
-        if !matches!(
-            side_effect,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(side_effect, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
                 format!(
                     "each expects Function as first argument, got {}",
@@ -3474,18 +3187,13 @@ impl VM {
                     self.call_callable_sync(&side_effect, call_args)?;
                 }
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 match end {
                     Some(e) => {
                         let actual_end = if *inclusive { *e } else { e - 1 };
                         if start <= &actual_end {
                             for i in *start..=actual_end {
-                                match self.call_callable_sync(&side_effect, vec![Value::Integer(i)])
-                                {
+                                match self.call_callable_sync(&side_effect, vec![Value::Integer(i)]) {
                                     Ok(_) => {}
                                     Err(e) if e.is_break => return Ok(Value::Nil),
                                     Err(e) => return Err(e),
@@ -3495,8 +3203,7 @@ impl VM {
                             // Descending range
                             let mut i = *start;
                             while i >= actual_end {
-                                match self.call_callable_sync(&side_effect, vec![Value::Integer(i)])
-                                {
+                                match self.call_callable_sync(&side_effect, vec![Value::Integer(i)]) {
                                     Ok(_) => {}
                                     Err(e) if e.is_break => return Ok(Value::Nil),
                                     Err(e) => return Err(e),
@@ -3550,10 +3257,7 @@ impl VM {
         let updater = &args[1];
         let collection = &args[2];
 
-        if !matches!(
-            updater,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(updater, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
                 format!(
                     "update expects Function as second argument, got {}",
@@ -3598,10 +3302,7 @@ impl VM {
                 None => Ok(collection.clone()),
             },
             _ => Err(RuntimeError::new(
-                format!(
-                    "update expects List or Dictionary, got {}",
-                    collection.type_name()
-                ),
+                format!("update expects List or Dictionary, got {}", collection.type_name()),
                 line,
             )),
         }
@@ -3614,10 +3315,7 @@ impl VM {
         let updater = &args[2];
         let collection = &args[3];
 
-        if !matches!(
-            updater,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(updater, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
                 format!(
                     "update_d expects Function as third argument, got {}",
@@ -3638,10 +3336,7 @@ impl VM {
                 Ok(Value::Dict(result))
             }
             _ => Err(RuntimeError::new(
-                format!(
-                    "update_d expects Dictionary, got {}",
-                    collection.type_name()
-                ),
+                format!("update_d expects Dictionary, got {}", collection.type_name()),
                 line,
             )),
         }
@@ -3656,15 +3351,9 @@ impl VM {
         let predicate = &args[0];
         let collection = &args[1];
 
-        if !matches!(
-            predicate,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(predicate, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
-                format!(
-                    "find expects Function as first argument, got {}",
-                    predicate.type_name()
-                ),
+                format!("find expects Function as first argument, got {}", predicate.type_name()),
                 line,
             ));
         }
@@ -3726,11 +3415,7 @@ impl VM {
                 }
                 Ok(Value::Nil)
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => match end {
+            Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
                     let actual_end = if *inclusive { *e } else { e - 1 };
                     if start <= &actual_end {
@@ -3793,10 +3478,7 @@ impl VM {
         let predicate = &args[0];
         let collection = &args[1];
 
-        if !matches!(
-            predicate,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(predicate, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
                 format!(
                     "count expects Function as first argument, got {}",
@@ -3845,17 +3527,12 @@ impl VM {
                     }
                 }
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => match end {
+            Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
                     let actual_end = if *inclusive { *e } else { e - 1 };
                     if start <= &actual_end {
                         for i in *start..=actual_end {
-                            let result =
-                                self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
+                            let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
                             if result.is_truthy() {
                                 count += 1;
                             }
@@ -3863,8 +3540,7 @@ impl VM {
                     } else {
                         let mut i = *start;
                         while i >= actual_end {
-                            let result =
-                                self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
+                            let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
                             if result.is_truthy() {
                                 count += 1;
                             }
@@ -3873,10 +3549,7 @@ impl VM {
                     }
                 }
                 None => {
-                    return Err(RuntimeError::new(
-                        "count on unbounded range may not terminate",
-                        line,
-                    ));
+                    return Err(RuntimeError::new("count on unbounded range may not terminate", line));
                 }
             },
             Value::String(s) => {
@@ -3910,10 +3583,7 @@ impl VM {
         let collection = &args[1];
 
         // Validate comparator is callable
-        if !matches!(
-            comparator,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(comparator, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
                 format!(
                     "sort expects Function as first argument, got {}",
@@ -3928,11 +3598,7 @@ impl VM {
         let mut elements: Vec<Value> = match collection {
             Value::List(list) => list.iter().cloned().collect(),
             Value::Set(set) => set.iter().cloned().collect(),
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => match end {
+            Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
                     let actual_end = if *inclusive { *e } else { e - 1 };
                     if start <= &actual_end {
@@ -3966,8 +3632,7 @@ impl VM {
             let key = elements[i].clone();
             let mut j = i;
             while j > 0 {
-                let cmp_result = self
-                    .call_callable_sync(&comparator, vec![elements[j - 1].clone(), key.clone()])?;
+                let cmp_result = self.call_callable_sync(&comparator, vec![elements[j - 1].clone(), key.clone()])?;
                 let should_swap = match cmp_result {
                     Value::Integer(n) => n > 0,
                     Value::Boolean(b) => b, // Treat true as "should swap"
@@ -3994,15 +3659,9 @@ impl VM {
         let predicate = &args[0];
         let collection = &args[1];
 
-        if !matches!(
-            predicate,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(predicate, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
-                format!(
-                    "any? expects Function as first argument, got {}",
-                    predicate.type_name()
-                ),
+                format!("any? expects Function as first argument, got {}", predicate.type_name()),
                 line,
             ));
         }
@@ -4064,17 +3723,12 @@ impl VM {
                 }
                 Ok(Value::Boolean(false))
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => match end {
+            Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
                     let actual_end = if *inclusive { *e } else { e - 1 };
                     if start <= &actual_end {
                         for i in *start..=actual_end {
-                            let result =
-                                self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
+                            let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
                             if result.is_truthy() {
                                 return Ok(Value::Boolean(true));
                             }
@@ -4082,8 +3736,7 @@ impl VM {
                     } else {
                         let mut i = *start;
                         while i >= actual_end {
-                            let result =
-                                self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
+                            let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
                             if result.is_truthy() {
                                 return Ok(Value::Boolean(true));
                             }
@@ -4092,10 +3745,7 @@ impl VM {
                     }
                     Ok(Value::Boolean(false))
                 }
-                None => Err(RuntimeError::new(
-                    "any? on unbounded range may not terminate",
-                    line,
-                )),
+                None => Err(RuntimeError::new("any? on unbounded range may not terminate", line)),
             },
             Value::LazySequence(seq) => {
                 let mut seq_clone = seq.borrow().clone();
@@ -4123,15 +3773,9 @@ impl VM {
         let predicate = &args[0];
         let collection = &args[1];
 
-        if !matches!(
-            predicate,
-            Value::Function(_) | Value::PartialApplication { .. }
-        ) {
+        if !matches!(predicate, Value::Function(_) | Value::PartialApplication { .. }) {
             return Err(RuntimeError::new(
-                format!(
-                    "all? expects Function as first argument, got {}",
-                    predicate.type_name()
-                ),
+                format!("all? expects Function as first argument, got {}", predicate.type_name()),
                 line,
             ));
         }
@@ -4193,17 +3837,12 @@ impl VM {
                 }
                 Ok(Value::Boolean(true))
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => match end {
+            Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
                     let actual_end = if *inclusive { *e } else { e - 1 };
                     if start <= &actual_end {
                         for i in *start..=actual_end {
-                            let result =
-                                self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
+                            let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
                             if !result.is_truthy() {
                                 return Ok(Value::Boolean(false));
                             }
@@ -4211,8 +3850,7 @@ impl VM {
                     } else {
                         let mut i = *start;
                         while i >= actual_end {
-                            let result =
-                                self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
+                            let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
                             if !result.is_truthy() {
                                 return Ok(Value::Boolean(false));
                             }
@@ -4221,10 +3859,7 @@ impl VM {
                     }
                     Ok(Value::Boolean(true))
                 }
-                None => Err(RuntimeError::new(
-                    "all? on unbounded range may not terminate",
-                    line,
-                )),
+                None => Err(RuntimeError::new("all? on unbounded range may not terminate", line)),
             },
             Value::LazySequence(seq) => {
                 let mut seq_clone = seq.borrow().clone();
@@ -4274,12 +3909,10 @@ impl VM {
             ));
         }
 
-        Ok(Value::LazySequence(Rc::new(RefCell::new(
-            LazySeq::Iterate {
-                generator: generator.clone(),
-                current: initial.clone(),
-            },
-        ))))
+        Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Iterate {
+            generator: generator.clone(),
+            current: initial.clone(),
+        }))))
     }
 
     // =========================================================================
@@ -4308,11 +3941,7 @@ impl VM {
                 Ok(Value::List(list.clone().slice(0..count)))
             }
             Value::Set(set) => Ok(Value::List(set.iter().take(n).cloned().collect())),
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 // Materialize to List (eager, like reference implementation)
                 let mut result = Vector::new();
                 let step: i64 = match end {
@@ -4370,11 +3999,7 @@ impl VM {
                         Ok(list[actual_idx as usize].clone())
                     }
                 }
-                Value::Range {
-                    start,
-                    end,
-                    inclusive,
-                } => {
+                Value::Range { start, end, inclusive } => {
                     let len = list.len() as i64;
                     let actual_start = if *start < 0 {
                         (len + start).max(0)
@@ -4385,11 +4010,7 @@ impl VM {
                     let actual_end = match end {
                         None => list.len(),
                         Some(e) => {
-                            let idx = if *e < 0 {
-                                (len + e).max(0)
-                            } else {
-                                (*e).min(len)
-                            };
+                            let idx = if *e < 0 { (len + e).max(0) } else { (*e).min(len) };
                             if *inclusive {
                                 (idx + 1).min(len) as usize
                             } else {
@@ -4405,10 +4026,7 @@ impl VM {
                     }
                 }
                 _ => Err(RuntimeError::new(
-                    format!(
-                        "List index must be Integer or Range, got {}",
-                        index.type_name()
-                    ),
+                    format!("List index must be Integer or Range, got {}", index.type_name()),
                     line,
                 )),
             },
@@ -4428,16 +4046,10 @@ impl VM {
                     if actual_idx < 0 || actual_idx >= len {
                         Ok(Value::Nil)
                     } else {
-                        Ok(Value::String(Rc::new(
-                            graphemes[actual_idx as usize].to_string(),
-                        )))
+                        Ok(Value::String(Rc::new(graphemes[actual_idx as usize].to_string())))
                     }
                 }
-                Value::Range {
-                    start,
-                    end,
-                    inclusive,
-                } => {
+                Value::Range { start, end, inclusive } => {
                     let graphemes: Vec<&str> = s.graphemes(true).collect();
                     let len = graphemes.len() as i64;
                     let actual_start = if *start < 0 {
@@ -4449,11 +4061,7 @@ impl VM {
                     let actual_end = match end {
                         None => graphemes.len(),
                         Some(e) => {
-                            let idx = if *e < 0 {
-                                (len + e).max(0)
-                            } else {
-                                (*e).min(len)
-                            };
+                            let idx = if *e < 0 { (len + e).max(0) } else { (*e).min(len) };
                             if *inclusive {
                                 (idx + 1).min(len) as usize
                             } else {
@@ -4465,24 +4073,15 @@ impl VM {
                     if actual_start >= actual_end {
                         Ok(Value::String(Rc::new(String::new())))
                     } else {
-                        Ok(Value::String(Rc::new(
-                            graphemes[actual_start..actual_end].join(""),
-                        )))
+                        Ok(Value::String(Rc::new(graphemes[actual_start..actual_end].join(""))))
                     }
                 }
                 _ => Err(RuntimeError::new(
-                    format!(
-                        "String index must be Integer or Range, got {}",
-                        index.type_name()
-                    ),
+                    format!("String index must be Integer or Range, got {}", index.type_name()),
                     line,
                 )),
             },
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => match index {
+            Value::Range { start, end, inclusive } => match index {
                 Value::Integer(idx) => {
                     if *idx < 0 {
                         match end {
@@ -4500,10 +4099,7 @@ impl VM {
                                     Ok(Value::Integer(start + actual_idx * step))
                                 }
                             }
-                            None => Err(RuntimeError::new(
-                                "Cannot use negative index on unbounded range",
-                                line,
-                            )),
+                            None => Err(RuntimeError::new("Cannot use negative index on unbounded range", line)),
                         }
                     } else {
                         if let Some(e) = end {
@@ -4531,10 +4127,7 @@ impl VM {
             Value::LazySequence(seq) => match index {
                 Value::Integer(idx) => {
                     if *idx < 0 {
-                        return Err(RuntimeError::new(
-                            "Cannot use negative index on lazy sequence",
-                            line,
-                        ));
+                        return Err(RuntimeError::new("Cannot use negative index on lazy sequence", line));
                     }
                     // Consume idx elements to get to the requested index
                     let mut seq_clone = seq.borrow().clone();
@@ -4550,10 +4143,7 @@ impl VM {
                     }
                 }
                 _ => Err(RuntimeError::new(
-                    format!(
-                        "LazySequence index must be Integer, got {}",
-                        index.type_name()
-                    ),
+                    format!("LazySequence index must be Integer, got {}", index.type_name()),
                     line,
                 )),
             },
@@ -4606,11 +4196,7 @@ impl VM {
                 .nth(1)
                 .map(|g| Value::String(Rc::new(g.to_string())))
                 .unwrap_or(Value::Nil)),
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 let step = match end {
                     Some(e) if *e < *start => -1,
                     _ => 1,
@@ -4659,11 +4245,7 @@ impl VM {
                 .next_back()
                 .map(|g| Value::String(Rc::new(g.to_string())))
                 .unwrap_or(Value::Nil)),
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 match end {
                     Some(e) => {
                         if *inclusive {
@@ -4732,11 +4314,7 @@ impl VM {
                 graphemes.next(); // Skip first
                 Ok(Value::String(Rc::new(graphemes.collect())))
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 let step = match end {
                     Some(e) if *e < *start => -1,
                     _ => 1,
@@ -4855,11 +4433,7 @@ impl VM {
             }
 
             // Range - materialize to list
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => match end {
+            Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
                     let mut result = Vector::new();
                     if start <= e {
@@ -4877,10 +4451,7 @@ impl VM {
                     }
                     Ok(Value::List(result))
                 }
-                None => Err(RuntimeError::new(
-                    "Cannot convert unbounded range to list",
-                    line,
-                )),
+                None => Err(RuntimeError::new("Cannot convert unbounded range to list", line)),
             },
 
             // LazySequence - materialize
@@ -4959,11 +4530,7 @@ impl VM {
             }
 
             // Range - materialize to set
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => match end {
+            Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
                     let mut result = HashSet::new();
                     if start <= e {
@@ -4981,10 +4548,7 @@ impl VM {
                     }
                     Ok(Value::Set(result))
                 }
-                None => Err(RuntimeError::new(
-                    "Cannot convert unbounded range to set",
-                    line,
-                )),
+                None => Err(RuntimeError::new("Cannot convert unbounded range to set", line)),
             },
 
             // LazySequence - materialize
@@ -5016,10 +4580,7 @@ impl VM {
         let collection = &args[0];
 
         // Helper to sum an iterator of values
-        fn sum_values<'a>(
-            iter: impl Iterator<Item = &'a Value>,
-            line: u32,
-        ) -> Result<Value, RuntimeError> {
+        fn sum_values<'a>(iter: impl Iterator<Item = &'a Value>, line: u32) -> Result<Value, RuntimeError> {
             let mut has_decimal = false;
             let mut int_sum: i64 = 0;
             let mut decimal_sum: f64 = 0.0;
@@ -5060,11 +4621,7 @@ impl VM {
             Value::List(list) => sum_values(list.iter(), line),
             Value::Set(set) => sum_values(set.iter(), line),
             Value::Dict(dict) => sum_values(dict.values(), line),
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => match end {
+            Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
                     let actual_end = if *inclusive { *e } else { e - 1 };
                     if *start > actual_end {
@@ -5131,20 +4688,13 @@ impl VM {
             Value::Set(s) => s.len() as i64,
             Value::Dict(d) => d.len() as i64,
             Value::String(s) => s.graphemes(true).count() as i64,
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => match end {
+            Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
                     let diff = (e - start).abs();
                     if *inclusive { diff + 1 } else { diff }
                 }
                 None => {
-                    return Err(RuntimeError::new(
-                        "Cannot get size of unbounded range",
-                        line,
-                    ));
+                    return Err(RuntimeError::new("Cannot get size of unbounded range", line));
                 }
             },
             Value::LazySequence(seq) => {
@@ -5253,11 +4803,7 @@ impl VM {
                     }
                     Ok(max_val.clone())
                 }
-                Value::Range {
-                    start,
-                    end,
-                    inclusive,
-                } => match end {
+                Value::Range { start, end, inclusive } => match end {
                     Some(e) => {
                         let actual_end = if *inclusive { *e } else { e - 1 };
                         if *start > actual_end {
@@ -5265,10 +4811,7 @@ impl VM {
                         }
                         Ok(Value::Integer(actual_end.max(*start)))
                     }
-                    None => Err(RuntimeError::new(
-                        "Cannot find max of unbounded range",
-                        line,
-                    )),
+                    None => Err(RuntimeError::new("Cannot find max of unbounded range", line)),
                 },
                 Value::LazySequence(seq) => {
                     let mut max_val: Option<Value> = None;
@@ -5353,11 +4896,7 @@ impl VM {
                     }
                     Ok(min_val.clone())
                 }
-                Value::Range {
-                    start,
-                    end,
-                    inclusive,
-                } => match end {
+                Value::Range { start, end, inclusive } => match end {
                     Some(e) => {
                         let actual_end = if *inclusive { *e } else { e - 1 };
                         if *start > actual_end {
@@ -5422,20 +4961,14 @@ impl VM {
                     false
                 }
             }
-            Value::Range {
-                start,
-                end,
-                inclusive,
-            } => {
+            Value::Range { start, end, inclusive } => {
                 if let Value::Integer(n) = value {
                     match end {
                         Some(e) => {
                             if *inclusive {
-                                (*start <= *e && *n >= *start && *n <= *e)
-                                    || (*start > *e && *n <= *start && *n >= *e)
+                                (*start <= *e && *n >= *start && *n <= *e) || (*start > *e && *n <= *start && *n >= *e)
                             } else {
-                                (*start <= *e && *n >= *start && *n < *e)
-                                    || (*start > *e && *n <= *start && *n > *e)
+                                (*start <= *e && *n >= *start && *n < *e) || (*start > *e && *n <= *start && *n > *e)
                             }
                         }
                         None => *n >= *start,

@@ -284,8 +284,7 @@ impl Chunk {
                 format!("{offset:04} [{line:4}] Constant {idx} ({value})")
             }
             Ok(OpCode::ConstantLong) => {
-                let idx =
-                    ((self.code[offset + 1] as usize) << 8) | (self.code[offset + 2] as usize);
+                let idx = ((self.code[offset + 1] as usize) << 8) | (self.code[offset + 2] as usize);
                 let value = &self.constants[idx];
                 format!("{offset:04} [{line:4}] ConstantLong {idx} ({value})")
             }
@@ -302,8 +301,7 @@ impl Chunk {
                 let idx = self.code[offset + 1];
                 format!("{offset:04} [{line:4}] {:?} {idx}", op.unwrap())
             }
-            Ok(OpCode::MakeList) | Ok(OpCode::MakeSet) | Ok(OpCode::MakeDict)
-            | Ok(OpCode::PopN) => {
+            Ok(OpCode::MakeList) | Ok(OpCode::MakeSet) | Ok(OpCode::MakeDict) | Ok(OpCode::PopN) => {
                 let count = self.code[offset + 1];
                 format!("{offset:04} [{line:4}] {:?} {count}", op.unwrap())
             }
@@ -331,8 +329,7 @@ impl Chunk {
                 format!("{offset:04} [{line:4}] {:?} -> {target}", op.unwrap())
             }
             Ok(OpCode::CallBuiltin) => {
-                let builtin_id =
-                    ((self.code[offset + 1] as u16) << 8) | (self.code[offset + 2] as u16);
+                let builtin_id = ((self.code[offset + 1] as u16) << 8) | (self.code[offset + 2] as u16);
                 let argc = self.code[offset + 3];
                 format!("{offset:04} [{line:4}] CallBuiltin {builtin_id} ({argc} args)")
             }

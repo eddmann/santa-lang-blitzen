@@ -4,18 +4,17 @@ mod output;
 use lang::{
     error::SantaError,
     lexer::Lexer,
-    parser::{ast::Section, Parser},
+    parser::{Parser, ast::Section},
     runner::AocRunner,
-    vm::{RuntimeError, Value, VM},
+    vm::{RuntimeError, VM, Value},
 };
 use output::{
-    format_error_json, format_script_json, format_solution_json, format_test_json,
-    is_solution_source, CollectedTestInfo, JsonTestPartResult, JsonlPartInitial,
-    JsonlScriptInitial, JsonlSolutionInitial, JsonlTestCaseInitial, JsonlTestInitial, JsonlWriter,
-    OutputMode, TestSummary,
+    CollectedTestInfo, JsonTestPartResult, JsonlPartInitial, JsonlScriptInitial, JsonlSolutionInitial,
+    JsonlTestCaseInitial, JsonlTestInitial, JsonlWriter, OutputMode, TestSummary, format_error_json,
+    format_script_json, format_solution_json, format_test_json, is_solution_source,
 };
-use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
+use rustyline::error::ReadlineError;
 use std::env;
 use std::fs;
 use std::io::{self, Read};
@@ -78,10 +77,7 @@ fn main() {
                         "json" => OutputMode::Json,
                         "jsonl" => OutputMode::Jsonl,
                         other => {
-                            eprintln!(
-                                "Error: Invalid output format '{}'. Use: text, json, jsonl",
-                                other
-                            );
+                            eprintln!("Error: Invalid output format '{}'. Use: text, json, jsonl", other);
                             process::exit(1);
                         }
                     };
@@ -135,11 +131,7 @@ fn main() {
 
     // Start profiler if enabled
     #[cfg(feature = "profile")]
-    let _guard = if profile_mode {
-        Some(start_profiler())
-    } else {
-        None
-    };
+    let _guard = if profile_mode { Some(start_profiler()) } else { None };
 
     let result = if test_mode {
         run_tests_from_source(&source, source_path.as_deref(), include_slow, output_mode)
@@ -196,11 +188,7 @@ fn print_help() {
     println!("    SANTA_CLI_SESSION_TOKEN    AOC session token for aoc:// URLs");
 }
 
-fn run_script_from_source(
-    source: &str,
-    source_path: Option<&str>,
-    output_mode: OutputMode,
-) -> Result<(), ExitCode> {
+fn run_script_from_source(source: &str, source_path: Option<&str>, output_mode: OutputMode) -> Result<(), ExitCode> {
     // Enable console capture for JSON/JSONL modes
     if output_mode != OutputMode::Text {
         external::enable_console_capture();
@@ -256,16 +244,10 @@ fn run_script_text(runner: &mut AocRunner, vm: &mut VM) -> Result<(), ExitCode> 
         match runner.run_solution(vm) {
             Ok(result) => {
                 if let Some((value, duration)) = result.part_one {
-                    println!(
-                        "Part 1: \x1b[32m{}\x1b[0m \x1b[90m{}ms\x1b[0m",
-                        value, duration
-                    );
+                    println!("Part 1: \x1b[32m{}\x1b[0m \x1b[90m{}ms\x1b[0m", value, duration);
                 }
                 if let Some((value, duration)) = result.part_two {
-                    println!(
-                        "Part 2: \x1b[32m{}\x1b[0m \x1b[90m{}ms\x1b[0m",
-                        value, duration
-                    );
+                    println!("Part 2: \x1b[32m{}\x1b[0m \x1b[90m{}ms\x1b[0m", value, duration);
                 }
                 Ok(())
             }
@@ -347,9 +329,7 @@ fn run_script_jsonl(source: &str, runner: &mut AocRunner, vm: &mut VM) -> Result
         };
         writer.write_initial(&initial).ok();
         writer
-            .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
-                "/status", "running",
-            )])
+            .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
             .ok();
 
         match runner.run_solution(vm) {
@@ -365,58 +345,32 @@ fn run_script_jsonl(source: &str, runner: &mut AocRunner, vm: &mut VM) -> Result
 
                 if let Some((value, duration)) = &result.part_one {
                     writer
-                        .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
-                            "/part_one/status",
-                            "running",
-                        )])
+                        .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/part_one/status", "running")])
                         .ok();
                     writer
                         .write_patches(&[
-                            JsonlWriter::<io::Stdout>::replace_patch(
-                                "/part_one/status",
-                                "complete",
-                            ),
-                            JsonlWriter::<io::Stdout>::replace_patch(
-                                "/part_one/value",
-                                value.to_string(),
-                            ),
-                            JsonlWriter::<io::Stdout>::replace_patch(
-                                "/part_one/duration_ms",
-                                *duration as u64,
-                            ),
+                            JsonlWriter::<io::Stdout>::replace_patch("/part_one/status", "complete"),
+                            JsonlWriter::<io::Stdout>::replace_patch("/part_one/value", value.to_string()),
+                            JsonlWriter::<io::Stdout>::replace_patch("/part_one/duration_ms", *duration as u64),
                         ])
                         .ok();
                 }
 
                 if let Some((value, duration)) = &result.part_two {
                     writer
-                        .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
-                            "/part_two/status",
-                            "running",
-                        )])
+                        .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/part_two/status", "running")])
                         .ok();
                     writer
                         .write_patches(&[
-                            JsonlWriter::<io::Stdout>::replace_patch(
-                                "/part_two/status",
-                                "complete",
-                            ),
-                            JsonlWriter::<io::Stdout>::replace_patch(
-                                "/part_two/value",
-                                value.to_string(),
-                            ),
-                            JsonlWriter::<io::Stdout>::replace_patch(
-                                "/part_two/duration_ms",
-                                *duration as u64,
-                            ),
+                            JsonlWriter::<io::Stdout>::replace_patch("/part_two/status", "complete"),
+                            JsonlWriter::<io::Stdout>::replace_patch("/part_two/value", value.to_string()),
+                            JsonlWriter::<io::Stdout>::replace_patch("/part_two/duration_ms", *duration as u64),
                         ])
                         .ok();
                 }
 
                 writer
-                    .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
-                        "/status", "complete",
-                    )])
+                    .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "complete")])
                     .ok();
                 Ok(())
             }
@@ -444,9 +398,7 @@ fn run_script_jsonl(source: &str, runner: &mut AocRunner, vm: &mut VM) -> Result
         };
         writer.write_initial(&initial).ok();
         writer
-            .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
-                "/status", "running",
-            )])
+            .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
             .ok();
 
         let start = Instant::now();
@@ -512,9 +464,7 @@ fn handle_error(error: SantaError, output_mode: OutputMode) -> Result<(), ExitCo
             };
             writer.write_initial(&initial).ok();
             writer
-                .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
-                    "/status", "running",
-                )])
+                .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
                 .ok();
             let error_output = format_error_json(&error);
             writer
@@ -604,11 +554,7 @@ fn run_tests_from_source(
     }
 }
 
-fn run_tests_text(
-    runner: &mut AocRunner,
-    vm_factory: &dyn Fn() -> VM,
-    include_slow: bool,
-) -> Result<(), ExitCode> {
+fn run_tests_text(runner: &mut AocRunner, vm_factory: &dyn Fn() -> VM, include_slow: bool) -> Result<(), ExitCode> {
     match runner.run_tests(vm_factory, include_slow) {
         Ok(test_results) => {
             let mut all_passed = true;
@@ -630,10 +576,7 @@ fn run_tests_text(
                             .as_ref()
                             .map(|v| v.to_string())
                             .unwrap_or_else(|| "N/A".to_string());
-                        println!(
-                            "Part 1: {} \x1b[31m✘ (Expected: {})\x1b[0m",
-                            actual, expected
-                        );
+                        println!("Part 1: {} \x1b[31m✘ (Expected: {})\x1b[0m", actual, expected);
                         all_passed = false;
                     }
                 }
@@ -652,10 +595,7 @@ fn run_tests_text(
                             .as_ref()
                             .map(|v| v.to_string())
                             .unwrap_or_else(|| "N/A".to_string());
-                        println!(
-                            "Part 2: {} \x1b[31m✘ (Expected: {})\x1b[0m",
-                            actual, expected
-                        );
+                        println!("Part 2: {} \x1b[31m✘ (Expected: {})\x1b[0m", actual, expected);
                         all_passed = false;
                     }
                 }
@@ -663,11 +603,7 @@ fn run_tests_text(
                 println!();
             }
 
-            if all_passed {
-                Ok(())
-            } else {
-                Err(ExitCode::TestFailure)
-            }
+            if all_passed { Ok(()) } else { Err(ExitCode::TestFailure) }
         }
         Err(e) => {
             eprintln!("{}", e);
@@ -782,9 +718,7 @@ fn run_tests_jsonl(
     };
     writer.write_initial(&initial).ok();
     writer
-        .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
-            "/status", "running",
-        )])
+        .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
         .ok();
 
     match runner.run_tests(vm_factory, include_slow) {
@@ -811,10 +745,7 @@ fn run_tests_jsonl(
                     skipped += 1;
                     writer
                         .write_patches(&[
-                            JsonlWriter::<io::Stdout>::replace_patch(
-                                &format!("{}/status", path_prefix),
-                                "skipped",
-                            ),
+                            JsonlWriter::<io::Stdout>::replace_patch(&format!("{}/status", path_prefix), "skipped"),
                             JsonlWriter::<io::Stdout>::replace_patch("/summary/skipped", skipped),
                         ])
                         .ok();
@@ -844,58 +775,48 @@ fn run_tests_jsonl(
                         "complete",
                     )];
 
-                    if has_part_one {
-                        if let Some(p1_passed) = result.part_one_passed {
-                            patches.push(JsonlWriter::<io::Stdout>::replace_patch(
-                                &format!("{}/part_one", path_prefix),
-                                JsonTestPartResult {
-                                    passed: p1_passed,
-                                    expected: result
-                                        .part_one_expected
-                                        .as_ref()
-                                        .map(|v| v.to_string())
-                                        .unwrap_or_default(),
-                                    actual: result
-                                        .part_one_actual
-                                        .as_ref()
-                                        .map(|v| v.to_string())
-                                        .unwrap_or_default(),
-                                },
-                            ));
-                        }
+                    if has_part_one && let Some(p1_passed) = result.part_one_passed {
+                        patches.push(JsonlWriter::<io::Stdout>::replace_patch(
+                            &format!("{}/part_one", path_prefix),
+                            JsonTestPartResult {
+                                passed: p1_passed,
+                                expected: result
+                                    .part_one_expected
+                                    .as_ref()
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_default(),
+                                actual: result
+                                    .part_one_actual
+                                    .as_ref()
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_default(),
+                            },
+                        ));
                     }
 
-                    if has_part_two {
-                        if let Some(p2_passed) = result.part_two_passed {
-                            patches.push(JsonlWriter::<io::Stdout>::replace_patch(
-                                &format!("{}/part_two", path_prefix),
-                                JsonTestPartResult {
-                                    passed: p2_passed,
-                                    expected: result
-                                        .part_two_expected
-                                        .as_ref()
-                                        .map(|v| v.to_string())
-                                        .unwrap_or_default(),
-                                    actual: result
-                                        .part_two_actual
-                                        .as_ref()
-                                        .map(|v| v.to_string())
-                                        .unwrap_or_default(),
-                                },
-                            ));
-                        }
+                    if has_part_two && let Some(p2_passed) = result.part_two_passed {
+                        patches.push(JsonlWriter::<io::Stdout>::replace_patch(
+                            &format!("{}/part_two", path_prefix),
+                            JsonTestPartResult {
+                                passed: p2_passed,
+                                expected: result
+                                    .part_two_expected
+                                    .as_ref()
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_default(),
+                                actual: result
+                                    .part_two_actual
+                                    .as_ref()
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_default(),
+                            },
+                        ));
                     }
 
                     if all_passed {
-                        patches.push(JsonlWriter::<io::Stdout>::replace_patch(
-                            "/summary/passed",
-                            passed,
-                        ));
+                        patches.push(JsonlWriter::<io::Stdout>::replace_patch("/summary/passed", passed));
                     } else {
-                        patches.push(JsonlWriter::<io::Stdout>::replace_patch(
-                            "/summary/failed",
-                            failed,
-                        ));
+                        patches.push(JsonlWriter::<io::Stdout>::replace_patch("/summary/failed", failed));
                     }
 
                     writer.write_patches(&patches).ok();
@@ -911,11 +832,7 @@ fn run_tests_jsonl(
                 ])
                 .ok();
 
-            if !success {
-                Err(ExitCode::TestFailure)
-            } else {
-                Ok(())
-            }
+            if !success { Err(ExitCode::TestFailure) } else { Ok(()) }
         }
         Err(e) => {
             let _ = external::disable_console_capture();
@@ -962,9 +879,7 @@ fn handle_test_error(error: SantaError, output_mode: OutputMode) -> Result<(), E
             };
             writer.write_initial(&initial).ok();
             writer
-                .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
-                    "/status", "running",
-                )])
+                .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
                 .ok();
             let error_output = format_error_json(&error);
             writer
@@ -1055,11 +970,9 @@ fn create_vm(session_token: Option<&str>, script_dir: Option<PathBuf>) -> VM {
             ));
         }
         match &args[0] {
-            Value::String(path) => external::builtin_read(
-                path,
-                session_token_for_read.as_deref(),
-                script_dir.as_deref(),
-            ),
+            Value::String(path) => {
+                external::builtin_read(path, session_token_for_read.as_deref(), script_dir.as_deref())
+            }
             _ => Err(RuntimeError::new(
                 format!("read expects String, got {}", args[0].type_name()),
                 0,
@@ -1074,11 +987,7 @@ fn create_vm(session_token: Option<&str>, script_dir: Option<PathBuf>) -> VM {
                 0,
             ));
         }
-        let vars: Vec<_> = vm
-            .globals()
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+        let vars: Vec<_> = vm.globals().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         external::builtin_env(&vars)
     });
 
@@ -1098,11 +1007,8 @@ fn start_profiler() -> pprof::ProfilerGuard<'static> {
 fn stop_profiler(guard: pprof::ProfilerGuard<'static>) {
     if let Ok(report) = guard.report().build() {
         // Write flamegraph
-        let flamegraph_file =
-            File::create("flamegraph.svg").expect("Failed to create flamegraph.svg");
-        report
-            .flamegraph(flamegraph_file)
-            .expect("Failed to write flamegraph");
+        let flamegraph_file = File::create("flamegraph.svg").expect("Failed to create flamegraph.svg");
+        report.flamegraph(flamegraph_file).expect("Failed to write flamegraph");
         eprintln!("Wrote flamegraph.svg");
 
         // Write protobuf profile

@@ -77,12 +77,7 @@ impl SantaError {
         let (line, column, message, kind) = match self {
             SantaError::Lex(err) => (err.line, err.column, &err.message, "Lexical error"),
             SantaError::Parse(err) => (err.span.line, err.span.column, &err.message, "Parse error"),
-            SantaError::Compile(err) => (
-                err.span.line,
-                err.span.column,
-                &err.message,
-                "Compile error",
-            ),
+            SantaError::Compile(err) => (err.span.line, err.span.column, &err.message, "Compile error"),
             SantaError::Runtime(err) => {
                 if err.is_break {
                     return format!("Runtime error at line {}: break outside of loop", err.line);
@@ -150,12 +145,7 @@ impl SantaError {
         let (line, column, message, kind) = match self {
             SantaError::Lex(err) => (err.line, err.column, &err.message, "Lexical error"),
             SantaError::Parse(err) => (err.span.line, err.span.column, &err.message, "Parse error"),
-            SantaError::Compile(err) => (
-                err.span.line,
-                err.span.column,
-                &err.message,
-                "Compile error",
-            ),
+            SantaError::Compile(err) => (err.span.line, err.span.column, &err.message, "Compile error"),
             SantaError::Runtime(err) => {
                 if err.is_break {
                     return format!(
@@ -171,12 +161,7 @@ impl SantaError {
 
         // Error header (red and bold)
         output.push('\n');
-        output.push_str(
-            &format!("{} at line {}", kind, line)
-                .red()
-                .bold()
-                .to_string(),
-        );
+        output.push_str(&format!("{} at line {}", kind, line).red().bold().to_string());
         if column > 0 {
             output.push_str(&format!(", column {}", column).red().bold().to_string());
         }
@@ -194,11 +179,7 @@ impl SantaError {
             let is_error_line = idx == error_line_idx;
 
             if is_error_line {
-                output.push_str(
-                    &format!(" → {:4} | {}\n", line_num, line_content)
-                        .red()
-                        .to_string(),
-                );
+                output.push_str(&format!(" → {:4} | {}\n", line_num, line_content).red().to_string());
 
                 // Add caret pointing to error position
                 if column > 0 {
@@ -208,11 +189,7 @@ impl SantaError {
                     output.push('\n');
                 }
             } else {
-                output.push_str(
-                    &format!("   {:4} | {}\n", line_num, line_content)
-                        .dimmed()
-                        .to_string(),
-                );
+                output.push_str(&format!("   {:4} | {}\n", line_num, line_content).dimmed().to_string());
             }
         }
 

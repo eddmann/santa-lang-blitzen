@@ -1,6 +1,8 @@
 [package]
 name = "lang"
-version = "0.1.0"
+version.workspace = true
+authors.workspace = true
+documentation.workspace = true
 edition = "2024"
 
 [dependencies]

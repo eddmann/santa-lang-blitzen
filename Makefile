@@ -8,22 +8,22 @@ help: ## Display this help message
 ##@ Development
 
 build: ## Build debug binary
-	cargo build -p santa-cli
+	cargo build -p cli
 
 release: ## Build release binary
-	cargo build --release -p santa-cli
+	cargo build --release -p cli
 
 fmt: ## Format code with rustfmt
 	cargo fmt
 
 repl: ## Start interactive REPL
-	cargo run -p santa-cli -- -r
+	cargo run -p cli -- -r
 
 run: ## Run a script (FILE=path/to/script.santa)
-	cargo run -p santa-cli -- $(FILE)
+	cargo run -p cli -- $(FILE)
 
 run-test: ## Run a script in test mode (FILE=path)
-	cargo run -p santa-cli -- -t $(FILE)
+	cargo run -p cli -- -t $(FILE)
 
 ##@ Testing/Linting
 
@@ -36,6 +36,12 @@ lint: ## Run rustfmt check and clippy
 test: ## Run all tests
 	cargo test
 
+test/lang: ## Test lang crate only
+	cargo test -p lang
+
+test/cli: ## Test CLI only
+	cargo test -p cli
+
 ##@ Benchmarking
 
 bench: ## Run criterion benchmarks
@@ -47,13 +53,10 @@ bench/run: ## Run hyperfine benchmarks
 bench/compare: ## Compare results (BASELINE=file CURRENT=file)
 	python3 benchmark/scripts/compare.py $(BASELINE) $(CURRENT)
 
-test-examples: ## Run example test suite
-	./examples/run-tests.sh
-
 ##@ Profiling
 
 profile: ## Run with CPU profiling (FILE=path) - outputs flamegraph.svg
-	cargo build --profile profiling --features profile -p santa-cli
+	cargo build --profile profiling --features profile -p cli
 	./target/profiling/santa-cli -p $(FILE)
 
 ##@ Analysis
@@ -67,19 +70,11 @@ analyze: ## Full analysis (FILE=path) - tests + timing + profile
 	@cargo test -p lang --quiet 2>&1 | tail -5
 	@echo ""
 	@echo "--- TIMING (single run) ---"
-	@cargo build --release -p santa-cli 2>/dev/null
+	@cargo build --release -p cli 2>/dev/null
 	@./target/release/santa-cli $(FILE) 2>&1 | grep -E "(Part|ms|Error)" || true
 	@echo ""
 	@echo "--- PROFILE (generating flamegraph.svg) ---"
-	@cargo build --profile profiling --features profile -p santa-cli 2>/dev/null
+	@cargo build --profile profiling --features profile -p cli 2>/dev/null
 	@./target/profiling/santa-cli -p $(FILE) 2>&1 || true
 	@echo ""
 	@echo "=========================================="
-
-##@ Maintenance
-
-clean: ## Clean build artifacts
-	cargo clean
-
-install: ## Install release binary to ~/.cargo/bin
-	cargo install --path runtime/cli

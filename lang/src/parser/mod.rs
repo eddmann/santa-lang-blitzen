@@ -46,10 +46,7 @@ enum Precedence {
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self {
-            tokens,
-            position: 0,
-        }
+        Self { tokens, position: 0 }
     }
 
     pub fn parse_program(&mut self) -> Result<Program, ParseError> {
@@ -67,10 +64,7 @@ impl Parser {
             }
         }
 
-        Ok(Program {
-            statements,
-            sections,
-        })
+        Ok(Program { statements, sections })
     }
 
     fn check_section(&self) -> bool {
@@ -84,8 +78,7 @@ impl Parser {
             ..
         }) = self.peek()
         {
-            let is_section_name =
-                matches!(name.as_str(), "input" | "part_one" | "part_two" | "test");
+            let is_section_name = matches!(name.as_str(), "input" | "part_one" | "part_two" | "test");
             if is_section_name
                 && matches!(
                     self.peek_next(),
@@ -169,10 +162,7 @@ impl Parser {
                     "input" => Ok(Section::Input(expr)),
                     "part_one" => Ok(Section::PartOne(expr)),
                     "part_two" => Ok(Section::PartTwo(expr)),
-                    _ => Err(ParseError::new(
-                        format!("Unknown section: {name}"),
-                        name_token.span,
-                    )),
+                    _ => Err(ParseError::new(format!("Unknown section: {name}"), name_token.span)),
                 }
             }
         }
@@ -190,12 +180,9 @@ impl Parser {
         // Parse field: expression pairs until we hit }
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             // Parse identifier
-            let field_token = self.advance().ok_or_else(|| {
-                ParseError::new(
-                    "Expected field name in test block".to_string(),
-                    brace_token.span,
-                )
-            })?;
+            let field_token = self
+                .advance()
+                .ok_or_else(|| ParseError::new("Expected field name in test block".to_string(), brace_token.span))?;
 
             let field_name = match &field_token.kind {
                 TokenKind::Identifier(name) => name.clone(),
@@ -262,12 +249,8 @@ impl Parser {
         self.expect(TokenKind::RightBrace)?;
 
         // input is required
-        let input = input_expr.ok_or_else(|| {
-            ParseError::new(
-                "Test block must have an 'input' field".to_string(),
-                brace_token.span,
-            )
-        })?;
+        let input = input_expr
+            .ok_or_else(|| ParseError::new("Test block must have an 'input' field".to_string(), brace_token.span))?;
 
         Ok(Section::Test {
             attributes,
@@ -520,11 +503,7 @@ impl Parser {
         }
     }
 
-    fn parse_infix(
-        &mut self,
-        left: SpannedExpr,
-        precedence: Precedence,
-    ) -> Result<SpannedExpr, ParseError> {
+    fn parse_infix(&mut self, left: SpannedExpr, precedence: Precedence) -> Result<SpannedExpr, ParseError> {
         let token = self.peek().unwrap().clone();
 
         match &token.kind {
@@ -613,10 +592,7 @@ impl Parser {
                         ));
                     }
                     None => {
-                        return Err(ParseError::new(
-                            "Expected identifier after backtick",
-                            left.span,
-                        ));
+                        return Err(ParseError::new("Expected identifier after backtick", left.span));
                     }
                 };
                 self.expect(TokenKind::Backtick)?;
@@ -732,12 +708,9 @@ impl Parser {
 
             // Binary operators
             _ => {
-                let op = self.get_infix_op(&token.kind).ok_or_else(|| {
-                    ParseError::new(
-                        format!("Expected operator, got {:?}", token.kind),
-                        token.span,
-                    )
-                })?;
+                let op = self
+                    .get_infix_op(&token.kind)
+                    .ok_or_else(|| ParseError::new(format!("Expected operator, got {:?}", token.kind), token.span))?;
                 self.advance();
                 let right = self.parse_precedence(precedence)?;
                 let span = Span {
@@ -762,18 +735,14 @@ impl Parser {
         match kind {
             TokenKind::LeftBracket => Precedence::Index,
             TokenKind::LeftParen | TokenKind::Pipe => Precedence::Call,
-            TokenKind::Star | TokenKind::Slash | TokenKind::Percent | TokenKind::Backtick => {
-                Precedence::Product
-            }
+            TokenKind::Star | TokenKind::Slash | TokenKind::Percent | TokenKind::Backtick => Precedence::Product,
             TokenKind::Plus | TokenKind::Minus => Precedence::Sum,
-            TokenKind::PipeGreater
-            | TokenKind::GreaterGreater
-            | TokenKind::DotDot
-            | TokenKind::DotDotEqual => Precedence::Range,
-            TokenKind::Less
-            | TokenKind::LessEqual
-            | TokenKind::Greater
-            | TokenKind::GreaterEqual => Precedence::Comparison,
+            TokenKind::PipeGreater | TokenKind::GreaterGreater | TokenKind::DotDot | TokenKind::DotDotEqual => {
+                Precedence::Range
+            }
+            TokenKind::Less | TokenKind::LessEqual | TokenKind::Greater | TokenKind::GreaterEqual => {
+                Precedence::Comparison
+            }
             TokenKind::EqualEqual | TokenKind::BangEqual => Precedence::Equality,
             TokenKind::Equal => Precedence::Assignment,
             TokenKind::AmpAmp => Precedence::And,
@@ -859,10 +828,7 @@ impl Parser {
 
         // Try to determine if this is a set or block
         // Block indicators: let, return, break, or statement-like structures
-        if self.check(&TokenKind::Let)
-            || self.check(&TokenKind::Return)
-            || self.check(&TokenKind::Break)
-        {
+        if self.check(&TokenKind::Let) || self.check(&TokenKind::Return) || self.check(&TokenKind::Break) {
             return self.parse_block_contents(start_span);
         }
 
@@ -897,11 +863,7 @@ impl Parser {
         self.continue_as_block(start_span, first)
     }
 
-    fn continue_as_set(
-        &mut self,
-        start_span: Span,
-        first: SpannedExpr,
-    ) -> Result<SpannedExpr, ParseError> {
+    fn continue_as_set(&mut self, start_span: Span, first: SpannedExpr) -> Result<SpannedExpr, ParseError> {
         let mut elements = vec![first];
 
         while self.check(&TokenKind::Comma) {
@@ -923,11 +885,7 @@ impl Parser {
         Ok(Spanned::new(Expr::Set(elements), span))
     }
 
-    fn continue_as_block(
-        &mut self,
-        start_span: Span,
-        first: SpannedExpr,
-    ) -> Result<SpannedExpr, ParseError> {
+    fn continue_as_block(&mut self, start_span: Span, first: SpannedExpr) -> Result<SpannedExpr, ParseError> {
         let first_span = first.span;
         let mut statements = vec![Spanned::new(Stmt::Expr(first), first_span)];
 
@@ -992,8 +950,7 @@ impl Parser {
                     let value_expr = Spanned::new(Expr::Identifier(name), span);
                     entries.push((key_expr, value_expr));
                 } else if let Some(Token {
-                    kind: TokenKind::Colon,
-                    ..
+                    kind: TokenKind::Colon, ..
                 }) = self.peek_next()
                 {
                     // Normal key: value syntax
@@ -1052,9 +1009,9 @@ impl Parser {
                     span: param_token.span,
                 },
                 TokenKind::DotDot => {
-                    let rest_name_token = self.advance().ok_or_else(|| {
-                        ParseError::new("Expected identifier after ..", param_token.span)
-                    })?;
+                    let rest_name_token = self
+                        .advance()
+                        .ok_or_else(|| ParseError::new("Expected identifier after ..", param_token.span))?;
                     match &rest_name_token.kind {
                         TokenKind::Identifier(name) => Param {
                             name: ParamKind::Rest(name.clone()),
@@ -1066,10 +1023,7 @@ impl Parser {
                             },
                         },
                         _ => {
-                            return Err(ParseError::new(
-                                "Expected identifier after ..",
-                                rest_name_token.span,
-                            ));
+                            return Err(ParseError::new("Expected identifier after ..", rest_name_token.span));
                         }
                     }
                 }
@@ -1172,10 +1126,7 @@ impl Parser {
                 None
             };
 
-            let end_span = else_branch
-                .as_ref()
-                .map(|e| e.span)
-                .unwrap_or(then_branch.span);
+            let end_span = else_branch.as_ref().map(|e| e.span).unwrap_or(then_branch.span);
             let span = Span {
                 start: start_span.start,
                 end: end_span.end,
@@ -1205,10 +1156,7 @@ impl Parser {
             None
         };
 
-        let end_span = else_branch
-            .as_ref()
-            .map(|e| e.span)
-            .unwrap_or(then_branch.span);
+        let end_span = else_branch.as_ref().map(|e| e.span).unwrap_or(then_branch.span);
         let span = Span {
             start: start_span.start,
             end: end_span.end,
@@ -1330,10 +1278,7 @@ impl Parser {
                     .ok_or_else(|| ParseError::new("Expected identifier after ..", token.span))?;
                 match &name_token.kind {
                     TokenKind::Identifier(name) => Ok(Pattern::RestIdentifier(name.clone())),
-                    _ => Err(ParseError::new(
-                        "Expected identifier after ..",
-                        name_token.span,
-                    )),
+                    _ => Err(ParseError::new("Expected identifier after ..", name_token.span)),
                 }
             }
             TokenKind::Integer(n) => {
@@ -1362,9 +1307,9 @@ impl Parser {
                     });
                 } else if self.check(&TokenKind::DotDotEqual) {
                     self.advance();
-                    let end_token = self.advance().ok_or_else(|| {
-                        ParseError::new("Expected integer in range pattern", span)
-                    })?;
+                    let end_token = self
+                        .advance()
+                        .ok_or_else(|| ParseError::new("Expected integer in range pattern", span))?;
                     match &end_token.kind {
                         TokenKind::Integer(end) => {
                             return Ok(Pattern::Range {
@@ -1374,10 +1319,7 @@ impl Parser {
                             });
                         }
                         _ => {
-                            return Err(ParseError::new(
-                                "Expected integer in range pattern",
-                                end_token.span,
-                            ));
+                            return Err(ParseError::new("Expected integer in range pattern", end_token.span));
                         }
                     }
                 }
@@ -1607,9 +1549,7 @@ impl Parser {
     }
 
     fn is_at_end(&self) -> bool {
-        self.peek()
-            .map(|t| t.kind == TokenKind::Eof)
-            .unwrap_or(true)
+        self.peek().map(|t| t.kind == TokenKind::Eof).unwrap_or(true)
     }
 
     fn expect(&mut self, kind: TokenKind) -> Result<Token, ParseError> {

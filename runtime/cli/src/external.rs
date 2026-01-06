@@ -61,11 +61,7 @@ pub fn builtin_puts(args: &[Value]) -> Result<Value, RuntimeError> {
 
     // Build the message string (space-separated values)
     // Use format_puts_value to avoid quotes around strings
-    let output = args
-        .iter()
-        .map(format_puts_value)
-        .collect::<Vec<_>>()
-        .join(" ");
+    let output = args.iter().map(format_puts_value).collect::<Vec<_>>().join(" ");
 
     // Check if we should capture or print
     let captured = CONSOLE_BUFFER.with(|buf| {
@@ -88,11 +84,7 @@ pub fn builtin_puts(args: &[Value]) -> Result<Value, RuntimeError> {
     Ok(Value::Nil)
 }
 
-pub fn builtin_read(
-    path: &str,
-    session_token: Option<&str>,
-    script_dir: Option<&Path>,
-) -> Result<Value, RuntimeError> {
+pub fn builtin_read(path: &str, session_token: Option<&str>, script_dir: Option<&Path>) -> Result<Value, RuntimeError> {
     if path.starts_with("aoc://") {
         read_aoc_input(path, session_token, script_dir)
     } else if path.starts_with("http://") || path.starts_with("https://") {
@@ -117,18 +109,11 @@ fn read_url(url: &str) -> Result<Value, RuntimeError> {
         .map_err(|e| RuntimeError::new(format!("Failed to read URL response: {}", e), 0))
 }
 
-fn read_aoc_input(
-    url: &str,
-    session_token: Option<&str>,
-    script_dir: Option<&Path>,
-) -> Result<Value, RuntimeError> {
+fn read_aoc_input(url: &str, session_token: Option<&str>, script_dir: Option<&Path>) -> Result<Value, RuntimeError> {
     let parts: Vec<&str> = url.strip_prefix("aoc://").unwrap().split('/').collect();
     if parts.len() != 2 {
         return Err(RuntimeError::new(
-            format!(
-                "Invalid AOC URL format: '{}'. Expected 'aoc://YEAR/DAY'",
-                url
-            ),
+            format!("Invalid AOC URL format: '{}'. Expected 'aoc://YEAR/DAY'", url),
             0,
         ));
     }
@@ -153,8 +138,7 @@ fn read_aoc_input(
     // Fetch from AOC (requires token)
     let token = session_token.ok_or_else(|| {
         RuntimeError::new(
-            "AOC session token not found. Set SANTA_CLI_SESSION_TOKEN environment variable"
-                .to_string(),
+            "AOC session token not found. Set SANTA_CLI_SESSION_TOKEN environment variable".to_string(),
             0,
         )
     })?;

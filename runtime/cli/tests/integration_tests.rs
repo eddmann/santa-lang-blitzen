@@ -1,5 +1,5 @@
-use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
 use std::io::Write;
 use tempfile::NamedTempFile;
@@ -110,9 +110,7 @@ fn cli_run_tests_failing() {
         .arg(file.path())
         .assert()
         .code(3) // Test failure exit code
-        .stdout(predicate::str::contains(
-            "Part 1: 6 \x1b[31m✘ (Expected: 100)\x1b[0m",
-        ));
+        .stdout(predicate::str::contains("Part 1: 6 \x1b[31m✘ (Expected: 100)\x1b[0m"));
 }
 
 #[test]
@@ -193,12 +191,7 @@ fn cli_stdin_empty() {
 
 #[test]
 fn cli_eval_simple_expression() {
-    santa_cli()
-        .arg("-e")
-        .arg("1 + 2")
-        .assert()
-        .success()
-        .stdout("3\n");
+    santa_cli().arg("-e").arg("1 + 2").assert().success().stdout("3\n");
 }
 
 #[test]
@@ -223,11 +216,7 @@ fn cli_eval_aoc_solution() {
 
 #[test]
 fn cli_stdin_simple_expression() {
-    santa_cli()
-        .write_stdin("1 + 2")
-        .assert()
-        .success()
-        .stdout("3\n");
+    santa_cli().write_stdin("1 + 2").assert().success().stdout("3\n");
 }
 
 #[test]

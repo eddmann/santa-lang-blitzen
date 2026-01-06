@@ -361,11 +361,7 @@ impl BuiltinId {
             BuiltinId::UpdateD => (4, 4),
 
             // Variadic functions
-            BuiltinId::Max
-            | BuiltinId::Min
-            | BuiltinId::Union
-            | BuiltinId::Intersection
-            | BuiltinId::Zip => (1, 255),
+            BuiltinId::Max | BuiltinId::Min | BuiltinId::Union | BuiltinId::Intersection | BuiltinId::Zip => (1, 255),
         }
     }
 
@@ -603,10 +599,7 @@ pub fn call_builtin(id: BuiltinId, args: &[Value], line: u32) -> Result<Value, R
         | BuiltinId::Excludes => {
             // These builtins require callback support and are handled directly by the VM
             Err(RuntimeError::new(
-                format!(
-                    "{} requires callback support - should be handled by VM",
-                    id.name()
-                ),
+                format!("{} requires callback support - should be handled by VM", id.name()),
                 line,
             ))
         }
@@ -688,20 +681,14 @@ fn builtin_dict(value: &Value, line: u32) -> Result<Value, RuntimeError> {
                         let val = &tuple[1];
                         if !key.is_hashable() {
                             return Err(RuntimeError::new(
-                                format!(
-                                    "Cannot use {} as dictionary key (not hashable)",
-                                    key.type_name()
-                                ),
+                                format!("Cannot use {} as dictionary key (not hashable)", key.type_name()),
                                 line,
                             ));
                         }
                         result.insert(key.clone(), val.clone());
                     }
                     _ => {
-                        return Err(RuntimeError::new(
-                            "dict expects list of [key, value] pairs",
-                            line,
-                        ));
+                        return Err(RuntimeError::new("dict expects list of [key, value] pairs", line));
                     }
                 }
             }
@@ -790,12 +777,7 @@ fn builtin_push(value: &Value, collection: &Value, line: u32) -> Result<Value, R
 /// assoc(key, value, collection) → Collection
 /// Associate the provided key/index with the given value
 /// Per LANG.txt §11.3
-fn builtin_assoc(
-    key: &Value,
-    value: &Value,
-    collection: &Value,
-    line: u32,
-) -> Result<Value, RuntimeError> {
+fn builtin_assoc(key: &Value, value: &Value, collection: &Value, line: u32) -> Result<Value, RuntimeError> {
     match collection {
         // List (replaces at index)
         Value::List(list) => match key {
@@ -825,10 +807,7 @@ fn builtin_assoc(
         Value::Dict(dict) => {
             if !key.is_hashable() {
                 return Err(RuntimeError::new(
-                    format!(
-                        "Cannot use {} as dictionary key (not hashable)",
-                        key.type_name()
-                    ),
+                    format!("Cannot use {} as dictionary key (not hashable)", key.type_name()),
                     line,
                 ));
             }
@@ -838,10 +817,7 @@ fn builtin_assoc(
         }
 
         _ => Err(RuntimeError::new(
-            format!(
-                "assoc expects List or Dictionary, got {}",
-                collection.type_name()
-            ),
+            format!("assoc expects List or Dictionary, got {}", collection.type_name()),
             line,
         )),
     }
@@ -886,11 +862,7 @@ fn builtin_skip(total: &Value, collection: &Value, line: u32) -> Result<Value, R
                 Ok(Value::Set(set.iter().skip(n).cloned().collect()))
             }
         }
-        Value::Range {
-            start,
-            end,
-            inclusive,
-        } => match end {
+        Value::Range { start, end, inclusive } => match end {
             Some(e) => {
                 let actual_end = if *inclusive { *e } else { e - 1 };
                 let step: i64 = if start <= &actual_end { 1 } else { -1 };
@@ -946,11 +918,7 @@ fn builtin_reverse(collection: &Value, line: u32) -> Result<Value, RuntimeError>
             let reversed: String = s.graphemes(true).rev().collect();
             Ok(Value::String(Rc::new(reversed)))
         }
-        Value::Range {
-            start,
-            end,
-            inclusive,
-        } => match end {
+        Value::Range { start, end, inclusive } => match end {
             Some(e) => {
                 let actual_end = if *inclusive { *e } else { e - 1 };
                 // Materialize and reverse
@@ -1059,10 +1027,7 @@ fn builtin_chunk(size: &Value, collection: &Value, line: u32) -> Result<Value, R
             Ok(Value::List(result))
         }
         _ => Err(RuntimeError::new(
-            format!(
-                "chunk expects List or String, got {}",
-                collection.type_name()
-            ),
+            format!("chunk expects List or String, got {}", collection.type_name()),
             line,
         )),
     }
@@ -1094,11 +1059,7 @@ fn builtin_union(args: &[Value], line: u32) -> Result<Value, RuntimeError> {
     Ok(Value::Set(result))
 }
 
-fn add_to_set(
-    result: &mut HashSet<Value>,
-    collection: &Value,
-    line: u32,
-) -> Result<(), RuntimeError> {
+fn add_to_set(result: &mut HashSet<Value>, collection: &Value, line: u32) -> Result<(), RuntimeError> {
     match collection {
         Value::List(list) => {
             for elem in list.iter() {
@@ -1116,11 +1077,7 @@ fn add_to_set(
                 result.insert(elem.clone());
             }
         }
-        Value::Range {
-            start,
-            end,
-            inclusive,
-        } => match end {
+        Value::Range { start, end, inclusive } => match end {
             Some(e) => {
                 let actual_end = if *inclusive { *e } else { e - 1 };
                 if start <= &actual_end {
@@ -1134,10 +1091,7 @@ fn add_to_set(
                 }
             }
             None => {
-                return Err(RuntimeError::new(
-                    "Cannot convert unbounded range to set",
-                    line,
-                ));
+                return Err(RuntimeError::new("Cannot convert unbounded range to set", line));
             }
         },
         Value::String(s) => {
@@ -1204,11 +1158,9 @@ use std::cell::RefCell;
 /// Generate a lazy sequence that repeats value indefinitely.
 /// Per LANG.txt §11.12
 fn builtin_repeat(value: &Value, _line: u32) -> Result<Value, RuntimeError> {
-    Ok(Value::LazySequence(Rc::new(RefCell::new(
-        LazySeq::Repeat {
-            value: value.clone(),
-        },
-    ))))
+    Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Repeat {
+        value: value.clone(),
+    }))))
 }
 
 /// cycle(collection) → LazySequence
@@ -1235,10 +1187,7 @@ fn builtin_cycle(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
         }
         _ => {
             return Err(RuntimeError::new(
-                format!(
-                    "cycle expects List or String, got {}",
-                    collection.type_name()
-                ),
+                format!("cycle expects List or String, got {}", collection.type_name()),
                 line,
             ));
         }
@@ -1255,10 +1204,7 @@ fn builtin_cycle(collection: &Value, line: u32) -> Result<Value, RuntimeError> {
 /// Per LANG.txt §11.12
 fn builtin_zip(args: &[Value], line: u32) -> Result<Value, RuntimeError> {
     if args.is_empty() {
-        return Err(RuntimeError::new(
-            "zip requires at least one argument",
-            line,
-        ));
+        return Err(RuntimeError::new("zip requires at least one argument", line));
     }
 
     // Per LANG.txt §11.12:
@@ -1275,17 +1221,11 @@ fn builtin_zip(args: &[Value], line: u32) -> Result<Value, RuntimeError> {
             let lazy = value_to_lazy_seq_for_zip(arg, line)?;
             sources.push(Rc::new(RefCell::new(lazy)));
         }
-        Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Zip {
-            sources,
-        }))))
+        Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Zip { sources }))))
     } else {
         // At least one collection is finite - materialize to List
         // First, find the minimum length from finite collections
-        let min_len = args
-            .iter()
-            .filter_map(collection_finite_len)
-            .min()
-            .unwrap_or(0);
+        let min_len = args.iter().filter_map(collection_finite_len).min().unwrap_or(0);
 
         // Now collect elements up to min_len from each collection
         let mut collections: Vec<Vec<Value>> = Vec::new();
@@ -1315,11 +1255,7 @@ fn collection_finite_len(value: &Value) -> Option<usize> {
             Some(s.graphemes(true).count())
         }
         Value::Set(set) => Some(set.len()),
-        Value::Range {
-            start,
-            end,
-            inclusive,
-        } => match end {
+        Value::Range { start, end, inclusive } => match end {
             Some(e) => {
                 // For exclusive ranges where start >= end, the range is empty
                 if !*inclusive && *start >= *e {
@@ -1350,11 +1286,7 @@ fn collection_take_n(value: &Value, n: usize, line: u32) -> Result<Vec<Value>, R
             .map(|g| Value::String(Rc::new(g.to_string())))
             .collect()),
         Value::Set(set) => Ok(set.iter().take(n).cloned().collect()),
-        Value::Range {
-            start,
-            end,
-            inclusive,
-        } => {
+        Value::Range { start, end, inclusive } => {
             let mut result = Vec::new();
             match end {
                 Some(e) => {
@@ -1405,11 +1337,7 @@ fn collection_take_n(value: &Value, n: usize, line: u32) -> Result<Vec<Value>, R
 /// Convert a value to LazySeq for zip (handles the infinite cases)
 fn value_to_lazy_seq_for_zip(value: &Value, line: u32) -> Result<LazySeq, RuntimeError> {
     match value {
-        Value::Range {
-            start,
-            end,
-            inclusive,
-        } => {
+        Value::Range { start, end, inclusive } => {
             let step = match end {
                 Some(e) if *e < *start => -1,
                 _ => 1,
@@ -1432,11 +1360,7 @@ fn value_to_lazy_seq_for_zip(value: &Value, line: u32) -> Result<LazySeq, Runtim
 /// combinations(size, collection) → LazySequence
 /// Generate all combinations of given size from collection.
 /// Per LANG.txt §11.12
-fn builtin_combinations(
-    size_val: &Value,
-    collection: &Value,
-    line: u32,
-) -> Result<Value, RuntimeError> {
+fn builtin_combinations(size_val: &Value, collection: &Value, line: u32) -> Result<Value, RuntimeError> {
     let size = match size_val {
         Value::Integer(n) if *n >= 0 => *n as usize,
         _ => {
@@ -1472,13 +1396,11 @@ fn builtin_combinations(
     // Initialize indices: [0, 1, 2, ..., size-1]
     let indices: Vec<usize> = (0..size).collect();
 
-    Ok(Value::LazySequence(Rc::new(RefCell::new(
-        LazySeq::Combinations {
-            source: elements,
-            size,
-            indices,
-        },
-    ))))
+    Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::Combinations {
+        source: elements,
+        size,
+        indices,
+    }))))
 }
 
 // ============================================================================
@@ -1488,20 +1410,12 @@ fn builtin_combinations(
 /// range(from, to, step) → LazySequence
 /// Generate a range with custom step value.
 /// Per LANG.txt §11.13
-fn builtin_range_fn(
-    from: &Value,
-    to: &Value,
-    step: &Value,
-    line: u32,
-) -> Result<Value, RuntimeError> {
+fn builtin_range_fn(from: &Value, to: &Value, step: &Value, line: u32) -> Result<Value, RuntimeError> {
     let from_val = match from {
         Value::Integer(n) => *n,
         _ => {
             return Err(RuntimeError::new(
-                format!(
-                    "range expects Integer as first argument, got {}",
-                    from.type_name()
-                ),
+                format!("range expects Integer as first argument, got {}", from.type_name()),
                 line,
             ));
         }
@@ -1511,10 +1425,7 @@ fn builtin_range_fn(
         Value::Integer(n) => *n,
         _ => {
             return Err(RuntimeError::new(
-                format!(
-                    "range expects Integer as second argument, got {}",
-                    to.type_name()
-                ),
+                format!("range expects Integer as second argument, got {}", to.type_name()),
                 line,
             ));
         }
@@ -1524,10 +1435,7 @@ fn builtin_range_fn(
         Value::Integer(n) => *n,
         _ => {
             return Err(RuntimeError::new(
-                format!(
-                    "range expects Integer as third argument, got {}",
-                    step.type_name()
-                ),
+                format!("range expects Integer as third argument, got {}", step.type_name()),
                 line,
             ));
         }
@@ -1543,13 +1451,11 @@ fn builtin_range_fn(
         return Err(RuntimeError::new("range: step direction mismatch", line));
     }
 
-    Ok(Value::LazySequence(Rc::new(RefCell::new(
-        LazySeq::RangeStep {
-            current: from_val,
-            end: to_val,
-            step: step_val,
-        },
-    ))))
+    Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::RangeStep {
+        current: from_val,
+        end: to_val,
+        step: step_val,
+    }))))
 }
 
 // ============================================================================
@@ -1575,9 +1481,7 @@ impl Clone for LazySeq {
                 end: *end,
                 step: *step,
             },
-            LazySeq::Repeat { value } => LazySeq::Repeat {
-                value: value.clone(),
-            },
+            LazySeq::Repeat { value } => LazySeq::Repeat { value: value.clone() },
             LazySeq::Cycle { source, index } => LazySeq::Cycle {
                 source: source.clone(),
                 index: *index,
@@ -1640,11 +1544,7 @@ impl Clone for LazySeq {
                     .map(|s| Rc::new(RefCell::new(s.borrow().clone())))
                     .collect(),
             },
-            LazySeq::Combinations {
-                source,
-                size,
-                indices,
-            } => LazySeq::Combinations {
+            LazySeq::Combinations { source, size, indices } => LazySeq::Combinations {
                 source: source.clone(),
                 size: *size,
                 indices: indices.clone(),
@@ -1727,11 +1627,7 @@ fn lazy_seq_next_simple(seq: &mut LazySeq) -> Result<Option<Value>, RuntimeError
                 Ok(Some(val))
             }
         }
-        LazySeq::Combinations {
-            source,
-            size,
-            indices,
-        } => {
+        LazySeq::Combinations { source, size, indices } => {
             if *size == 0 || *size > source.len() {
                 return Ok(None);
             }
@@ -1871,21 +1767,13 @@ fn builtin_md5(value: &Value, line: u32) -> Result<Value, RuntimeError> {
 
 /// replace(pattern, replacement, string) → String
 /// Replace all occurrences of pattern with replacement. Per LANG.txt §11.14
-fn builtin_replace(
-    pattern: &Value,
-    replacement: &Value,
-    string: &Value,
-    line: u32,
-) -> Result<Value, RuntimeError> {
+fn builtin_replace(pattern: &Value, replacement: &Value, string: &Value, line: u32) -> Result<Value, RuntimeError> {
     match (pattern, replacement, string) {
-        (Value::String(pat), Value::String(repl), Value::String(s)) => Ok(Value::String(Rc::new(
-            s.replace(pat.as_str(), repl.as_str()),
-        ))),
+        (Value::String(pat), Value::String(repl), Value::String(s)) => {
+            Ok(Value::String(Rc::new(s.replace(pat.as_str(), repl.as_str()))))
+        }
         (Value::String(_), Value::String(_), _) => Err(RuntimeError::new(
-            format!(
-                "replace expects String as third argument, got {}",
-                string.type_name()
-            ),
+            format!("replace expects String as third argument, got {}", string.type_name()),
             line,
         )),
         (Value::String(_), _, _) => Err(RuntimeError::new(
@@ -1896,10 +1784,7 @@ fn builtin_replace(
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!(
-                "replace expects String as first argument, got {}",
-                pattern.type_name()
-            ),
+            format!("replace expects String as first argument, got {}", pattern.type_name()),
             line,
         )),
     }
@@ -1923,17 +1808,11 @@ fn builtin_split(separator: &Value, string: &Value, line: u32) -> Result<Value, 
             Ok(Value::List(parts))
         }
         (Value::String(_), _) => Err(RuntimeError::new(
-            format!(
-                "split expects String as second argument, got {}",
-                string.type_name()
-            ),
+            format!("split expects String as second argument, got {}", string.type_name()),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!(
-                "split expects String as first argument, got {}",
-                separator.type_name()
-            ),
+            format!("split expects String as first argument, got {}", separator.type_name()),
             line,
         )),
     }
@@ -1944,8 +1823,7 @@ fn builtin_split(separator: &Value, string: &Value, line: u32) -> Result<Value, 
 fn builtin_regex_match(pattern: &Value, string: &Value, line: u32) -> Result<Value, RuntimeError> {
     match (pattern, string) {
         (Value::String(pat), Value::String(s)) => {
-            let re = Regex::new(pat)
-                .map_err(|e| RuntimeError::new(format!("Invalid regex pattern: {}", e), line))?;
+            let re = Regex::new(pat).map_err(|e| RuntimeError::new(format!("Invalid regex pattern: {}", e), line))?;
 
             let captures: Vector<Value> = match re.captures(s) {
                 Some(caps) => caps
@@ -1977,15 +1855,10 @@ fn builtin_regex_match(pattern: &Value, string: &Value, line: u32) -> Result<Val
 
 /// regex_match_all(pattern, string) → List[String]
 /// Match all occurrences. Per LANG.txt §11.14
-fn builtin_regex_match_all(
-    pattern: &Value,
-    string: &Value,
-    line: u32,
-) -> Result<Value, RuntimeError> {
+fn builtin_regex_match_all(pattern: &Value, string: &Value, line: u32) -> Result<Value, RuntimeError> {
     match (pattern, string) {
         (Value::String(pat), Value::String(s)) => {
-            let re = Regex::new(pat)
-                .map_err(|e| RuntimeError::new(format!("Invalid regex pattern: {}", e), line))?;
+            let re = Regex::new(pat).map_err(|e| RuntimeError::new(format!("Invalid regex pattern: {}", e), line))?;
 
             let matches: Vector<Value> = re
                 .find_iter(s)
@@ -2039,10 +1912,7 @@ fn builtin_join(separator: &Value, collection: &Value, line: u32) -> Result<Valu
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!(
-                "join expects String as first argument, got {}",
-                separator.type_name()
-            ),
+            format!("join expects String as first argument, got {}", separator.type_name()),
             line,
         )),
     }
@@ -2081,10 +1951,7 @@ fn builtin_signum(value: &Value, line: u32) -> Result<Value, RuntimeError> {
             Ok(Value::Integer(sign))
         }
         _ => Err(RuntimeError::new(
-            format!(
-                "signum expects Integer or Decimal, got {}",
-                value.type_name()
-            ),
+            format!("signum expects Integer or Decimal, got {}", value.type_name()),
             line,
         )),
     }
@@ -2100,32 +1967,20 @@ fn builtin_vec_add(a: &Value, b: &Value, line: u32) -> Result<Value, RuntimeErro
                 .zip(list_b.iter())
                 .map(|(va, vb)| match (va, vb) {
                     (Value::Integer(na), Value::Integer(nb)) => Value::Integer(na + nb),
-                    (Value::Integer(na), Value::Decimal(db)) => {
-                        Value::Decimal(OrderedFloat(*na as f64 + db.0))
-                    }
-                    (Value::Decimal(da), Value::Integer(nb)) => {
-                        Value::Decimal(OrderedFloat(da.0 + *nb as f64))
-                    }
-                    (Value::Decimal(da), Value::Decimal(db)) => {
-                        Value::Decimal(OrderedFloat(da.0 + db.0))
-                    }
+                    (Value::Integer(na), Value::Decimal(db)) => Value::Decimal(OrderedFloat(*na as f64 + db.0)),
+                    (Value::Decimal(da), Value::Integer(nb)) => Value::Decimal(OrderedFloat(da.0 + *nb as f64)),
+                    (Value::Decimal(da), Value::Decimal(db)) => Value::Decimal(OrderedFloat(da.0 + db.0)),
                     _ => Value::Nil, // Non-numeric values become nil
                 })
                 .collect();
             Ok(Value::List(result))
         }
         (Value::List(_), _) => Err(RuntimeError::new(
-            format!(
-                "vec_add expects List as second argument, got {}",
-                b.type_name()
-            ),
+            format!("vec_add expects List as second argument, got {}", b.type_name()),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!(
-                "vec_add expects List as first argument, got {}",
-                a.type_name()
-            ),
+            format!("vec_add expects List as first argument, got {}", a.type_name()),
             line,
         )),
     }
@@ -2141,17 +1996,11 @@ fn builtin_bit_and(a: &Value, b: &Value, line: u32) -> Result<Value, RuntimeErro
     match (a, b) {
         (Value::Integer(na), Value::Integer(nb)) => Ok(Value::Integer(na & nb)),
         (Value::Integer(_), _) => Err(RuntimeError::new(
-            format!(
-                "bit_and expects Integer as second argument, got {}",
-                b.type_name()
-            ),
+            format!("bit_and expects Integer as second argument, got {}", b.type_name()),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!(
-                "bit_and expects Integer as first argument, got {}",
-                a.type_name()
-            ),
+            format!("bit_and expects Integer as first argument, got {}", a.type_name()),
             line,
         )),
     }
@@ -2163,17 +2012,11 @@ fn builtin_bit_or(a: &Value, b: &Value, line: u32) -> Result<Value, RuntimeError
     match (a, b) {
         (Value::Integer(na), Value::Integer(nb)) => Ok(Value::Integer(na | nb)),
         (Value::Integer(_), _) => Err(RuntimeError::new(
-            format!(
-                "bit_or expects Integer as second argument, got {}",
-                b.type_name()
-            ),
+            format!("bit_or expects Integer as second argument, got {}", b.type_name()),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!(
-                "bit_or expects Integer as first argument, got {}",
-                a.type_name()
-            ),
+            format!("bit_or expects Integer as first argument, got {}", a.type_name()),
             line,
         )),
     }
@@ -2185,17 +2028,11 @@ fn builtin_bit_xor(a: &Value, b: &Value, line: u32) -> Result<Value, RuntimeErro
     match (a, b) {
         (Value::Integer(na), Value::Integer(nb)) => Ok(Value::Integer(na ^ nb)),
         (Value::Integer(_), _) => Err(RuntimeError::new(
-            format!(
-                "bit_xor expects Integer as second argument, got {}",
-                b.type_name()
-            ),
+            format!("bit_xor expects Integer as second argument, got {}", b.type_name()),
             line,
         )),
         _ => Err(RuntimeError::new(
-            format!(
-                "bit_xor expects Integer as first argument, got {}",
-                a.type_name()
-            ),
+            format!("bit_xor expects Integer as first argument, got {}", a.type_name()),
             line,
         )),
     }
