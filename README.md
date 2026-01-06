@@ -6,16 +6,16 @@ Bytecode virtual machine implementation of [santa-lang](https://eddmann.com/sant
 
 ## Overview
 
-santa-lang is a functional, expression-oriented programming language designed for solving Advent of Code puzzles. This implementation uses a bytecode compilation approach rather than tree-walking interpretation, exploring a different execution model for potential performance improvements.
+santa-lang is a functional, expression-oriented programming language designed for solving Advent of Code puzzles. This implementation uses a bytecode compilation approach, compiling to FrostByte bytecode and executing on a stack-based virtual machine.
 
 All santa-lang implementations support the same language features:
 
-- Tail-call optimization (TCO)
+- First-class functions and closures with tail-call optimization
+- Pipeline and composition operators for expressive data flow
 - Persistent immutable data structures
-- First-class functions and closures
 - Lazy sequences and infinite ranges
 - Pattern matching with guards
-- [70+ built-in functions](https://eddmann.com/santa-lang/builtins/)
+- [Rich built-in function library](https://eddmann.com/santa-lang/builtins/)
 - AoC runner with automatic input fetching
 
 ## Architecture
@@ -34,6 +34,8 @@ Source Code → Lexer → Parser → Compiler → Blitzen VM
 | **Blitzen VM** | Stack-based virtual machine that executes bytecode  |
 
 The **FrostByte** bytecode format includes instructions for stack manipulation, variable access, arithmetic, control flow, collection operations, and function calls.
+
+For detailed implementation internals, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Installation
 
@@ -55,81 +57,75 @@ Download pre-built binaries from [GitHub Releases](https://github.com/eddmann/sa
 | macOS (Intel)         | `santa-lang-blitzen-cli-{version}-macos-amd64` |
 | macOS (Apple Silicon) | `santa-lang-blitzen-cli-{version}-macos-arm64` |
 
-## Building
-
-```bash
-make release
-```
-
-The binary will be at `target/release/santa-cli`.
-
 ## Usage
 
 ```bash
 # Run a solution
-make run FILE=examples/aoc2022_day01.santa
+santa-cli solution.santa
 
 # Run tests defined in a solution
-make run-test FILE=examples/aoc2022_day01.santa
+santa-cli -t solution.santa
 
 # Interactive REPL
-make repl
-```
-
-Or use the CLI directly:
-
-```bash
-santa-cli examples/aoc2022_day01.santa
-santa-cli -t examples/aoc2022_day01.santa
 santa-cli -r
+
+# Or use make targets:
+make run FILE=examples/aoc2022_day01.santa
+make run-test FILE=examples/aoc2022_day01.santa
+make repl
 ```
 
 ## Example
 
-Here's a complete Advent of Code solution (2022 Day 1):
+Here's a complete Advent of Code solution (2015 Day 1):
 
 ```santa
-input: read("aoc://2022/1")
-
-let parse_inventories = split("\n\n") >> map(ints >> sum);
+input: read("aoc://2015/1")
 
 part_one: {
-  parse_inventories(input) |> max;
+  input |> fold(0) |floor, direction| {
+    if direction == "(" { floor + 1 } else { floor - 1 };
+  }
 }
 
 part_two: {
-  parse_inventories(input)
-    |> sort(<)
-    |> take(3)
-    |> sum;
+  zip(1.., input) |> fold(0) |floor, [index, direction]| {
+    let next_floor = if direction == "(" { floor + 1 } else { floor - 1 };
+    if next_floor < 0 { break index } else { next_floor };
+  }
 }
 
 test: {
-  input: "1000
-2000
-3000
-
-4000
-
-5000
-6000
-
-7000
-8000
-9000
-
-10000"
-  part_one: 24000
-  part_two: 45000
+  input: "()())"
+  part_one: -1
+  part_two: 5
 }
 ```
 
 Key language features shown:
 
-- **`input:`** / **`part_one:`** / **`part_two:`** - AOC runner sections
+- **`input:`** / **`part_one:`** / **`part_two:`** - AoC runner sections
 - **`|>`** - Pipeline operator (thread value through functions)
-- **`>>`** - Function composition
+- **`fold`** - Reduce with early exit support via `break`
 - **`test:`** - Inline test cases with expected values
+
+## Building
+
+Requires Rust 1.91+ or use Docker:
+
+```bash
+# Build CLI (debug)
+make build
+
+# Build CLI (release)
+make release
+
+# Run tests
+make test
+
+# Run linting
+make lint
+```
 
 ## Development
 
@@ -145,11 +141,9 @@ make bench         # Run criterion benchmarks
 make test-examples # Run example test suite
 ```
 
-## Scripts
+### Scripts
 
-### Test Runner
-
-Run all example solutions in test mode:
+**Test Runner** - Run all example solutions in test mode:
 
 ```bash
 make test-examples
@@ -157,60 +151,17 @@ make test-examples
 ./examples/run-tests.sh
 ```
 
-**Options:**
+Options: `-i, --include PATTERN`, `-e, --exclude PATTERN`, `-t, --timeout SECONDS`
 
-| Flag                    | Description                     |
-| ----------------------- | ------------------------------- |
-| `-i, --include PATTERN` | Only run tests matching pattern |
-| `-e, --exclude PATTERN` | Skip tests matching pattern     |
-| `-t, --timeout SECONDS` | Per-test timeout (default: 60)  |
-
-**Examples:**
-
-```bash
-# Run only 2022 tests
-./examples/run-tests.sh -i 'aoc2022_*'
-
-# Skip slow tests
-./examples/run-tests.sh -e 'aoc2022_day19' -e 'aoc2022_day16'
-
-# Run a specific day
-./examples/run-tests.sh -i 'aoc2022_day01'
-```
-
-### Benchmark Script
-
-Compare Blitzen VM performance against another santa-cli binary:
+**Benchmark Script** - Compare Blitzen VM performance against another santa-cli binary:
 
 ```bash
 ./examples/benchmark-2022.sh /path/to/baseline/santa-cli
 ```
 
-**Requirements:** [hyperfine](https://github.com/sharkdp/hyperfine) (`brew install hyperfine`)
+Requires [hyperfine](https://github.com/sharkdp/hyperfine). Results saved to `benchmark-results/`.
 
-**Options:**
-
-| Flag                    | Description                               |
-| ----------------------- | ----------------------------------------- |
-| `-w, --warmup N`        | Warmup runs before measuring (default: 5) |
-| `-r, --runs N`          | Number of benchmark runs (default: 20)    |
-| `-i, --ignore-failures` | Continue benchmarking on failures         |
-
-**Examples:**
-
-```bash
-# Compare against reference implementation
-./examples/benchmark-2022.sh ~/santa-lang-comet/target/release/santa-cli
-
-# Quick benchmark with fewer runs
-./examples/benchmark-2022.sh /path/to/baseline -w 2 -r 5
-```
-
-Results are saved to `benchmark-results/` as markdown tables.
-
-### Criterion Benchmarks
-
-Run micro-benchmarks for VM components:
+**Criterion Benchmarks** - Run micro-benchmarks for VM components:
 
 ```bash
 make bench
@@ -226,16 +177,21 @@ HTML reports are generated in `target/criterion/`.
 │       ├── lexer/          # Tokenization
 │       ├── parser/         # AST construction
 │       ├── vm/             # Compiler, bytecode, runtime
-│       └── runner/         # AOC runner support
+│       └── runner/         # AoC runner support
 ├── runtime/cli/            # Command-line interface
-├── examples/               # AOC solutions (.santa files)
+├── examples/               # AoC solutions (.santa files)
 └── benchmarks/             # Criterion benchmarks
 ```
 
-## See Also
+## Other Reindeer
 
-- [eddmann/santa-lang](https://github.com/eddmann/santa-lang) - Language specification/documentation
-- [eddmann/santa-lang-editor](https://github.com/eddmann/santa-lang-editor) - Web-based editor
-- [eddmann/santa-lang-prancer](https://github.com/eddmann/santa-lang-prancer) - Tree-walking interpreter in TypeScript (Prancer)
-- [eddmann/santa-lang-comet](https://github.com/eddmann/santa-lang-comet) - Tree-walking interpreter in Rust (Comet)
-- [eddmann/santa-lang-blitzen](https://github.com/eddmann/santa-lang-blitzen) - Bytecode VM in Rust (Blitzen)
+The language has been implemented multiple times to explore different execution models and technologies.
+
+| Codename | Type | Language |
+|----------|------|----------|
+| [Comet](https://github.com/eddmann/santa-lang-comet) | Tree-walking interpreter | Rust |
+| [Blitzen](https://github.com/eddmann/santa-lang-blitzen) | Bytecode VM | Rust |
+| [Dasher](https://github.com/eddmann/santa-lang-dasher) | LLVM native compiler | Rust |
+| [Donner](https://github.com/eddmann/santa-lang-donner) | JVM bytecode compiler | Kotlin |
+| [Vixen](https://github.com/eddmann/santa-lang-vixen) | Embedded bytecode VM | C |
+| [Prancer](https://github.com/eddmann/santa-lang-prancer) | Tree-walking interpreter | TypeScript |
