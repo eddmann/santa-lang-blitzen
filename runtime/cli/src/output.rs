@@ -162,16 +162,22 @@ pub fn format_solution_json(result: &SolutionResult, console: Vec<ConsoleEntry>)
     let output = JsonSolutionOutput {
         output_type: "solution",
         status: "complete",
-        part_one: result.part_one.as_ref().map(|(value, duration)| JsonPartResult {
-            status: "complete",
-            value: value.to_string(),
-            duration_ms: *duration as u64,
-        }),
-        part_two: result.part_two.as_ref().map(|(value, duration)| JsonPartResult {
-            status: "complete",
-            value: value.to_string(),
-            duration_ms: *duration as u64,
-        }),
+        part_one: result
+            .part_one
+            .as_ref()
+            .map(|(value, duration)| JsonPartResult {
+                status: "complete",
+                value: value.to_string(),
+                duration_ms: *duration as u64,
+            }),
+        part_two: result
+            .part_two
+            .as_ref()
+            .map(|(value, duration)| JsonPartResult {
+                status: "complete",
+                value: value.to_string(),
+                duration_ms: *duration as u64,
+            }),
         console,
     };
     serde_json::to_string(&output).unwrap()

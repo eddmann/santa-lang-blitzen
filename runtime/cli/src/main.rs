@@ -11,8 +11,8 @@ use lang::{
 use output::{
     format_error_json, format_script_json, format_solution_json, format_test_json,
     is_solution_source, CollectedTestInfo, JsonTestPartResult, JsonlPartInitial,
-    JsonlScriptInitial, JsonlSolutionInitial, JsonlTestCaseInitial, JsonlTestInitial,
-    JsonlWriter, OutputMode, TestSummary,
+    JsonlScriptInitial, JsonlSolutionInitial, JsonlTestCaseInitial, JsonlTestInitial, JsonlWriter,
+    OutputMode, TestSummary,
 };
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -347,7 +347,9 @@ fn run_script_jsonl(source: &str, runner: &mut AocRunner, vm: &mut VM) -> Result
         };
         writer.write_initial(&initial).ok();
         writer
-            .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
+            .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
+                "/status", "running",
+            )])
             .ok();
 
         match runner.run_solution(vm) {
@@ -370,7 +372,10 @@ fn run_script_jsonl(source: &str, runner: &mut AocRunner, vm: &mut VM) -> Result
                         .ok();
                     writer
                         .write_patches(&[
-                            JsonlWriter::<io::Stdout>::replace_patch("/part_one/status", "complete"),
+                            JsonlWriter::<io::Stdout>::replace_patch(
+                                "/part_one/status",
+                                "complete",
+                            ),
                             JsonlWriter::<io::Stdout>::replace_patch(
                                 "/part_one/value",
                                 value.to_string(),
@@ -392,7 +397,10 @@ fn run_script_jsonl(source: &str, runner: &mut AocRunner, vm: &mut VM) -> Result
                         .ok();
                     writer
                         .write_patches(&[
-                            JsonlWriter::<io::Stdout>::replace_patch("/part_two/status", "complete"),
+                            JsonlWriter::<io::Stdout>::replace_patch(
+                                "/part_two/status",
+                                "complete",
+                            ),
                             JsonlWriter::<io::Stdout>::replace_patch(
                                 "/part_two/value",
                                 value.to_string(),
@@ -407,8 +415,7 @@ fn run_script_jsonl(source: &str, runner: &mut AocRunner, vm: &mut VM) -> Result
 
                 writer
                     .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
-                        "/status",
-                        "complete",
+                        "/status", "complete",
                     )])
                     .ok();
                 Ok(())
@@ -437,7 +444,9 @@ fn run_script_jsonl(source: &str, runner: &mut AocRunner, vm: &mut VM) -> Result
         };
         writer.write_initial(&initial).ok();
         writer
-            .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
+            .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
+                "/status", "running",
+            )])
             .ok();
 
         let start = Instant::now();
@@ -503,7 +512,9 @@ fn handle_error(error: SantaError, output_mode: OutputMode) -> Result<(), ExitCo
             };
             writer.write_initial(&initial).ok();
             writer
-                .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
+                .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
+                    "/status", "running",
+                )])
                 .ok();
             let error_output = format_error_json(&error);
             writer
@@ -771,7 +782,9 @@ fn run_tests_jsonl(
     };
     writer.write_initial(&initial).ok();
     writer
-        .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
+        .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
+            "/status", "running",
+        )])
         .ok();
 
     match runner.run_tests(vm_factory, include_slow) {
@@ -949,7 +962,9 @@ fn handle_test_error(error: SantaError, output_mode: OutputMode) -> Result<(), E
             };
             writer.write_initial(&initial).ok();
             writer
-                .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch("/status", "running")])
+                .write_patches(&[JsonlWriter::<io::Stdout>::replace_patch(
+                    "/status", "running",
+                )])
                 .ok();
             let error_output = format_error_json(&error);
             writer
