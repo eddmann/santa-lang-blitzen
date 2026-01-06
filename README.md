@@ -8,7 +8,7 @@ Bytecode virtual machine implementation of [santa-lang](https://eddmann.com/sant
 
 santa-lang is a functional, expression-oriented programming language designed for solving Advent of Code puzzles. This implementation uses a bytecode compilation approach, compiling to FrostByte bytecode and executing on a stack-based virtual machine.
 
-All santa-lang implementations support the same language features:
+Key language features:
 
 - First-class functions and closures with tail-call optimization
 - Pipeline and composition operators for expressive data flow
