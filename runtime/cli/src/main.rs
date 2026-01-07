@@ -9,9 +9,9 @@ use lang::{
     vm::{RuntimeError, VM, Value},
 };
 use output::{
-    CollectedTestInfo, JsonTestPartResult, JsonlPartInitial, JsonlScriptInitial, JsonlSolutionInitial,
-    JsonlTestCaseInitial, JsonlTestInitial, JsonlWriter, OutputMode, TestSummary, format_error_json,
-    format_script_json, format_solution_json, format_test_json, is_solution_source,
+    CollectedTestInfo, JsonTestPartResult, JsonVersionOutput, JsonlPartInitial, JsonlScriptInitial,
+    JsonlSolutionInitial, JsonlTestCaseInitial, JsonlTestInitial, JsonlWriter, OutputMode, TestSummary,
+    format_error_json, format_script_json, format_solution_json, format_test_json, is_solution_source,
 };
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
@@ -34,6 +34,7 @@ fn main() {
     let mut eval_script: Option<String> = None;
     let mut script_path: Option<String> = None;
     let mut output_mode = OutputMode::Text;
+    let mut show_version = false;
     #[allow(unused_variables, unused_assignments)]
     let mut profile_mode = false;
 
@@ -45,8 +46,7 @@ fn main() {
                 process::exit(0);
             }
             "-v" | "--version" => {
-                println!("santa-lang Blitzen {}", env!("CARGO_PKG_VERSION"));
-                process::exit(0);
+                show_version = true;
             }
             "-r" | "--repl" => {
                 let result = run_repl();
@@ -104,6 +104,23 @@ fn main() {
             }
         }
         i += 1;
+    }
+
+    // Handle version after parsing (so we have output_mode)
+    if show_version {
+        match output_mode {
+            OutputMode::Text => {
+                println!("santa-lang Blitzen {}", env!("CARGO_PKG_VERSION"));
+            }
+            OutputMode::Json | OutputMode::Jsonl => {
+                let output = JsonVersionOutput {
+                    reindeer: "Blitzen",
+                    version: env!("CARGO_PKG_VERSION"),
+                };
+                println!("{}", serde_json::to_string(&output).unwrap());
+            }
+        }
+        process::exit(0);
     }
 
     // Determine source: -e > file > stdin

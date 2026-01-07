@@ -1235,3 +1235,44 @@ fn cli_invalid_output_mode() {
         .code(1)
         .stderr(predicate::str::contains("Invalid output format"));
 }
+
+// ============================================================================
+// Version Output Tests
+// ============================================================================
+
+#[test]
+fn cli_version_json_output() {
+    santa_cli()
+        .arg("--version")
+        .arg("-o")
+        .arg("json")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""reindeer":"Blitzen""#))
+        .stdout(predicate::str::contains(r#""version":"#));
+}
+
+#[test]
+fn cli_version_jsonl_output() {
+    santa_cli()
+        .arg("--version")
+        .arg("-o")
+        .arg("jsonl")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""reindeer":"Blitzen""#))
+        .stdout(predicate::str::contains(r#""version":"#));
+}
+
+#[test]
+fn cli_version_json_output_order_reversed() {
+    // Test that -o json --version works (order shouldn't matter)
+    santa_cli()
+        .arg("-o")
+        .arg("json")
+        .arg("--version")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""reindeer":"Blitzen""#))
+        .stdout(predicate::str::contains(r#""version":"#));
+}
