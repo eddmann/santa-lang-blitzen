@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Set release version
         run: |
-          sed -i.bak 's/version = "[0-9.]*"$/version = "${{ inputs.release-tag }}"/' runtime/cli/Cargo.toml
+          sed -i.bak 's/version = "[0-9.]*"$/version = "${{ inputs.release-tag }}"/' Cargo.toml
       - name: Install cross-compilation tools (ARM64 Linux)
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
@@ -72,7 +72,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Set release version
         run: |
-          sed -i.bak 's/version = "[0-9.]*"$/version = "${{ inputs.release-tag }}"/' runtime/cli/Cargo.toml
+          sed -i.bak 's/version = "[0-9.]*"$/version = "${{ inputs.release-tag }}"/' Cargo.toml
       - name: Install cross-compilation tools
         run: |
           sudo apt-get update
