@@ -978,9 +978,11 @@ impl VM {
 
             // Dictionary merge (right precedence - values from y override x)
             (Value::Dict(x), Value::Dict(y)) => {
-                // union takes values from self over other, so we use y.union(x)
-                // and then the y values will be kept, achieving right precedence
-                Value::Dict(y.clone().union(x.clone()))
+                let mut result = x.clone();
+                for (k, v) in y.iter() {
+                    result.insert(k.clone(), v.clone());
+                }
+                Value::Dict(result)
             }
 
             _ => {
@@ -2623,16 +2625,25 @@ impl VM {
             Value::Range { start, end, inclusive } => {
                 match end {
                     Some(e) => {
-                        let actual_end = if *inclusive { *e } else { e - 1 };
-                        let range_iter: Box<dyn Iterator<Item = i64>> = if start <= &actual_end {
-                            Box::new(*start..=actual_end)
+                        if start <= e {
+                            let actual_end = if *inclusive { *e } else { e - 1 };
+                            if start <= &actual_end {
+                                for i in *start..=actual_end {
+                                    let mapped = self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
+                                    if mapped.is_truthy() {
+                                        return Ok(mapped);
+                                    }
+                                }
+                            }
                         } else {
-                            Box::new((actual_end..=*start).rev())
-                        };
-                        for i in range_iter {
-                            let mapped = self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
-                            if mapped.is_truthy() {
-                                return Ok(mapped);
+                            let actual_end = if *inclusive { *e } else { e + 1 };
+                            let mut i = *start;
+                            while i >= actual_end {
+                                let mapped = self.call_callable_sync(&mapper, vec![Value::Integer(i)])?;
+                                if mapped.is_truthy() {
+                                    return Ok(mapped);
+                                }
+                                i -= 1;
                             }
                         }
                         Ok(Value::Nil)
@@ -2897,23 +2908,22 @@ impl VM {
             Value::Range { start, end, inclusive } => {
                 match end {
                     Some(e) => {
-                        // For non-inclusive ranges, if start >= end, the range is empty
-                        if !*inclusive && start >= e {
-                            return Ok(acc);
-                        }
-                        let actual_end = if *inclusive { *e } else { e - 1 };
-                        if start <= &actual_end {
-                            for i in *start..=actual_end {
-                                match self.call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)]) {
-                                    Ok(v) => acc = v,
-                                    Err(e) if e.is_break => {
-                                        return Ok(e.break_value.unwrap_or(Value::Nil));
+                        if start <= e {
+                            let actual_end = if *inclusive { *e } else { e - 1 };
+                            if start <= &actual_end {
+                                for i in *start..=actual_end {
+                                    match self.call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)]) {
+                                        Ok(v) => acc = v,
+                                        Err(e) if e.is_break => {
+                                            return Ok(e.break_value.unwrap_or(Value::Nil));
+                                        }
+                                        Err(e) => return Err(e),
                                     }
-                                    Err(e) => return Err(e),
                                 }
                             }
                         } else {
                             // Descending range
+                            let actual_end = if *inclusive { *e } else { e + 1 };
                             let mut i = *start;
                             while i >= actual_end {
                                 match self.call_callable_sync(&folder, vec![acc.clone(), Value::Integer(i)]) {
@@ -2989,15 +2999,20 @@ impl VM {
             }
             Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
-                    let actual_end = if *inclusive { *e } else { e - 1 };
-                    if start <= &actual_end {
-                        for i in *start..=actual_end {
-                            acc = self.call_callable_sync(&folder, vec![acc, Value::Integer(i)])?;
+                    if start <= e {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        if start <= &actual_end {
+                            for i in *start..=actual_end {
+                                acc = self.call_callable_sync(&folder, vec![acc, Value::Integer(i)])?;
+                            }
                         }
                     } else {
                         // Reverse range (start > end)
-                        for i in (actual_end..=*start).rev() {
+                        let actual_end = if *inclusive { *e } else { e + 1 };
+                        let mut i = *start;
+                        while i >= actual_end {
                             acc = self.call_callable_sync(&folder, vec![acc, Value::Integer(i)])?;
+                            i -= 1;
                         }
                     }
                 }
@@ -3190,17 +3205,20 @@ impl VM {
             Value::Range { start, end, inclusive } => {
                 match end {
                     Some(e) => {
-                        let actual_end = if *inclusive { *e } else { e - 1 };
-                        if start <= &actual_end {
-                            for i in *start..=actual_end {
-                                match self.call_callable_sync(&side_effect, vec![Value::Integer(i)]) {
-                                    Ok(_) => {}
-                                    Err(e) if e.is_break => return Ok(Value::Nil),
-                                    Err(e) => return Err(e),
+                        if start <= e {
+                            let actual_end = if *inclusive { *e } else { e - 1 };
+                            if start <= &actual_end {
+                                for i in *start..=actual_end {
+                                    match self.call_callable_sync(&side_effect, vec![Value::Integer(i)]) {
+                                        Ok(_) => {}
+                                        Err(e) if e.is_break => return Ok(Value::Nil),
+                                        Err(e) => return Err(e),
+                                    }
                                 }
                             }
                         } else {
                             // Descending range
+                            let actual_end = if *inclusive { *e } else { e + 1 };
                             let mut i = *start;
                             while i >= actual_end {
                                 match self.call_callable_sync(&side_effect, vec![Value::Integer(i)]) {
@@ -3417,16 +3435,19 @@ impl VM {
             }
             Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
-                    let actual_end = if *inclusive { *e } else { e - 1 };
-                    if start <= &actual_end {
-                        for i in *start..=actual_end {
-                            let elem = Value::Integer(i);
-                            let result = self.call_callable_sync(&predicate, vec![elem.clone()])?;
-                            if result.is_truthy() {
-                                return Ok(elem);
+                    if start <= e {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        if start <= &actual_end {
+                            for i in *start..=actual_end {
+                                let elem = Value::Integer(i);
+                                let result = self.call_callable_sync(&predicate, vec![elem.clone()])?;
+                                if result.is_truthy() {
+                                    return Ok(elem);
+                                }
                             }
                         }
                     } else {
+                        let actual_end = if *inclusive { *e } else { e + 1 };
                         let mut i = *start;
                         while i >= actual_end {
                             let elem = Value::Integer(i);
@@ -3529,15 +3550,18 @@ impl VM {
             }
             Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
-                    let actual_end = if *inclusive { *e } else { e - 1 };
-                    if start <= &actual_end {
-                        for i in *start..=actual_end {
-                            let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
-                            if result.is_truthy() {
-                                count += 1;
+                    if start <= e {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        if start <= &actual_end {
+                            for i in *start..=actual_end {
+                                let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
+                                if result.is_truthy() {
+                                    count += 1;
+                                }
                             }
                         }
                     } else {
+                        let actual_end = if *inclusive { *e } else { e + 1 };
                         let mut i = *start;
                         while i >= actual_end {
                             let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
@@ -3600,10 +3624,15 @@ impl VM {
             Value::Set(set) => set.iter().cloned().collect(),
             Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
-                    let actual_end = if *inclusive { *e } else { e - 1 };
-                    if start <= &actual_end {
-                        (*start..=actual_end).map(Value::Integer).collect()
+                    if start <= e {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        if start <= &actual_end {
+                            (*start..=actual_end).map(Value::Integer).collect()
+                        } else {
+                            vec![]
+                        }
                     } else {
+                        let actual_end = if *inclusive { *e } else { e + 1 };
                         (actual_end..=*start).rev().map(Value::Integer).collect()
                     }
                 }
@@ -3725,15 +3754,18 @@ impl VM {
             }
             Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
-                    let actual_end = if *inclusive { *e } else { e - 1 };
-                    if start <= &actual_end {
-                        for i in *start..=actual_end {
-                            let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
-                            if result.is_truthy() {
-                                return Ok(Value::Boolean(true));
+                    if start <= e {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        if start <= &actual_end {
+                            for i in *start..=actual_end {
+                                let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
+                                if result.is_truthy() {
+                                    return Ok(Value::Boolean(true));
+                                }
                             }
                         }
                     } else {
+                        let actual_end = if *inclusive { *e } else { e + 1 };
                         let mut i = *start;
                         while i >= actual_end {
                             let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
@@ -3839,15 +3871,18 @@ impl VM {
             }
             Value::Range { start, end, inclusive } => match end {
                 Some(e) => {
-                    let actual_end = if *inclusive { *e } else { e - 1 };
-                    if start <= &actual_end {
-                        for i in *start..=actual_end {
-                            let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
-                            if !result.is_truthy() {
-                                return Ok(Value::Boolean(false));
+                    if start <= e {
+                        let actual_end = if *inclusive { *e } else { e - 1 };
+                        if start <= &actual_end {
+                            for i in *start..=actual_end {
+                                let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
+                                if !result.is_truthy() {
+                                    return Ok(Value::Boolean(false));
+                                }
                             }
                         }
                     } else {
+                        let actual_end = if *inclusive { *e } else { e + 1 };
                         let mut i = *start;
                         while i >= actual_end {
                             let result = self.call_callable_sync(&predicate, vec![Value::Integer(i)])?;
