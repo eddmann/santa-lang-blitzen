@@ -2321,10 +2321,21 @@ impl Compiler {
                 pattern: Pattern::Identifier(name),
                 ..
             } = &stmt.node
-                && !seen_names.insert(name.clone())
             {
-                // Name already seen - it's a shadow, not a forward reference
-                duplicate_names.insert(name.clone());
+                // If the name already resolves to a local in an enclosing scope
+                // (e.g. function parameter, destructured binding, outer `let`),
+                // treat this `let` as a shadow and don't pre-declare — otherwise
+                // the pre-declared nil slot would shadow the existing binding
+                // and the right-hand side `let a = a + 1` would read nil.
+                if self.resolve_local(name).is_some() {
+                    duplicate_names.insert(name.clone());
+                    // Still record it in seen_names so a subsequent let with the
+                    // same name in this block is treated consistently.
+                    seen_names.insert(name.clone());
+                } else if !seen_names.insert(name.clone()) {
+                    // Name already seen in this block - it's a shadow, not a forward reference
+                    duplicate_names.insert(name.clone());
+                }
             }
         }
 
@@ -2470,7 +2481,11 @@ impl Compiler {
                 // For self-recursive closures like `let f = |x| f(x-1)`, we need to
                 // pre-declare the local before compiling the function so it can capture itself.
                 // This also applies to wrapped functions like `let f = memoize |x| f(x-1)`.
-                if Self::contains_function(&value.node) {
+                // However, we must NOT pre-declare if the name already resolves to an
+                // existing binding — otherwise the pre-declared nil slot would shadow
+                // the outer binding inside the RHS (e.g. `let time = iterate(_ + mult, time)`
+                // must read `time` from the enclosing scope, not the new nil slot).
+                if Self::contains_function(&value.node) && self.resolve_local(name).is_none() {
                     // Pre-declare with nil
                     self.emit(OpCode::Nil);
                     self.add_local(name.clone(), mutable);

@@ -1789,6 +1789,7 @@ impl VM {
             BuiltinId::Min => self.builtin_min(args, line),
             BuiltinId::Includes => self.builtin_includes(args, line),
             BuiltinId::Excludes => self.builtin_excludes(args, line),
+            BuiltinId::Join => self.builtin_join(args, line),
             _ => Err(RuntimeError::new(
                 format!("{} is not a callback builtin", id.name()),
                 line,
@@ -3590,6 +3591,27 @@ impl VM {
                     }
                 }
             }
+            Value::LazySequence(seq) => {
+                let mut seq_clone = seq.borrow().clone();
+                let mut idx: i64 = 0;
+                loop {
+                    match self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                        Some(elem) => {
+                            let call_args = if arity >= 2 {
+                                vec![elem, Value::Integer(idx)]
+                            } else {
+                                vec![elem]
+                            };
+                            let result = self.call_callable_sync(&predicate, call_args)?;
+                            if result.is_truthy() {
+                                count += 1;
+                            }
+                            idx += 1;
+                        }
+                        None => break,
+                    }
+                }
+            }
             _ => {
                 return Err(RuntimeError::new(
                     format!("count does not support {}", collection.type_name()),
@@ -3599,6 +3621,53 @@ impl VM {
         }
 
         Ok(Value::Integer(count))
+    }
+
+    /// join(separator, collection) → String
+    fn builtin_join(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        use super::builtins::value_to_unquoted_string;
+
+        let separator = &args[0];
+        let collection = &args[1];
+
+        let sep = match separator {
+            Value::String(s) => s.clone(),
+            _ => {
+                return Err(RuntimeError::new(
+                    format!("join expects String as first argument, got {}", separator.type_name()),
+                    line,
+                ));
+            }
+        };
+
+        match collection {
+            Value::List(list) => {
+                let strings: Vec<String> = list.iter().map(value_to_unquoted_string).collect();
+                Ok(Value::String(Rc::new(strings.join(sep.as_str()))))
+            }
+            Value::Set(set) => {
+                let strings: Vec<String> = set.iter().map(value_to_unquoted_string).collect();
+                Ok(Value::String(Rc::new(strings.join(sep.as_str()))))
+            }
+            Value::LazySequence(seq) => {
+                let mut seq_clone = seq.borrow().clone();
+                let mut parts: Vec<String> = Vec::new();
+                loop {
+                    match self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                        Some(elem) => parts.push(value_to_unquoted_string(&elem)),
+                        None => break,
+                    }
+                }
+                Ok(Value::String(Rc::new(parts.join(sep.as_str()))))
+            }
+            _ => Err(RuntimeError::new(
+                format!(
+                    "join expects List or Set as second argument, got {}",
+                    collection.type_name()
+                ),
+                line,
+            )),
+        }
     }
 
     /// sort(comparator, collection) → List
