@@ -2110,41 +2110,68 @@ impl Compiler {
     /// Creates a wrapper closure that calls the builtin
     fn compile_builtin_as_value(&mut self, builtin_id: BuiltinId, _span: Span) -> Result<(), CompileError> {
         let (min_arity, max_arity) = builtin_id.arity();
+        let is_variadic = min_arity != max_arity;
 
-        // For variadic builtins, use min_arity as the wrapper's arity
-        // For fixed-arity builtins, use the exact arity
-        let arity = if min_arity == max_arity {
-            min_arity
-        } else {
-            // For variadic functions, we need to handle this differently
-            // For now, use minimum arity
-            min_arity
-        };
+        // For variadic builtins (e.g. min, max, union, intersection, zip), create a
+        // variadic wrapper that collects all call arguments into a rest list and
+        // spreads them into the builtin call. This preserves the builtin's
+        // overloaded dispatch (single collection vs. multiple scalar args) when it
+        // is captured as a first-class value.
+        //
+        // For fixed-arity builtins, use the exact arity and forward each parameter
+        // directly.
+        if is_variadic {
+            // Create a variadic wrapper function with arity=0 and a rest parameter.
+            let enclosing = std::mem::take(self);
+            *self = Compiler::new_function_with_variadic(None, 0, true, enclosing);
 
-        // Create a wrapper function
-        let enclosing = std::mem::take(self);
-        *self = Compiler::new_function(None, arity, enclosing);
-
-        // Add parameter locals
-        for i in 0..arity {
+            // Local slot 0 holds the rest list (all args passed to the wrapper).
             self.locals.push(Local {
-                name: format!("__builtin_arg{}", i),
+                name: String::from("__builtin_rest"),
                 depth: 0,
                 mutable: false,
                 captured: false,
             });
+
+            // Load the rest list, spread it, and call the builtin. CallBuiltin
+            // expands SpreadMarker arguments in place, so the builtin receives the
+            // original scalar arguments (or the single collection) as-is.
+            self.emit_with_operand(OpCode::GetLocal, 0);
+            self.emit(OpCode::Spread);
+
+            self.emit(OpCode::CallBuiltin);
+            self.chunk().write_operand_u16(builtin_id as u16);
+            self.chunk().write_operand(1);
+
+            self.emit(OpCode::Return);
+        } else {
+            let arity = min_arity;
+
+            // Create a wrapper function
+            let enclosing = std::mem::take(self);
+            *self = Compiler::new_function(None, arity, enclosing);
+
+            // Add parameter locals
+            for i in 0..arity {
+                self.locals.push(Local {
+                    name: format!("__builtin_arg{}", i),
+                    depth: 0,
+                    mutable: false,
+                    captured: false,
+                });
+            }
+
+            // Load all parameters and call the builtin
+            for i in 0..arity {
+                self.emit_with_operand(OpCode::GetLocal, i);
+            }
+
+            self.emit(OpCode::CallBuiltin);
+            self.chunk().write_operand_u16(builtin_id as u16);
+            self.chunk().write_operand(arity);
+
+            self.emit(OpCode::Return);
         }
-
-        // Load all parameters and call the builtin
-        for i in 0..arity {
-            self.emit_with_operand(OpCode::GetLocal, i);
-        }
-
-        self.emit(OpCode::CallBuiltin);
-        self.chunk().write_operand_u16(builtin_id as u16);
-        self.chunk().write_operand(arity);
-
-        self.emit(OpCode::Return);
 
         // Get the compiled function and restore enclosing
         let compiled_fn = std::mem::replace(&mut self.function, CompiledFunction::new(0, None));
