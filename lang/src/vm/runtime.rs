@@ -1008,8 +1008,14 @@ impl VM {
             (Value::Decimal(x), Value::Integer(y)) => Value::Decimal(OrderedFloat(x.0 - *y as f64)),
             (Value::Decimal(x), Value::Decimal(y)) => Value::Decimal(OrderedFloat(x.0 - y.0)),
 
-            // Set difference
-            (Value::Set(x), Value::Set(y)) => Value::Set(x.clone().difference(y.clone())),
+            // Set difference (A - B: elements in A not in B)
+            (Value::Set(x), Value::Set(y)) => {
+                let mut result = x.clone();
+                for elem in y.iter() {
+                    result.remove(elem);
+                }
+                Value::Set(result)
+            }
 
             // Set - List = remove list elements from set
             (Value::Set(x), Value::List(y)) => {
@@ -1790,6 +1796,7 @@ impl VM {
             BuiltinId::Includes => self.builtin_includes(args, line),
             BuiltinId::Excludes => self.builtin_excludes(args, line),
             BuiltinId::Join => self.builtin_join(args, line),
+            BuiltinId::Reverse => self.builtin_reverse(args, line),
             _ => Err(RuntimeError::new(
                 format!("{} is not a callback builtin", id.name()),
                 line,
@@ -2138,7 +2145,7 @@ impl VM {
         let collection = &args[1];
 
         // Validate mapper is callable
-        if !matches!(mapper, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !mapper.is_callable() {
             return Err(RuntimeError::new(
                 format!("map expects Function as first argument, got {}", mapper.type_name()),
                 line,
@@ -2244,7 +2251,7 @@ impl VM {
         let collection = &args[1];
 
         // Validate predicate is callable
-        if !matches!(predicate, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !predicate.is_callable() {
             return Err(RuntimeError::new(
                 format!(
                     "filter expects Function as first argument, got {}",
@@ -2353,7 +2360,7 @@ impl VM {
         let mapper = &args[0];
         let collection = &args[1];
 
-        if !matches!(mapper, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !mapper.is_callable() {
             return Err(RuntimeError::new(
                 format!(
                     "flat_map expects Function as first argument, got {}",
@@ -2401,31 +2408,57 @@ impl VM {
                 }
             }
             Value::LazySequence(seq) => {
-                // Return lazy FlatMap sequence
-                // Supports both Function and PartialApplication
-                return Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::FlatMap {
-                    source: seq.clone(),
-                    mapper: mapper.clone(),
-                    current_inner: None,
-                }))));
+                // Materialize and flatten (matches Comet behavior)
+                let mut seq_clone = seq.borrow().clone();
+                let mut idx: i64 = 0;
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    let call_args = if arity >= 2 {
+                        vec![elem, Value::Integer(idx)]
+                    } else {
+                        vec![elem]
+                    };
+                    let mapped = self.call_callable_sync(&mapper, call_args)?;
+                    flatten_mapped(&mut result, mapped, self)?;
+                    idx += 1;
+                }
             }
             Value::Range { start, end, inclusive } => {
-                // Convert Range to LazySeq::Range and wrap in FlatMap
-                // Supports both Function and PartialApplication
-                let step = match end {
-                    Some(e) if start > e => -1,
-                    _ => 1,
+                // Materialize the range and flat_map over it (matches Comet behavior)
+                let end = match end {
+                    Some(e) => *e,
+                    None => {
+                        return Err(RuntimeError::new(
+                            "Cannot flat_map over unbounded range",
+                            line,
+                        ));
+                    }
                 };
-                return Ok(Value::LazySequence(Rc::new(RefCell::new(LazySeq::FlatMap {
-                    source: Rc::new(RefCell::new(LazySeq::Range {
-                        current: *start,
-                        end: *end,
-                        inclusive: *inclusive,
-                        step,
-                    })),
-                    mapper: mapper.clone(),
-                    current_inner: None,
-                }))));
+                let (lo, hi, ascending) = if *start <= end {
+                    (*start, end, true)
+                } else {
+                    (end, *start, false)
+                };
+                let actual_end = if *inclusive {
+                    hi
+                } else if ascending {
+                    hi - 1
+                } else {
+                    lo + 1
+                };
+                let iter_vals: Vec<i64> = if ascending {
+                    (lo..=actual_end).collect()
+                } else {
+                    (actual_end..=hi).rev().collect()
+                };
+                for (i, v) in iter_vals.into_iter().enumerate() {
+                    let call_args = if arity >= 2 {
+                        vec![Value::Integer(v), Value::Integer(i as i64)]
+                    } else {
+                        vec![Value::Integer(v)]
+                    };
+                    let mapped = self.call_callable_sync(&mapper, call_args)?;
+                    flatten_mapped(&mut result, mapped, self)?;
+                }
             }
             _ => {
                 return Err(RuntimeError::new(
@@ -2443,7 +2476,7 @@ impl VM {
         let mapper = &args[0];
         let collection = &args[1];
 
-        if !matches!(mapper, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !mapper.is_callable() {
             return Err(RuntimeError::new(
                 format!(
                     "filter_map expects Function as first argument, got {}",
@@ -2557,7 +2590,7 @@ impl VM {
         let mapper = &args[0];
         let collection = &args[1];
 
-        if !matches!(mapper, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !mapper.is_callable() {
             return Err(RuntimeError::new(
                 format!(
                     "find_map expects Function as first argument, got {}",
@@ -2692,7 +2725,7 @@ impl VM {
         let reducer = &args[0];
         let collection = &args[1];
 
-        if !matches!(reducer, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !reducer.is_callable() {
             return Err(RuntimeError::new(
                 format!("reduce expects Function as first argument, got {}", reducer.type_name()),
                 line,
@@ -2830,7 +2863,7 @@ impl VM {
         let collection = &args[2];
 
         // Validate folder is callable
-        if !matches!(folder, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !folder.is_callable() {
             return Err(RuntimeError::new(
                 format!("fold expects Function as second argument, got {}", folder.type_name()),
                 line,
@@ -2982,7 +3015,7 @@ impl VM {
         let folder = &args[1];
         let collection = &args[2];
 
-        if !matches!(folder, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !folder.is_callable() {
             return Err(RuntimeError::new(
                 format!("fold_s expects Function as second argument, got {}", folder.type_name()),
                 line,
@@ -3048,7 +3081,7 @@ impl VM {
         let folder = &args[1];
         let collection = &args[2];
 
-        if !matches!(folder, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !folder.is_callable() {
             return Err(RuntimeError::new(
                 format!("scan expects Function as second argument, got {}", folder.type_name()),
                 line,
@@ -3153,7 +3186,7 @@ impl VM {
         let side_effect = &args[0];
         let collection = &args[1];
 
-        if !matches!(side_effect, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !side_effect.is_callable() {
             return Err(RuntimeError::new(
                 format!(
                     "each expects Function as first argument, got {}",
@@ -3276,7 +3309,7 @@ impl VM {
         let updater = &args[1];
         let collection = &args[2];
 
-        if !matches!(updater, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !updater.is_callable() {
             return Err(RuntimeError::new(
                 format!(
                     "update expects Function as second argument, got {}",
@@ -3334,7 +3367,7 @@ impl VM {
         let updater = &args[2];
         let collection = &args[3];
 
-        if !matches!(updater, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !updater.is_callable() {
             return Err(RuntimeError::new(
                 format!(
                     "update_d expects Function as third argument, got {}",
@@ -3370,7 +3403,7 @@ impl VM {
         let predicate = &args[0];
         let collection = &args[1];
 
-        if !matches!(predicate, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !predicate.is_callable() {
             return Err(RuntimeError::new(
                 format!("find expects Function as first argument, got {}", predicate.type_name()),
                 line,
@@ -3500,7 +3533,7 @@ impl VM {
         let predicate = &args[0];
         let collection = &args[1];
 
-        if !matches!(predicate, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !predicate.is_callable() {
             return Err(RuntimeError::new(
                 format!(
                     "count expects Function as first argument, got {}",
@@ -3676,7 +3709,7 @@ impl VM {
         let collection = &args[1];
 
         // Validate comparator is callable
-        if !matches!(comparator, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !comparator.is_callable() {
             return Err(RuntimeError::new(
                 format!(
                     "sort expects Function as first argument, got {}",
@@ -3757,7 +3790,7 @@ impl VM {
         let predicate = &args[0];
         let collection = &args[1];
 
-        if !matches!(predicate, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !predicate.is_callable() {
             return Err(RuntimeError::new(
                 format!("any? expects Function as first argument, got {}", predicate.type_name()),
                 line,
@@ -3874,7 +3907,7 @@ impl VM {
         let predicate = &args[0];
         let collection = &args[1];
 
-        if !matches!(predicate, Value::Function(_) | Value::PartialApplication { .. }) {
+        if !predicate.is_callable() {
             return Err(RuntimeError::new(
                 format!("all? expects Function as first argument, got {}", predicate.type_name()),
                 line,
@@ -4502,6 +4535,55 @@ impl VM {
 
     /// list(value) → List
     /// Convert value to a list, with callback support for LazySequence.
+    /// reverse(collection) → Collection
+    /// Reverse a collection, with callback support for LazySequence.
+    fn builtin_reverse(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
+        let value = &args[0];
+
+        match value {
+            Value::List(list) => {
+                let reversed: Vector<Value> = list.iter().rev().cloned().collect();
+                Ok(Value::List(reversed))
+            }
+            Value::String(s) => {
+                use unicode_segmentation::UnicodeSegmentation;
+                let reversed: String = s.graphemes(true).rev().collect();
+                Ok(Value::String(Rc::new(reversed)))
+            }
+            Value::Range { start, end, inclusive } => match end {
+                Some(e) => {
+                    let actual_end = if *inclusive { *e } else { e - 1 };
+                    let mut result = Vector::new();
+                    if start <= &actual_end {
+                        for i in (*start..=actual_end).rev() {
+                            result.push_back(Value::Integer(i));
+                        }
+                    } else {
+                        for i in (actual_end..=*start).rev() {
+                            result.push_back(Value::Integer(i));
+                        }
+                    }
+                    Ok(Value::List(result))
+                }
+                None => Err(RuntimeError::new("Cannot reverse unbounded range", line)),
+            },
+            Value::LazySequence(seq) => {
+                // Materialize the lazy sequence then reverse
+                let mut items = Vector::new();
+                let mut seq_clone = seq.borrow().clone();
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    items.push_back(elem);
+                }
+                let reversed: Vector<Value> = items.iter().rev().cloned().collect();
+                Ok(Value::List(reversed))
+            }
+            _ => Err(RuntimeError::new(
+                format!("reverse does not support {}", value.type_name()),
+                line,
+            )),
+        }
+    }
+
     fn builtin_list_callback(&mut self, args: &[Value], line: u32) -> Result<Value, RuntimeError> {
         let value = &args[0];
 

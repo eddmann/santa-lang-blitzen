@@ -403,6 +403,7 @@ impl BuiltinId {
                 | BuiltinId::Includes
                 | BuiltinId::Excludes
                 | BuiltinId::Join
+                | BuiltinId::Reverse
         )
     }
 }

@@ -224,6 +224,14 @@ impl Value {
         }
     }
 
+    /// Returns true if this value is callable (Function, PartialApplication, or MemoizedFunction)
+    pub fn is_callable(&self) -> bool {
+        matches!(
+            self,
+            Value::Function(_) | Value::PartialApplication { .. } | Value::MemoizedFunction(_)
+        )
+    }
+
     /// Returns the type name for error messages
     pub fn type_name(&self) -> &'static str {
         match self {
@@ -245,8 +253,8 @@ impl Value {
                 }
             }
             Value::ExternalFunction(_) => "ExternalFunction",
-            Value::PartialApplication { .. } => "Function",
-            Value::MemoizedFunction(_) => "Function",
+            Value::PartialApplication { .. } => "PartialApplication",
+            Value::MemoizedFunction(_) => "MemoizedFunction",
             // SpreadMarker is internal and should not be exposed
             Value::SpreadMarker(inner) => inner.type_name(),
         }
