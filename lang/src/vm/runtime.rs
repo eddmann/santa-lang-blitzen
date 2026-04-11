@@ -1807,23 +1807,48 @@ impl VM {
     /// Call a closure with arguments and return the result
     fn call_closure_sync(&mut self, closure: &Rc<Closure>, args: Vec<Value>) -> Result<Value, RuntimeError> {
         let arity = closure.function.arity as usize;
+        let is_variadic = closure.function.is_variadic;
 
-        // Handle arity mismatch by padding with nil or truncating
-        let actual_args: Vec<Value> = if args.len() < arity {
-            let mut padded = args;
-            while padded.len() < arity {
-                padded.push(Value::Nil);
+        // Handle arity mismatch by padding with nil or truncating.
+        // For variadic functions, the `arity` is the number of regular params
+        // preceding the rest parameter; any extra args get collected into a list
+        // that is pushed as the final (rest) argument.
+        let (regular_args, rest_list): (Vec<Value>, Option<Vector<Value>>) = if is_variadic {
+            if args.len() < arity {
+                // Pad with nil for missing regular params, empty rest list
+                let mut padded = args;
+                while padded.len() < arity {
+                    padded.push(Value::Nil);
+                }
+                (padded, Some(Vector::new()))
+            } else {
+                let mut iter = args.into_iter();
+                let regular: Vec<Value> = (&mut iter).take(arity).collect();
+                let rest: Vector<Value> = iter.collect();
+                (regular, Some(rest))
             }
-            padded
-        } else if args.len() > arity {
-            args.into_iter().take(arity).collect()
         } else {
-            args
+            let actual: Vec<Value> = if args.len() < arity {
+                let mut padded = args;
+                while padded.len() < arity {
+                    padded.push(Value::Nil);
+                }
+                padded
+            } else if args.len() > arity {
+                args.into_iter().take(arity).collect()
+            } else {
+                args
+            };
+            (actual, None)
         };
 
-        // Push arguments onto stack
-        for arg in &actual_args {
+        // Push regular arguments onto stack
+        for arg in &regular_args {
             self.push(arg.clone());
+        }
+        // Push rest list as the final argument for variadic functions
+        if let Some(rest) = rest_list {
+            self.push(Value::List(rest));
         }
 
         // Create new frame
@@ -1834,7 +1859,8 @@ impl VM {
         // Remember current depth to return here after closure completes
         let return_depth = self.frames.len();
 
-        let stack_base = self.stack.len() - arity;
+        let frame_arity = if is_variadic { arity + 1 } else { arity };
+        let stack_base = self.stack.len() - frame_arity;
         self.frames.push(CallFrame::new(closure.clone(), stack_base));
 
         // Execute until we return to current depth
