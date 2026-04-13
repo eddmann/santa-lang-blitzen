@@ -2453,10 +2453,7 @@ impl VM {
                 let end = match end {
                     Some(e) => *e,
                     None => {
-                        return Err(RuntimeError::new(
-                            "Cannot flat_map over unbounded range",
-                            line,
-                        ));
+                        return Err(RuntimeError::new("Cannot flat_map over unbounded range", line));
                     }
                 };
                 let (lo, hi, ascending) = if *start <= end {
@@ -3653,22 +3650,17 @@ impl VM {
             Value::LazySequence(seq) => {
                 let mut seq_clone = seq.borrow().clone();
                 let mut idx: i64 = 0;
-                loop {
-                    match self.lazy_seq_next_with_callback(&mut seq_clone)? {
-                        Some(elem) => {
-                            let call_args = if arity >= 2 {
-                                vec![elem, Value::Integer(idx)]
-                            } else {
-                                vec![elem]
-                            };
-                            let result = self.call_callable_sync(&predicate, call_args)?;
-                            if result.is_truthy() {
-                                count += 1;
-                            }
-                            idx += 1;
-                        }
-                        None => break,
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    let call_args = if arity >= 2 {
+                        vec![elem, Value::Integer(idx)]
+                    } else {
+                        vec![elem]
+                    };
+                    let result = self.call_callable_sync(&predicate, call_args)?;
+                    if result.is_truthy() {
+                        count += 1;
                     }
+                    idx += 1;
                 }
             }
             _ => {
@@ -3711,11 +3703,8 @@ impl VM {
             Value::LazySequence(seq) => {
                 let mut seq_clone = seq.borrow().clone();
                 let mut parts: Vec<String> = Vec::new();
-                loop {
-                    match self.lazy_seq_next_with_callback(&mut seq_clone)? {
-                        Some(elem) => parts.push(value_to_unquoted_string(&elem)),
-                        None => break,
-                    }
+                while let Some(elem) = self.lazy_seq_next_with_callback(&mut seq_clone)? {
+                    parts.push(value_to_unquoted_string(&elem));
                 }
                 Ok(Value::String(Rc::new(parts.join(sep.as_str()))))
             }
